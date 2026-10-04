@@ -1,0 +1,16 @@
+{
+  "name": "mj shoot_it",
+  "version": "0.0.1",
+  "description": "a studio delivery application for MJ shoot_it studio",
+  "license": "ISC",
+  "author": "Alhaji C M Kallon",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "pg": "^8.23.1"
+  }
+}
