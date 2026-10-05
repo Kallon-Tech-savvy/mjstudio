@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ensureGalleryPermission } from '../src/application/policies/gallery.policy.js';
 import { buildPhotographerContext } from '../src/auth/context.js';
+import { ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
 import { assertGalleryCanArchive, assertGalleryCanPublish } from '../src/services/service-common.js';
 import { PhotoService } from '../src/services/photo-service.js';
 
@@ -32,6 +33,52 @@ describe('application-service rules', () => {
 
   it('rejects repeat archive transitions', () => {
     expect(() => assertGalleryCanArchive({ archivedAt: new Date() })).toThrowError(expect.objectContaining({ code: 'INVALID_GALLERY_STATE' }));
+  });
+
+  it('supersedes stale current derivatives before generating a replacement', async () => {
+    const queries: string[] = [];
+    const transaction = {
+      query: async (sql: string, params?: unknown[]) => {
+        queries.push(sql);
+        if (sql.includes('FROM photos p JOIN photo_assets pa ON pa.photo_id = p.id') && sql.includes('WHERE p.id = $1 AND pa.id = $2')) {
+          return { rows: [{ gallery_id: 'gallery-1', storage_key: 'studios/original', upload_status: 'uploaded', state: 'current', deleted_at: null }] };
+        }
+        if (sql.includes('SELECT id, upload_status, processing_status, state FROM photo_assets') && sql.includes('WHERE photo_id = $1 AND type = $2')) {
+          return { rows: [{ id: 'old-preview', upload_status: 'failed', processing_status: 'failed', state: 'current' }] };
+        }
+        if (sql.includes("UPDATE photo_assets SET state = 'superseded'")) {
+          return { rowCount: 1, rows: [] };
+        }
+        if (sql.includes("INSERT INTO photo_assets (id, photo_id, type, state, storage_key, upload_status, processing_status)")) {
+          return { rowCount: 1, rows: [] };
+        }
+        if (sql.includes("UPDATE photo_assets SET upload_status = 'uploaded', processing_status = 'ready'")) {
+          return { rowCount: 1, rows: [] };
+        }
+        if (sql.includes('SELECT COUNT(*) FILTER')) {
+          return { rows: [{ ready: true }] };
+        }
+        if (sql.includes("UPDATE photos SET status = 'active'")) {
+          return { rowCount: 1, rows: [] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+
+    const handler = new ProcessPhotoAssetsHandler(
+      {
+        createPreview: async () => ({ mimeType: 'image/jpeg', fileSize: 200 }),
+        createThumbnail: async () => ({ mimeType: 'image/jpeg', fileSize: 120 }),
+      },
+      { verifyObject: async () => ({ mimeType: 'image/jpeg', fileSize: 200 }) },
+    );
+
+    await handler.execute(
+      { id: 'job-1', type: 'PROCESS_PHOTO_ASSETS', attempts: 1, lockToken: 'lock-1', payload: { photoId: '11111111-1111-4111-8111-111111111111', sourceAssetId: '22222222-2222-4222-8222-222222222222' } },
+      transaction,
+    );
+
+    expect(queries.some((sql) => sql.includes("state = 'superseded'"))).toBe(true);
   });
 
   it('rejects reorder requests that do not include the complete active gallery set', async () => {

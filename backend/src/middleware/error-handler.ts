@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { AppError, BadRequestError, ForbiddenError } from '../errors.js';
+import { sanitizeForLogging } from '../logging/audit.js';
 import { logger } from '../logging/logger.js';
 import { errorEnvelope } from '../utils/response.js';
 
@@ -8,7 +9,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
   if (err instanceof SyntaxError && 'body' in err) {
     const error = new BadRequestError('MALFORMED_JSON', 'Request body contains malformed JSON.');
-    logger.warn({ err, requestId, path: req.originalUrl }, 'request parse error');
+    logger.warn({ err: sanitizeForLogging(err), requestId, path: req.originalUrl }, 'request parse error');
     res.status(error.statusCode).json(errorEnvelope(error.code, error.message, requestId));
     return;
   }
@@ -26,11 +27,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
 
   if (err instanceof AppError) {
-    logger.warn({ err, requestId, path: req.originalUrl }, 'request error');
+    logger.warn({ err: sanitizeForLogging(err), requestId, path: req.originalUrl }, 'request error');
     res.status(err.statusCode).json(errorEnvelope(err.code, err.message, requestId));
     return;
   }
 
-  logger.error({ err, requestId, path: req.originalUrl }, 'unhandled error');
+  logger.error({ err: sanitizeForLogging(err), requestId, path: req.originalUrl }, 'unhandled error');
   res.status(500).json(errorEnvelope('INTERNAL_SERVER_ERROR', 'Unexpected server error.', requestId));
 }

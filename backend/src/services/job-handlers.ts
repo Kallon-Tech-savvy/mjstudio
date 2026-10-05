@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Transaction } from './service-common.js';
 import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
 import { PermanentJobError } from './job-service.js';
@@ -36,8 +37,15 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
           WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
       let assetId = existing.rows[0]?.id;
       if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
+      if (existing.rows[0]) {
+        await transaction.query(
+          "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
+          [existing.rows[0].id],
+        );
+        assetId = undefined;
+      }
       if (!assetId) {
-        assetId = crypto.randomUUID();
+        assetId = randomUUID();
         await transaction.query(
           `INSERT INTO photo_assets (id, photo_id, type, state, storage_key, upload_status, processing_status)
            VALUES ($1, $2, $3, 'current', $4, 'pending', 'pending')`,
@@ -75,7 +83,7 @@ export class CleanupPhotoAssetsHandler implements JobHandler<'CLEANUP_PHOTO_ASSE
       `SELECT pa.storage_key, pa.state FROM photo_assets pa JOIN photos p ON p.id = pa.photo_id
         WHERE p.id = $1 AND p.deleted_at IS NOT NULL`, [photoId]);
     for (const asset of assets.rows) {
-      if (asset.state === 'current') await this.storage.deleteObject(asset.storage_key);
+      await this.storage.deleteObject(asset.storage_key);
     }
   }
 }

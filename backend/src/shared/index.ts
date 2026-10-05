@@ -25,6 +25,8 @@ export interface AuditEvent {
   resourceType?: string;
   resourceId?: string;
   requestId?: string;
+  jobId?: string;
   outcome: 'success' | 'denied' | 'error';
   occurredAt: string;
+  details?: Record<string, unknown>;
 }
