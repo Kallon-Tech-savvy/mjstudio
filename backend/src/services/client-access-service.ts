@@ -115,8 +115,8 @@ export class ClientSessionService {
   async create(secretToken: string, pin: string, abuseKey: string) {
     await this.pinAttemptLimiter.assertAllowed(abuseKey);
     await this.pinAttemptLimiter.assertAllowed(`secret:${secretToken}`);
-    const grant = await this.database.query<{ id: string; pin_hash: string }>(
-      `SELECT ga.id, ga.pin_hash FROM gallery_access ga JOIN galleries g ON g.id = ga.gallery_id
+    const grant = await this.database.query<{ id: string; pin_hash: string; gallery_id: string }>(
+      `SELECT ga.id, ga.pin_hash, ga.gallery_id FROM gallery_access ga JOIN galleries g ON g.id = ga.gallery_id
         WHERE ga.secret_token_hash = $1 AND ga.revoked_at IS NULL AND g.publication_status = 'published'
           AND g.archived_at IS NULL AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`, [hashCredential(secretToken)]);
     const access = grant.rows[0];
@@ -140,7 +140,7 @@ export class ClientSessionService {
       return true;
     });
     if (!created) throw new ForbiddenError('INVALID_GALLERY_ACCESS');
-    return { sessionId, sessionToken, expiresAt: sessionExpiresAt };
+    return { sessionId, sessionToken, expiresAt: sessionExpiresAt, galleryId: access.gallery_id };
   }
 
   async resolve(sessionToken: string): Promise<ClientContext> {

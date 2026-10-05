@@ -53,7 +53,19 @@ export type PhotoRecord = {
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001/api";
 
-async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+    readonly requestId?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: Record<string, unknown> }> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: "include",
@@ -65,17 +77,61 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   if (response.status === 204) {
-    return undefined as T;
+    return { data: undefined as T };
   }
 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const message = payload?.error?.message ?? "Request failed";
-    throw new Error(message);
+    const error = payload?.error;
+    const message = typeof error?.message === "string" ? error.message : "Request failed";
+    const code = typeof error?.code === "string" ? error.code : "REQUEST_FAILED";
+    const requestId = typeof error?.request_id === "string"
+      ? error.request_id
+      : response.headers.get("X-Request-ID") ?? undefined;
+    throw new ApiError(message, code, response.status, requestId);
   }
 
-  return (payload?.data ?? payload) as T;
+  return {
+    data: (payload?.data ?? payload) as T,
+    meta: payload?.meta as Record<string, unknown> | undefined,
+  };
+}
+
+async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await apiRequestWithMeta<T>(path, init)).data;
+}
+
+async function apiCollectionRequest<T>(path: string, normalize: (item: Record<string, unknown>) => T): Promise<{ items: T[]; total: number }> {
+  const { data, meta } = await apiRequestWithMeta<Record<string, unknown>[]>(path);
+  return {
+    items: data.map(normalize),
+    total: typeof meta?.total === "number" ? meta.total : data.length,
+  };
+}
+
+function normalizeGallery(item: Record<string, unknown>): GalleryRecord {
+  return {
+    ...item,
+    galleryId: String(item.galleryId ?? item.id ?? ""),
+    clientId: String(item.clientId ?? ""),
+    status: String(item.status ?? item.publicationStatus ?? item.workflowStatus ?? "draft"),
+  } as GalleryRecord;
+}
+
+function normalizeClient(item: Record<string, unknown>): ClientRecord {
+  return {
+    ...item,
+    clientId: String(item.clientId ?? item.id ?? ""),
+  } as ClientRecord;
+}
+
+function normalizePhoto(item: Record<string, unknown>, galleryId = ""): PhotoRecord {
+  return {
+    ...item,
+    photoId: String(item.photoId ?? item.id ?? ""),
+    galleryId: String(item.galleryId ?? galleryId),
+  } as PhotoRecord;
 }
 
 export async function getPhotographerMe(): Promise<{ user: PhotographerUser | null } | null> {
@@ -101,11 +157,11 @@ export async function getStudioSummary(): Promise<StudioSummary> {
 }
 
 export async function listClients(page = 1, limit = 20): Promise<{ items: ClientRecord[]; total: number }> {
-  return apiRequest<{ items: ClientRecord[]; total: number }>(`/clients?page=${page}&limit=${limit}`);
+  return apiCollectionRequest(`/clients?page=${page}&limit=${limit}`, normalizeClient);
 }
 
 export async function listGalleries(page = 1, limit = 20): Promise<{ items: GalleryRecord[]; total: number }> {
-  return apiRequest<{ items: GalleryRecord[]; total: number }>(`/galleries?page=${page}&limit=${limit}`);
+  return apiCollectionRequest(`/galleries?page=${page}&limit=${limit}`, normalizeGallery);
 }
 
 export async function createGallery(input: {
@@ -120,11 +176,11 @@ export async function createGallery(input: {
 }
 
 export async function getGallery(galleryId: string): Promise<GalleryRecord> {
-  return apiRequest<GalleryRecord>(`/galleries/${galleryId}`);
+  return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`));
 }
 
 export async function listGalleryPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: PhotoRecord[]; total: number }> {
-  return apiRequest<{ items: PhotoRecord[]; total: number }>(`/galleries/${galleryId}/photos?page=${page}&limit=${limit}`);
+  return apiCollectionRequest(`/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => normalizePhoto(item, galleryId));
 }
 
 export async function createGalleryAccess(
@@ -143,19 +199,19 @@ export async function createGalleryAccess(
 export async function verifyClientAccess(input: {
   secret: string;
   pin: string;
-}): Promise<{ authenticated: boolean; expiresAt?: string }> {
-  return apiRequest<{ authenticated: boolean; expiresAt?: string }>("/client/access/verify", {
+}): Promise<{ authenticated: boolean; galleryId: string; expiresAt?: string }> {
+  return apiRequest<{ authenticated: boolean; galleryId: string; expiresAt?: string }>("/client/access/verify", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
 export async function getClientGallery(galleryId: string): Promise<GalleryRecord> {
-  return apiRequest<GalleryRecord>(`/client/galleries/${galleryId}`);
+  return normalizeGallery(await apiRequest<Record<string, unknown>>(`/client/galleries/${galleryId}`));
 }
 
 export async function listClientPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: PhotoRecord[]; total: number }> {
-  return apiRequest<{ items: PhotoRecord[]; total: number }>(`/client/galleries/${galleryId}/photos?page=${page}&limit=${limit}`);
+  return apiCollectionRequest(`/client/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => normalizePhoto(item, galleryId));
 }
 
 export async function setSelection(

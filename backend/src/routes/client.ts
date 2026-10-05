@@ -21,7 +21,7 @@ export function clientRouter(services: ApplicationServices) {
       const abuseKey = req.ip || 'unknown';
       const session = await services.clientSessions.create(input.secret, input.pin, `${abuseKey}:${input.secret}`);
       res.cookie(CLIENT_COOKIE, session.sessionToken, { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/client', expires: session.expiresAt });
-      res.status(201).json(successEnvelope({ authenticated: true, expiresAt: session.expiresAt }));
+      res.status(201).json(successEnvelope({ authenticated: true, galleryId: session.galleryId, expiresAt: session.expiresAt }));
     } catch (error) {
       if (error instanceof Error && 'code' in error && ['FORBIDDEN', 'INVALID_GALLERY_ACCESS'].includes((error as { code: string }).code)) {
         next(new NotFoundError('INVALID_GALLERY_ACCESS', 'Gallery access could not be verified.'));

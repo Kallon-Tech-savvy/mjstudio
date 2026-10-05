@@ -51,6 +51,30 @@ describe('API foundation', () => {
     expect(response.headers['x-request-id']).toBe(response.body.error.request_id);
   });
 
+  it('POST /api/client/access/verify returns the gallery resolved from the verified grant', async () => {
+    const services = {
+      ...baseServices(),
+      clientSessions: {
+        create: async () => ({
+          sessionId: 'session-1',
+          sessionToken: 'opaque-session-token',
+          expiresAt: new Date('2026-10-05T12:00:00.000Z'),
+          galleryId: '55555555-5555-4555-8555-555555555555',
+        }),
+      },
+    } as unknown as ApplicationServices;
+    const response = await request(createApp(services, { allowedOrigins: ['http://localhost:3000'] }))
+      .post('/api/client/access/verify')
+      .set('Origin', 'http://localhost:3000')
+      .send({ secret: 'a'.repeat(32), pin: '123456' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      authenticated: true,
+      galleryId: '55555555-5555-4555-8555-555555555555',
+    });
+  });
+
   it('does not trust a caller-supplied request ID', async () => {
     const response = await request(createApp()).get('/api/health').set('X-Request-ID', 'chosen-by-client');
     expect(response.headers['x-request-id']).not.toBe('chosen-by-client');

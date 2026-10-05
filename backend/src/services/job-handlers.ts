@@ -35,7 +35,7 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
       const existing = await transaction.query<{ id: string; upload_status: string; processing_status: string; state: string }>(
         `SELECT id, upload_status, processing_status, state FROM photo_assets
           WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
-      let assetId = existing.rows[0]?.id;
+      let assetId: string | undefined = existing.rows[0]?.id;
       if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
       if (existing.rows[0]) {
         await transaction.query(

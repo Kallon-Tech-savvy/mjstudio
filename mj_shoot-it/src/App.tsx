@@ -495,12 +495,8 @@ function ClientAccessPage() {
     setIsSubmitting(true);
 
     try {
-      await verifyClientAccess({ secret, pin });
-      if (galleryId) {
-        navigate(`/client/gallery/${galleryId}`, { replace: true });
-        return;
-      }
-      navigate("/client/gallery/demo-gallery", { replace: true });
+      const access = await verifyClientAccess({ secret, pin });
+      navigate(`/client/gallery/${galleryId || access.galleryId}`, { replace: true });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Gallery access could not be verified.");
     } finally {
