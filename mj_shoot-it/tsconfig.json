@@ -22,6 +22,6 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "vite.config.ts"
-  ],
+, "../App.tsx"  ],
   "exclude": ["node_modules"]
 }

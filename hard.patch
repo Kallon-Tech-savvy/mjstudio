@@ -1,0 +1,246 @@
+diff --git a/backend/src/db/client.ts b/backend/src/db/client.ts
+index f1e2d41..5de43a1 100644
+--- a/backend/src/db/client.ts
++++ b/backend/src/db/client.ts
+@@ -1,9 +1,19 @@
+ import { Pool } from 'pg';
+ import { env } from '../config/env.js';
++import { logger } from '../logging/logger.js';
++import { serializeError } from '../logging/serialize-error.js';
+ 
+ export const db = new Pool({
+   connectionString: env.DATABASE_URL,
+   max: 20,
++  // Without this, an unreachable database makes requests hang instead of failing.
++  connectionTimeoutMillis: 10_000,
++});
++
++// Idle pooled connections can be closed by the server or a pooler. Without this
++// listener, Node treats the pool's 'error' event as uncaught and exits the process.
++db.on('error', (error) => {
++  logger.error({ err: serializeError(error) }, 'idle database client error');
+ });
+ 
+ export async function testDatabaseConnection() {
+diff --git a/backend/src/errors.ts b/backend/src/errors.ts
+index 0ca408e..a65b1f0 100644
+--- a/backend/src/errors.ts
++++ b/backend/src/errors.ts
+@@ -63,3 +63,23 @@ export class NotFoundError extends AppError {
+     super(code, message, 404);
+   }
+ }
++
++export class DatabaseUnavailableError extends AppError {
++  constructor(message = 'The service is temporarily unavailable. Please try again shortly.') {
++    super('DATABASE_UNAVAILABLE', message, 503);
++  }
++}
++
++const DB_CONNECTION_CODES = new Set([
++  'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN',
++  '28P01', '28000', '3D000', '53300', '57P01', '57P02', '57P03',
++]);
++
++export function isDatabaseConnectionError(err: unknown): boolean {
++  if (!(err instanceof Error)) return false;
++  const code = (err as { code?: unknown }).code;
++  if (typeof code === 'string' && (DB_CONNECTION_CODES.has(code) || code.startsWith('08'))) return true;
++  const nested = (err as { errors?: unknown }).errors;
++  if (Array.isArray(nested) && nested.some((cause) => isDatabaseConnectionError(cause))) return true;
++  return /timeout exceeded when trying to connect|Connection terminated|Connection refused/i.test(err.message);
++}
+diff --git a/backend/src/logging/serialize-error.ts b/backend/src/logging/serialize-error.ts
+new file mode 100644
+index 0000000..734cd90
+--- /dev/null
++++ b/backend/src/logging/serialize-error.ts
+@@ -0,0 +1,35 @@
++import { env } from '../config/env.js';
++
++const URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"]+/gi;
++const SAFE_FIELDS = ['code', 'errno', 'syscall', 'address', 'port', 'severity', 'table', 'constraint'] as const;
++
++// Connection strings can carry credentials, so they never reach the logs.
++const scrub = (value: string) => value.replace(URL_PATTERN, '[REDACTED_URL]');
++
++/**
++ * Error properties such as `message` and `stack` are not enumerable, so a generic
++ * key-copy drops them. This keeps the diagnostic fields and omits row data (`detail`).
++ */
++export function serializeError(err: unknown, depth = 0): Record<string, unknown> {
++  if (!(err instanceof Error)) {
++    return { value: typeof err === 'string' ? scrub(err) : typeof err };
++  }
++
++  const source = err as Error & Record<string, unknown>;
++  const out: Record<string, unknown> = { name: source.name, message: scrub(source.message) };
++
++  for (const field of SAFE_FIELDS) {
++    if (source[field] !== undefined) out[field] = source[field];
++  }
++
++  const nested = source.errors;
++  if (depth === 0 && Array.isArray(nested)) {
++    out.causes = nested.slice(0, 3).map((cause: unknown) => serializeError(cause, 1));
++  }
++
++  if (env.NODE_ENV !== 'production' && typeof source.stack === 'string') {
++    out.stack = scrub(source.stack);
++  }
++
++  return out;
++}
+diff --git a/backend/src/middleware/error-handler.ts b/backend/src/middleware/error-handler.ts
+index dfab2dc..adb6461 100644
+--- a/backend/src/middleware/error-handler.ts
++++ b/backend/src/middleware/error-handler.ts
+@@ -1,7 +1,8 @@
+ import type { NextFunction, Request, Response } from 'express';
+-import { AppError, BadRequestError, ForbiddenError } from '../errors.js';
++import { AppError, BadRequestError, DatabaseUnavailableError, ForbiddenError, isDatabaseConnectionError } from '../errors.js';
+ import { sanitizeForLogging } from '../logging/audit.js';
+ import { logger } from '../logging/logger.js';
++import { serializeError } from '../logging/serialize-error.js';
+ import { errorEnvelope } from '../utils/response.js';
+ 
+ export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
+@@ -32,6 +33,13 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
+     return;
+   }
+ 
+-  logger.error({ err: sanitizeForLogging(err), requestId, path: req.originalUrl }, 'unhandled error');
++  if (isDatabaseConnectionError(err)) {
++    logger.error({ err: serializeError(err), requestId, path: req.originalUrl }, 'database unavailable');
++    const unavailable = new DatabaseUnavailableError();
++    res.status(unavailable.statusCode).json(errorEnvelope(unavailable.code, unavailable.message, requestId));
++    return;
++  }
++
++  logger.error({ err: serializeError(err), requestId, path: req.originalUrl }, 'unhandled error');
+   res.status(500).json(errorEnvelope('INTERNAL_SERVER_ERROR', 'Unexpected server error.', requestId));
+ }
+diff --git a/backend/src/server.ts b/backend/src/server.ts
+index 39fd1aa..eb019dc 100644
+--- a/backend/src/server.ts
++++ b/backend/src/server.ts
+@@ -1,13 +1,24 @@
+ import { createApp } from './app.js';
+ import { env } from './config/env.js';
+ import { logger } from './logging/logger.js';
+-import { db } from './db/client.js';
++import { db, testDatabaseConnection } from './db/client.js';
++import { serializeError } from './logging/serialize-error.js';
+ import { createApplicationServices, unavailableProviders } from './services/container.js';
+ 
+ if (!env.DATABASE_URL) {
+   throw new Error('DATABASE_URL is required to start the API server.');
+ }
+ 
++try {
++  await testDatabaseConnection();
++} catch (error) {
++  logger.error(
++    { err: serializeError(error) },
++    'Cannot connect to the database. Check DATABASE_URL in backend/.env (host, port, user, password, network reachability), then restart.',
++  );
++  process.exit(1);
++}
++
+ const services = createApplicationServices(unavailableProviders(db));
+ const app = createApp(services);
+ 
+diff --git a/backend/tests/database-errors.test.ts b/backend/tests/database-errors.test.ts
+new file mode 100644
+index 0000000..bd6eea4
+--- /dev/null
++++ b/backend/tests/database-errors.test.ts
+@@ -0,0 +1,52 @@
++import express from 'express';
++import request from 'supertest';
++import { describe, expect, it } from 'vitest';
++import { DatabaseUnavailableError, isDatabaseConnectionError } from '../src/errors.js';
++import { serializeError } from '../src/logging/serialize-error.js';
++import { errorHandler } from '../src/middleware/error-handler.js';
++
++const withCode = (message: string, code: string) => Object.assign(new Error(message), { code });
++
++describe('database connection errors', () => {
++  it('recognises connection-level failures, including AggregateError from dual-stack lookups', () => {
++    expect(isDatabaseConnectionError(withCode('connect ECONNREFUSED', 'ECONNREFUSED'))).toBe(true);
++    expect(isDatabaseConnectionError(withCode('getaddrinfo ENOTFOUND', 'ENOTFOUND'))).toBe(true);
++    expect(isDatabaseConnectionError(withCode('terminating connection', '57P01'))).toBe(true);
++    expect(isDatabaseConnectionError(new Error('timeout exceeded when trying to connect'))).toBe(true);
++    expect(isDatabaseConnectionError(new AggregateError([withCode('x', 'ECONNREFUSED')], 'multi'))).toBe(true);
++  });
++
++  it('does not misclassify ordinary failures', () => {
++    expect(isDatabaseConnectionError(new Error('boom'))).toBe(false);
++    expect(isDatabaseConnectionError(withCode('unique violation', '23505'))).toBe(false);
++    expect(isDatabaseConnectionError('ECONNREFUSED')).toBe(false);
++  });
++
++  it('serialises message and code while redacting connection strings and omitting row detail', () => {
++    const err = Object.assign(new Error('bad url postgresql://user:hunter2@host:5432/db'), { code: 'X', detail: 'Key (email)=(a@b.c)' });
++    const out = JSON.stringify(serializeError(err));
++    expect(out).toContain('"code":"X"');
++    expect(out).toContain('[REDACTED_URL]');
++    expect(out).not.toContain('hunter2');
++    expect(out).not.toContain('a@b.c');
++  });
++
++  it('returns a stable 503 DATABASE_UNAVAILABLE without leaking internals', async () => {
++    const app = express();
++    app.get('/boom', (_req, _res, next) => next(withCode('connect ECONNREFUSED 10.0.0.5:5432', 'ECONNREFUSED')));
++    app.use(errorHandler);
++    const res = await request(app).get('/boom');
++    expect(res.status).toBe(503);
++    expect(res.body.error.code).toBe(new DatabaseUnavailableError().code);
++    expect(JSON.stringify(res.body)).not.toContain('10.0.0.5');
++  });
++
++  it('still returns a generic 500 for unexpected errors', async () => {
++    const app = express();
++    app.get('/boom', (_req, _res, next) => next(new Error('boom')));
++    app.use(errorHandler);
++    const res = await request(app).get('/boom');
++    expect(res.status).toBe(500);
++    expect(res.body.error.code).toBe('INTERNAL_SERVER_ERROR');
++  });
++});
+diff --git a/mj_shoot-it/src/lib/api.ts b/mj_shoot-it/src/lib/api.ts
+index 020da42..6df37a9 100644
+--- a/mj_shoot-it/src/lib/api.ts
++++ b/mj_shoot-it/src/lib/api.ts
+@@ -66,15 +66,21 @@ export class ApiError extends Error {
+ }
+ 
+ async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: Record<string, unknown> }> {
+-  const response = await fetch(`${API_BASE_URL}${path}`, {
+-    ...init,
+-    credentials: "include",
+-    headers: {
+-      Accept: "application/json",
+-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+-      ...(init.headers ?? {}),
+-    },
+-  });
++  let response: Response;
++  try {
++    response = await fetch(`${API_BASE_URL}${path}`, {
++      ...init,
++      credentials: "include",
++      headers: {
++        Accept: "application/json",
++        ...(init.body ? { "Content-Type": "application/json" } : {}),
++        ...(init.headers ?? {}),
++      },
++    });
++  } catch {
++    // fetch rejects only when no HTTP response arrived (server down, blocked, DNS).
++    throw new ApiError("Cannot reach the server. Please try again shortly.", "NETWORK_ERROR", 0);
++  }
+ 
+   if (response.status === 204) {
+     return { data: undefined as T };
+   }

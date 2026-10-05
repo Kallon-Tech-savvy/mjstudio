@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
-import { AppError, BadRequestError, ForbiddenError } from '../errors.js';
+import { AppError, BadRequestError, DatabaseUnavailableError, ForbiddenError, isDatabaseConnectionError } from '../errors.js';
 import { sanitizeForLogging } from '../logging/audit.js';
 import { logger } from '../logging/logger.js';
+import { serializeError } from '../logging/serialize-error.js';
 import { errorEnvelope } from '../utils/response.js';
 
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
@@ -32,6 +33,13 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return;
   }
 
-  logger.error({ err: sanitizeForLogging(err), requestId, path: req.originalUrl }, 'unhandled error');
+  if (isDatabaseConnectionError(err)) {
+    logger.error({ err: serializeError(err), requestId, path: req.originalUrl }, 'database unavailable');
+    const unavailable = new DatabaseUnavailableError();
+    res.status(unavailable.statusCode).json(errorEnvelope(unavailable.code, unavailable.message, requestId));
+    return;
+  }
+
+  logger.error({ err: serializeError(err), requestId, path: req.originalUrl }, 'unhandled error');
   res.status(500).json(errorEnvelope('INTERNAL_SERVER_ERROR', 'Unexpected server error.', requestId));
 }

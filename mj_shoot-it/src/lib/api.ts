@@ -49,9 +49,9 @@ export type PhotoRecord = {
   position?: number;
   [key: string]: unknown;
 };
-
+ 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001/api";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5432/api";
 
 export class ApiError extends Error {
   constructor(
@@ -66,15 +66,21 @@ export class ApiError extends Error {
 }
 
 async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: Record<string, unknown> }> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch {
+    // fetch rejects only when no HTTP response arrived (server down, blocked, DNS).
+    throw new ApiError("Cannot reach the server. Please try again shortly.", "NETWORK_ERROR", 0);
+  }
 
   if (response.status === 204) {
     return { data: undefined as T };
