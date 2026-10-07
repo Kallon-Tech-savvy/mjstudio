@@ -109,5 +109,24 @@ export function galleriesRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.galleryAccess.resend(req.user!, galleryId))); }
     catch (error) { next(error); }
   });
+
+  router.get('/:galleryId/delivery', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      res.json(successEnvelope(await services.delivery.getDelivery(req.user!, galleryId)));
+    } catch (error) { next(error); }
+  });
+  router.post('/:galleryId/delivery/prepare', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      res.json(successEnvelope(await services.delivery.prepareDelivery(req.user!, galleryId)));
+    } catch (error) { next(error); }
+  });
+  router.post('/:galleryId/delivery/release', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      res.json(successEnvelope(await services.delivery.releaseDelivery(req.user!, galleryId)));
+    } catch (error) { next(error); }
+  });
   return router;
 }

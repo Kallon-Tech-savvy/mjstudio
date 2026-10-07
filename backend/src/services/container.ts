@@ -1,3 +1,4 @@
+import { DeliveryService } from './delivery-service.js';
 import type { Pool } from 'pg';
 import type { PasswordVerifier, PhotographerAuthService } from './photographer-auth-service.js';
 import { PhotographerAuthService as AuthService, PostgresScryptPasswordVerifier } from './photographer-auth-service.js';
@@ -23,6 +24,7 @@ export type ApplicationServices = {
   downloads: DownloadService;
   feedback: FeedbackService;
   proofing: ProofingService;
+  delivery: DeliveryService;
   catalog: CatalogService;
   rateLimits: RateLimitProvider;
   jobs: JobService;
@@ -53,6 +55,7 @@ export function createApplicationServices(providers: ServiceProviders): Applicat
     downloads: new DownloadService(providers.database, providers.photoStorage),
     feedback: new FeedbackService(providers.database),
     proofing: new ProofingService(providers.database),
+    delivery: new DeliveryService(providers.database),
     catalog: new CatalogService(
       providers.database,
       new PhotoRepresentationService(providers.photoStorage),
@@ -75,6 +78,7 @@ export function unavailableServices(): ApplicationServices {
     downloads: { create: unavailable } as unknown as DownloadService,
     feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable, listForStudio: unavailable } as unknown as FeedbackService,
     proofing: { setReview: unavailable, list: unavailable } as unknown as ProofingService,
+    delivery: { getDelivery: unavailable, prepareDelivery: unavailable, releaseDelivery: unavailable } as unknown as DeliveryService,
     catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
     rateLimits: { assertAllowed: unavailable },
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,

@@ -7,6 +7,9 @@ import {
   createGalleryFeedback,
   createPhotoFeedback,
   getClientGallery,
+  getClientDelivery,
+  downloadDeliveryPhoto,
+  type ClientDeliveryResponse,
   getClientSelection,
   submitSelection,
   getGallery,
@@ -14,6 +17,11 @@ import {
   getStudioSummary,
   listSelectedPhotos,
   listStudioFeedback,
+  setStudioPhotoReview,
+  getStudioDelivery,
+  prepareStudioDelivery,
+  releaseStudioDelivery,
+  type StudioDeliveryDetails,
   listClients,
   listGalleryPhotos,
   listGalleries,
@@ -215,6 +223,31 @@ function PhotographerDashboardPage() {
             Log out
           </button>
         </div>
+
+        <div className="tab-navigation" style={{ display: "flex", gap: "12px", marginBottom: "20px", borderBottom: "1px solid var(--line)", paddingBottom: "12px" }}>
+          <button
+            type="button"
+            className={activeTab === "overview" ? "primary-button" : "secondary-button"}
+            onClick={() => setActiveTab("overview")}
+          >
+            Overview & Photos
+          </button>
+          <button
+            type="button"
+            className={activeTab === "proofing" ? "primary-button" : "secondary-button"}
+            onClick={() => setActiveTab("proofing")}
+          >
+            Proofing ({selection.length})
+          </button>
+          <button
+            type="button"
+            className={activeTab === "delivery" ? "primary-button" : "secondary-button"}
+            onClick={() => setActiveTab("delivery")}
+          >
+            Delivery {delivery?.releasedAt ? "✓ Released" : delivery?.canPrepare ? "• Ready to prepare" : ""}
+          </button>
+        </div>
+
       </header>
 
       {error ? <div className="error-box">{error}</div> : null}
@@ -424,10 +457,42 @@ function PhotographerGalleryDetailPage() {
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [error, setError] = useState("");
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const [delivery, setDelivery] = useState<StudioDeliveryDetails | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "proofing" | "delivery">("overview");
+  const [isProcessingDelivery, setIsProcessingDelivery] = useState(false);
 
   useEffect(() => {
     const load = async () => {
-      if (!galleryId) {
+
+  const handlePrepareDelivery = async () => {
+    if (!galleryId || isProcessingDelivery) return;
+    setIsProcessingDelivery(true);
+    setError("");
+    try {
+      const res = await prepareStudioDelivery(galleryId);
+      setDelivery(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to prepare delivery.");
+    } finally {
+      setIsProcessingDelivery(false);
+    }
+  };
+
+  const handleReleaseDelivery = async () => {
+    if (!galleryId || isProcessingDelivery) return;
+    setIsProcessingDelivery(true);
+    setError("");
+    try {
+      const res = await releaseStudioDelivery(galleryId);
+      setDelivery(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to release delivery.");
+    } finally {
+      setIsProcessingDelivery(false);
+    }
+  };
+
+  if (!galleryId) {
         return;
       }
       try {
@@ -437,17 +502,19 @@ function PhotographerGalleryDetailPage() {
           return;
         }
 
-        const [galleryResponse, photoResponse, selectionResponse, feedbackResponse] = await Promise.all([
+        const [galleryResponse, photoResponse, selectionResponse, feedbackResponse, deliveryResponse] = await Promise.all([
           getGallery(galleryId),
           listGalleryPhotos(galleryId, 1, 20),
           listSelectedPhotos(galleryId),
           listStudioFeedback(galleryId),
+          getStudioDelivery(galleryId).catch(() => null),
         ]);
 
         setGallery(galleryResponse);
         setPhotos(photoResponse.items ?? []);
         setSelection(selectionResponse);
         setFeedback(feedbackResponse);
+        if (deliveryResponse) setDelivery(deliveryResponse);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
@@ -476,34 +543,7 @@ function PhotographerGalleryDetailPage() {
 
   const selectedPhoto = selectedPhotoIndex === null ? null : selection[selectedPhotoIndex] ?? null;
 
-  useEffect(() => {
-    if (selectedPhotoIndex === null) {
-      return;
-    }
 
-    const handleViewerKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSelectedPhotoIndex(null);
-        return;
-      }
-
-      if (event.key === "ArrowLeft" && selectedPhotoIndex > 0) {
-        event.preventDefault();
-        setSelectedPhotoIndex((current) => (current === null ? null : Math.max(0, current - 1)));
-        return;
-      }
-
-      if (event.key === "ArrowRight" && selectedPhotoIndex < selection.length - 1) {
-        event.preventDefault();
-        setSelectedPhotoIndex((current) => (
-          current === null ? null : Math.min(selection.length - 1, current + 1)
-        ));
-      }
-    };
-
-    window.addEventListener("keydown", handleViewerKeyDown);
-    return () => window.removeEventListener("keydown", handleViewerKeyDown);
-  }, [selectedPhotoIndex, selection.length]);
 
   return (
     <main className="page-shell">
@@ -577,13 +617,84 @@ function PhotographerGalleryDetailPage() {
                       />
                     </div>
                     <div className="photo-meta">
-                      <strong>Photograph {photo.position + 1}</strong>
+                      <div className="photo-meta-header">
+                        <strong>Photograph {photo.position + 1}</strong>
+                        <span className={"status-tag status-" + (photo.reviewStatus || "pending")}>
+                          {photo.reviewStatus === "approved" ? "Approved" : photo.reviewStatus === "needs_revision" ? "Revision" : "Pending"}
+                        </span>
+                      </div>
                       <small>{photo.filename}</small>
                     </div>
                   </article>
                 ))}
               </div>
             )}
+          </section>
+        ) : null}
+
+
+        {activeTab === "delivery" ? (
+          <section className="studio-delivery-section panel" style={{ marginTop: "20px" }}>
+            <div className="panel-header compact-header">
+              <div>
+                <p className="eyebrow">Delivery Workflow</p>
+                <h2>Release Final Photographs</h2>
+                <p className="muted">
+                  {delivery?.approvedCount ?? 0} of {delivery?.totalSelectedCount ?? 0} selected photographs approved.
+                </p>
+              </div>
+              <span className={"tag status-" + (delivery?.status || "pending")}>
+                {delivery?.releasedAt ? "Released" : delivery?.status === "ready" ? "Ready for release" : "Pending proofing"}
+              </span>
+            </div>
+
+            <div style={{ margin: "20px 0" }}>
+              {delivery?.releasedAt ? (
+                <div className="success-box" style={{ background: "#e6f4ea", padding: "16px", borderRadius: "4px", color: "#137333" }}>
+                  <strong>Delivery Active:</strong> Final photographs were released to client on {new Date(delivery.releasedAt).toLocaleString()}.
+                </div>
+              ) : delivery?.canPrepare ? (
+                <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={isProcessingDelivery}
+                    onClick={handlePrepareDelivery}
+                  >
+                    {isProcessingDelivery ? "Preparing..." : "1. Prepare Final Delivery Assets"}
+                  </button>
+                  {delivery?.status === "ready" || delivery?.items.length ? (
+                    <button
+                      type="button"
+                      className="primary-button"
+                      style={{ background: "#137333" }}
+                      disabled={isProcessingDelivery}
+                      onClick={handleReleaseDelivery}
+                    >
+                      {isProcessingDelivery ? "2. Explicitly Release to Client" : "Release Delivery"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="muted">
+                  You cannot prepare delivery until all selected photographs are reviewed and approved in Proofing.
+                </p>
+              )}
+            </div>
+
+            {delivery?.items && delivery.items.length > 0 ? (
+              <ul className="list-stack">
+                {delivery.items.map((item) => (
+                  <li key={item.id} className="list-row">
+                    <div>
+                      <strong>Photograph {item.position + 1}</strong>
+                      <small>{item.filename}</small>
+                    </div>
+                    <span className="tag status-approved">Ready for download</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </section>
         ) : null}
 
@@ -616,32 +727,30 @@ function PhotographerGalleryDetailPage() {
         ) : null}
 
         {selectedPhoto ? (
-          <div className="studio-photo-viewer" role="dialog" aria-modal="true" aria-label={"Photograph " + (selectedPhoto.position + 1)}>
-            <button type="button" className="studio-photo-viewer-backdrop" aria-label="Close photograph viewer" onClick={() => setSelectedPhotoIndex(null)} />
-            <div className="studio-photo-viewer-panel">
-              <div className="studio-photo-viewer-toolbar">
-                <div>
-                  <p className="eyebrow">Proofing</p>
-                  <strong>Photograph {selectedPhoto.position + 1}</strong>
-                  <small>{selectedPhoto.filename}</small>
-                </div>
-                <button type="button" className="button-ghost" onClick={() => setSelectedPhotoIndex(null)}>Close</button>
-              </div>
-              <div className="studio-photo-viewer-image-wrap">
-                <img
-                  src={selectedPhoto.preview.url}
-                  alt={"Selected photograph " + (selectedPhoto.position + 1)}
-                  width={selectedPhoto.preview.width}
-                  height={selectedPhoto.preview.height}
-                />
-              </div>
-              <div className="studio-photo-viewer-nav">
-                <button type="button" className="secondary-button" disabled={selectedPhotoIndex === 0} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.max(0, index - 1))}>Previous</button>
-                <span>{(selectedPhotoIndex ?? 0) + 1} / {selection.length}</span>
-                <button type="button" className="secondary-button" disabled={selectedPhotoIndex === selection.length - 1} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.min(selection.length - 1, index + 1))}>Next</button>
-              </div>
-            </div>
-          </div>
+          <StudioPhotoViewerModal
+            galleryId={galleryId}
+            selectedPhoto={selectedPhoto}
+            selectedPhotoIndex={selectedPhotoIndex ?? 0}
+            totalPhotos={selection.length}
+            feedbackList={feedback}
+            onClose={() => setSelectedPhotoIndex(null)}
+            onNavigate={(index) => setSelectedPhotoIndex(index)}
+            onReviewUpdate={(updated) => {
+              setSelection((prev) =>
+                prev.map((item) =>
+                  item.photoId === updated.photoId
+                    ? {
+                        ...item,
+                        reviewStatus: updated.status,
+                        reviewNote: updated.note,
+                        reviewedBy: updated.reviewedBy,
+                        reviewedAt: updated.reviewedAt,
+                      }
+                    : item
+                )
+              );
+            }}
+          />
         ) : null}
 
         <ul className="list-stack spaced-list">
@@ -1234,6 +1343,163 @@ function ClientSelectionCompletionPage() {
   );
 }
 
+
+function ClientDeliveryPage() {
+  const { galleryId } = useParams();
+  const [delivery, setDelivery] = useState<ClientDeliveryResponse | null>(null);
+  const [photos, setPhotos] = useState<ClientPhoto[]>([]);
+  const [galleryName, setGalleryName] = useState("Gallery");
+  const [loading, setLoading] = useState(true);
+  const [downloadingPhotoId, setDownloadingPhotoId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      if (!galleryId) return;
+      try {
+        const [galleryRes, deliveryRes, photoRes] = await Promise.all([
+          getClientGallery(galleryId),
+          getClientDelivery(galleryId),
+          listClientPhotos(galleryId, 1, 100),
+        ]);
+        setGalleryName(String(galleryRes.name ?? "Gallery"));
+        setDelivery(deliveryRes);
+        setPhotos(photoRes.items ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to load delivery.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [galleryId]);
+
+  const handleDownloadSingle = async (photoId: string) => {
+    if (!galleryId || downloadingPhotoId) return;
+    setDownloadingPhotoId(photoId);
+    setError("");
+    try {
+      const res = await downloadDeliveryPhoto(galleryId, photoId);
+      if (res.download_url) {
+        window.open(res.download_url, "_blank");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed. Please try again.");
+    } finally {
+      setDownloadingPhotoId(null);
+    }
+  };
+
+  const handleDownloadAllDirect = async () => {
+    if (!delivery || !delivery.items.length || !galleryId) return;
+    setError("");
+    for (const item of delivery.items) {
+      try {
+        const res = await downloadDeliveryPhoto(galleryId, item.photoId);
+        if (res.download_url) {
+          const a = document.createElement("a");
+          a.href = res.download_url;
+          a.download = item.filename || "photograph";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+      } catch (err) {
+        console.error("Download error for photo", item.photoId, err);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <div className="panel">
+          <p className="muted">Loading your delivered photographs…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!delivery || !delivery.isReleased) {
+    return (
+      <main className="page-shell">
+        <div className="panel">
+          <p className="eyebrow">{galleryName}</p>
+          <h1>Your photographs are being prepared</h1>
+          <p className="muted">Your photographer is currently finishing your gallery. Once released, your final photographs will appear here.</p>
+          <div style={{ marginTop: "20px" }}>
+            <Link to={`/client/gallery/${galleryId}`} className="secondary-button">Return to gallery</Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Match delivery items with loaded photos to get preview URLs
+  const deliveredItems = delivery.items.map((item) => {
+    const match = photos.find((p) => p.photoId === item.photoId);
+    return {
+      ...item,
+      preview: match?.preview,
+    };
+  });
+
+  return (
+    <main className="page-shell client-delivery-shell">
+      <div className="panel">
+        <div className="panel-header compact-header">
+          <div>
+            <p className="eyebrow">{galleryName}</p>
+            <h1>Your Final Photographs</h1>
+            <p className="muted">
+              {deliveredItems.length} final photographs released on{" "}
+              {delivery.releasedAt ? new Date(delivery.releasedAt).toLocaleDateString() : "recently"}.
+            </p>
+          </div>
+          {deliveredItems.length > 0 ? (
+            <button type="button" className="primary-button" onClick={handleDownloadAllDirect}>
+              Download All Photographs
+            </button>
+          ) : null}
+        </div>
+
+        {error ? <div className="error-box">{error}</div> : null}
+
+        <div className="photo-grid client-delivery-grid">
+          {deliveredItems.map((item) => (
+            <article key={item.id} className="photo-card client-delivery-card">
+              <div className="photo-thumb">
+                {item.preview ? (
+                  <img
+                    src={item.preview.url}
+                    alt={item.filename}
+                    width={item.preview.width}
+                    height={item.preview.height}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="photo-placeholder">{item.filename}</div>
+                )}
+              </div>
+              <div className="photo-meta client-delivery-meta">
+                <strong>Photograph {item.position + 1}</strong>
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  disabled={downloadingPhotoId === item.photoId}
+                  onClick={() => handleDownloadSingle(item.photoId)}
+                >
+                  {downloadingPhotoId === item.photoId ? "Preparing…" : "Download"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </main>
+  );
+}
+
 function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
@@ -1487,6 +1753,7 @@ export default function App() {
         <Route path="/client/gallery/:galleryId" element={<ClientGalleryPage />} />
         <Route path="/client/gallery/:galleryId/selection" element={<ClientSelectionReviewPage />} />
         <Route path="/client/gallery/:galleryId/complete" element={<ClientSelectionCompletionPage />} />
+        <Route path="/client/gallery/:galleryId/delivery" element={<ClientDeliveryPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
