@@ -216,6 +216,34 @@ export class DeliveryService {
 
     const deliveryId = deliveryRes.rows[0].id;
 
+    const releaseCheck = await this.database.query(
+      `SELECT
+         COUNT(*)::int AS item_count,
+         COUNT(*) FILTER (WHERE di.status = 'ready')::int AS ready_item_count,
+         COUNT(*) FILTER (WHERE pr.status = 'approved')::int AS approved_item_count
+       FROM gallery_delivery_items di
+       JOIN photos p ON p.id = di.photo_id
+       LEFT JOIN gallery_proofing_reviews pr
+         ON pr.gallery_id = p.gallery_id
+        AND pr.photo_id = p.id
+      WHERE di.delivery_id = $1
+        AND p.deleted_at IS NULL
+        AND p.status = 'active'`,
+      [deliveryId],
+    );
+
+    const releaseState = releaseCheck.rows[0];
+    const itemCount = Number(releaseState?.item_count ?? 0);
+    const readyItemCount = Number(releaseState?.ready_item_count ?? 0);
+    const approvedItemCount = Number(releaseState?.approved_item_count ?? 0);
+
+    if (itemCount === 0 || readyItemCount !== itemCount || approvedItemCount !== itemCount) {
+      throw new ValidationError(
+        'DELIVERY_NOT_READY',
+        'Every delivery photograph must be ready and approved before delivery can be released.',
+      );
+    }
+
     await this.database.query(
       `UPDATE gallery_deliveries
           SET status = 'ready',
