@@ -686,10 +686,10 @@ function ClientPhotoViewer({
           )}
         </div>
 
-        <div className="viewer-controls" aria-label="Photograph navigation">
+        <div className="viewer-controls" aria-label="Photograph controls">
           <button
             type="button"
-            className="viewer-nav"
+            className="viewer-nav viewer-nav-previous"
             onClick={() => previousPhoto && onNavigate(previousPhoto.photoId)}
             disabled={!previousPhoto}
             aria-label="Previous photograph"
@@ -709,7 +709,7 @@ function ClientPhotoViewer({
 
           <button
             type="button"
-            className="viewer-nav"
+            className="viewer-nav viewer-nav-next"
             onClick={() => nextPhoto && onNavigate(nextPhoto.photoId)}
             disabled={!nextPhoto}
             aria-label="Next photograph"
