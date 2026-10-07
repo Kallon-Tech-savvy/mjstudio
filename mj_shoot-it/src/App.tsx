@@ -760,6 +760,7 @@ function PhotographerGalleryDetailPage() {
 }
 
 import AppRouter from "@/app/router";
+import { ClientAccessPage, ClientGalleryPage, ClientSelectionReviewPage, ClientSelectionCompletionPage, ClientDeliveryPage } from "@/features/client-gallery/ClientGalleryPages";
 
 export default function App() {
   return (
