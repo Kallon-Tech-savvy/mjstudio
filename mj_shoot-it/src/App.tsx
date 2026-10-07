@@ -869,8 +869,8 @@ function ClientSelectionReviewPage() {
     setError("");
 
     try {
-      const result = await submitSelection(galleryId);
-      setSelectionStatus(result.status);
+      await submitSelection(galleryId);
+      navigate(`/client/gallery/${galleryId}/complete`, { replace: true });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Your selection could not be submitted.");
     } finally {
@@ -968,7 +968,95 @@ function ClientSelectionReviewPage() {
   );
 }
 
-function ClientGalleryPage() {
+function ClientSelectionCompletionPage() {
+  const { galleryId } = useParams();
+  const navigate = useNavigate();
+  const [galleryName, setGalleryName] = useState("Gallery");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      if (!galleryId) return;
+
+      try {
+        const [gallery, selection] = await Promise.all([
+          getClientGallery(galleryId),
+          getClientSelection(galleryId),
+        ]);
+
+        setGalleryName(String(gallery.name ?? "Gallery"));
+
+        if (selection.status !== "submitted") {
+          navigate(`/client/gallery/${galleryId}/selection`, { replace: true });
+          return;
+        }
+
+        setIsSubmitted(true);
+      } catch (caughtError) {
+        setError(caughtError instanceof Error ? caughtError.message : "We couldn't confirm your submission.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void load();
+  }, [galleryId, navigate]);
+
+  if (!galleryId) return <Navigate to="/client/access" replace />;
+
+  if (isLoading) {
+    return (
+      <main className="page-shell client-gallery-shell">
+        <div className="client-completion-page">
+          <p className="eyebrow">Your photographs</p>
+          <p className="muted">Checking your submission…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="page-shell client-gallery-shell">
+        <div className="client-completion-page">
+          <p className="eyebrow">Your photographs</p>
+          <h1>We couldn't confirm that just yet.</h1>
+          <p className="gallery-intro">{error}</p>
+          <Link to={`/client/gallery/${galleryId}/selection`} className="primary-button">
+            Return to selection
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (!isSubmitted) return null;
+
+  return (
+    <main className="page-shell client-gallery-shell">
+      <div className="client-completion-page">
+        <p className="eyebrow">Selection sent</p>
+        <h1>You're all set.</h1>
+        <p className="completion-lead">
+          Your selection from <strong>{galleryName}</strong> has been sent to your photographer.
+        </p>
+        <p className="gallery-intro">
+          Your photographer can now review your choices and prepare the next step. Your photographs are not ready for download yet.
+        </p>
+
+        <div className="completion-actions">
+          <Link to={`/client/gallery/${galleryId}`} className="primary-button">
+            Return to gallery
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function ClientGalleryPage {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
@@ -1220,6 +1308,7 @@ export default function App() {
         <Route path="/client/access" element={<ClientAccessPage />} />
         <Route path="/client/gallery/:galleryId" element={<ClientGalleryPage />} />
         <Route path="/client/gallery/:galleryId/selection" element={<ClientSelectionReviewPage />} />
+        <Route path="/client/gallery/:galleryId/complete" element={<ClientSelectionCompletionPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
