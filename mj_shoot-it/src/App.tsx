@@ -794,29 +794,39 @@ function ClientSelectionReviewPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
-  const [totalPhotos, setTotalPhotos] = useState(0);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
+  const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       if (!galleryId) return;
       try {
-        const [gallery, photoResponse, selectionResponse] = await Promise.all([
+        const [gallery, selectionResponse] = await Promise.all([
           getClientGallery(galleryId),
-          listClientPhotos(galleryId, 1, 100),
           getClientSelections(galleryId),
         ]);
-        setGalleryName(String(gallery.name ?? "Gallery"));
-        setPhotos(photoResponse.items ?? []);
-        setTotalPhotos(photoResponse.total ?? 0);
-        setSelectedPhotoIds(
-          new Set(
-            selectionResponse
-              .filter((item) => item.selection === "favourite")
-              .map((item) => item.photoId),
-          ),
+
+        const selectedIds = new Set(
+          selectionResponse
+            .filter((item) => item.selection === "favourite")
+            .map((item) => item.photoId),
         );
+
+        const loadedPhotos: ClientPhoto[] = [];
+        let page = 1;
+        let total = 0;
+
+        do {
+          const response = await listClientPhotos(galleryId, page, 100);
+          loadedPhotos.push(...(response.items ?? []));
+          total = response.total ?? loadedPhotos.length;
+          page += 1;
+        } while (loadedPhotos.length < total && [...selectedIds].some((id) => !loadedPhotos.some((photo) => photo.photoId === id)));
+
+        setGalleryName(String(gallery.name ?? "Gallery"));
+        setPhotos(loadedPhotos);
+        setSelectedPhotoIds(selectedIds);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load your selection.");
       }
@@ -824,6 +834,28 @@ function ClientSelectionReviewPage() {
 
     void load();
   }, [galleryId]);
+
+  const handleRemove = async (photoId: string) => {
+    if (!galleryId || removingPhotoId === photoId) return;
+
+    const previous = new Set(selectedPhotoIds);
+    setSelectedPhotoIds((current) => {
+      const next = new Set(current);
+      next.delete(photoId);
+      return next;
+    });
+    setRemovingPhotoId(photoId);
+    setError("");
+
+    try {
+      await setSelection(galleryId, photoId, "neutral");
+    } catch (caughtError) {
+      setSelectedPhotoIds(previous);
+      setError(caughtError instanceof Error ? caughtError.message : "This photograph could not be removed from your selection.");
+    } finally {
+      setRemovingPhotoId(null);
+    }
+  };
 
   if (!galleryId) return <Navigate to="/client/access" replace />;
 
@@ -848,7 +880,7 @@ function ClientSelectionReviewPage() {
         {error ? <div className="error-box">{error}</div> : null}
 
         <div className="gallery-summary" aria-live="polite">
-          <strong>{selectedPhotos.length} selected</strong>
+          <strong>{selectedPhotoIds.size} selected</strong>
           <span>Review before submission</span>
         </div>
 
@@ -875,12 +907,21 @@ function ClientSelectionReviewPage() {
                   />
                   <span className="photo-selected-badge">Selected</span>
                 </div>
+                <button
+                  type="button"
+                  className="photo-select-button is-selected"
+                  onClick={() => void handleRemove(photo.photoId)}
+                  disabled={removingPhotoId === photo.photoId}
+                  aria-label={`Remove photograph ${photo.position + 1} from your selection`}
+                >
+                  {removingPhotoId === photo.photoId ? "Removing…" : "Remove"}
+                </button>
               </article>
             ))}
           </div>
         )}
 
-        {selectedPhotos.length > 0 ? (
+        {selectedPhotoIds.size > 0 ? (
           <div className="selection-review-actions">
             <p className="muted">Submission will become a separate workflow step once the selection workflow is enabled.</p>
             <button type="button" className="primary-button" disabled>
