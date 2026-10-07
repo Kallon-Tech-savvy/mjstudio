@@ -795,7 +795,7 @@ function ClientSelectionReviewPage() {
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
   const [totalPhotos, setTotalPhotos] = useState(0);
-  const [selectedPhotoIds] = useState<Set<string>>(new Set());
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
 
   useEffect(() => {
