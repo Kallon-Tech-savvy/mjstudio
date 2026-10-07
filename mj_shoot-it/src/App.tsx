@@ -12,7 +12,7 @@ import {
   getGallery,
   getPhotographerMe,
   getStudioSummary,
-  getStudioSelection,
+  listSelectedPhotos,
   listClients,
   listGalleryPhotos,
   listGalleries,
@@ -28,7 +28,7 @@ import {
   type ClientPhoto,
   type PhotographerUser,
   type ClientSelection,
-  type StudioSelection,
+  type StudioSelectedPhoto,
 } from "@/lib/api";
 
 function HomePage() {
@@ -417,7 +417,7 @@ function PhotographerGalleryDetailPage() {
   const navigate = useNavigate();
   const [gallery, setGallery] = useState<Record<string, unknown> | null>(null);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
-  const [selection, setSelection] = useState<StudioSelection | null>(null);
+  const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [error, setError] = useState("");
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
@@ -437,7 +437,7 @@ function PhotographerGalleryDetailPage() {
         const [galleryResponse, photoResponse, selectionResponse] = await Promise.all([
           getGallery(galleryId),
           listGalleryPhotos(galleryId, 1, 20),
-          getStudioSelection(galleryId),
+          listSelectedPhotos(galleryId),
         ]);
 
         setGallery(galleryResponse);
@@ -469,7 +469,7 @@ function PhotographerGalleryDetailPage() {
     return <Navigate to="/photographer/galleries" replace />;
   }
 
-  const selectedPhoto = selectedPhotoIndex === null ? null : selection?.items[selectedPhotoIndex] ?? null;
+  const selectedPhoto = selectedPhotoIndex === null ? null : selection[selectedPhotoIndex] ?? null;
 
   return (
     <main className="page-shell">
@@ -499,25 +499,25 @@ function PhotographerGalleryDetailPage() {
 
         {error ? <div className="error-box">{error}</div> : null}
 
-        {selection?.status === "submitted" ? (
+        {gallery?.selectionStatus === "submitted" ? (
           <section className="studio-selection-review">
             <div className="panel-header compact-header">
               <div>
                 <p className="eyebrow">Client decision</p>
                 <h2>{selection.items.length} photographs selected</h2>
                 <p className="muted">
-                  Received{selection.submittedAt ? ` · ${new Date(selection.submittedAt).toLocaleString()}` : ""}.
+                  Received{gallery.selectionSubmittedAt ? ` · ${new Date(gallery.selectionSubmittedAt).toLocaleString()}` : ""}.
                   Review these choices before preparing delivery.
                 </p>
               </div>
               <span className="tag">Selection received</span>
             </div>
 
-            {selection.items.length === 0 ? (
+            {selection.length === 0 ? (
               <div className="empty-state">The client submitted an empty selection.</div>
             ) : (
               <div className="photo-grid studio-selection-grid">
-                {selection.items.map((photo, index) => (
+                {selection.map((photo, index) => (
                   <article
                     key={photo.photoId}
                     className="photo-card studio-selection-card"
@@ -575,8 +575,8 @@ function PhotographerGalleryDetailPage() {
               </div>
               <div className="studio-photo-viewer-nav">
                 <button type="button" className="secondary-button" disabled={selectedPhotoIndex === 0} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.max(0, index - 1))}>Previous</button>
-                <span>{(selectedPhotoIndex ?? 0) + 1} / {selection.items.length}</span>
-                <button type="button" className="secondary-button" disabled={selectedPhotoIndex === selection.items.length - 1} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.min(selection.items.length - 1, index + 1))}>Next</button>
+                <span>{(selectedPhotoIndex ?? 0) + 1} / {selection.length}</span>
+                <button type="button" className="secondary-button" disabled={selectedPhotoIndex === selection.length - 1} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.min(selection.length - 1, index + 1))}>Next</button>
               </div>
             </div>
           </div>
