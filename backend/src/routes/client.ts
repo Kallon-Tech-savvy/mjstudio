@@ -49,6 +49,10 @@ export function clientRouter(services: ApplicationServices) {
       res.json(successEnvelope(photo));
     } catch (error) { next(error); }
   });
+  router.get('/galleries/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(collectionEnvelope(await services.selections.getSelections(req.client!))); }
+    catch (error) { next(error); }
+  });
   router.get('/galleries/:galleryId/photos', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); const page = parseInput(paginationSchema, req.query); const currentPage = page.page ?? 1; const limit = page.limit ?? 20; await services.clientSessions.assertGallery(req.client!, galleryId); const result = await services.catalog.listClientPhotos(req.client!, galleryId, currentPage, limit); res.json({ ...collectionEnvelope(result.items), meta: { count: result.items.length, total: result.total, page: currentPage, limit } }); }
     catch (error) { next(error); }
