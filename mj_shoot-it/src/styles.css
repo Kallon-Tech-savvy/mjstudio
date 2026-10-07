@@ -756,3 +756,35 @@ h2 {
     font-size: 0.66rem;
   }
 }
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.selection-bar > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.selection-bar-note {
+  color: var(--muted, #77716B);
+  font-size: 13px;
+}
+.selection-review-link {
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .selection-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .selection-bar > div {
+    justify-content: space-between;
+  }
+  .selection-review-link {
+    width: 100%;
+  }
+}
