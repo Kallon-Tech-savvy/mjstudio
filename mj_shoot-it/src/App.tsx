@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useEffect, useState, type FormEvent, type TouchEvent } from "react";
 import {
   createDownload,
@@ -1740,22 +1740,21 @@ function ClientGalleryPage() {
   );
 }
 
+import AppRouter from "@/app/router";
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/photographer/login" element={<PhotographerLoginPage />} />
-        <Route path="/photographer/dashboard" element={<PhotographerDashboardPage />} />
-        <Route path="/photographer/galleries" element={<PhotographerGalleriesPage />} />
-        <Route path="/photographer/galleries/:galleryId" element={<PhotographerGalleryDetailPage />} />
-        <Route path="/client/access" element={<ClientAccessPage />} />
-        <Route path="/client/gallery/:galleryId" element={<ClientGalleryPage />} />
-        <Route path="/client/gallery/:galleryId/selection" element={<ClientSelectionReviewPage />} />
-        <Route path="/client/gallery/:galleryId/complete" element={<ClientSelectionCompletionPage />} />
-        <Route path="/client/gallery/:galleryId/delivery" element={<ClientDeliveryPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <AppRouter
+      home={<HomePage />}
+      photographerLogin={<PhotographerLoginPage />}
+      photographerDashboard={<PhotographerDashboardPage />}
+      photographerGalleries={<PhotographerGalleriesPage />}
+      photographerGalleryDetail={<PhotographerGalleryDetailPage />}
+      clientAccess={<ClientAccessPage />}
+      clientGallery={<ClientGalleryPage />}
+      clientSelection={<ClientSelectionReviewPage />}
+      clientCompletion={<ClientSelectionCompletionPage />}
+      clientDelivery={<ClientDeliveryPage />}
+    />
   );
 }
