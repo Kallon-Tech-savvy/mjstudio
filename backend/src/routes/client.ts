@@ -40,6 +40,15 @@ export function clientRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.catalog.getClientGallery(req.client!, galleryId))); }
     catch (error) { next(error); }
   });
+  router.get('/galleries/:galleryId/photos/:photoId', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const { photoId } = parseInput(photoParamSchema, req.params);
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      const photo = await services.catalog.getClientPhoto(req.client!, galleryId, photoId);
+      res.json(successEnvelope(photo));
+    } catch (error) { next(error); }
+  });
   router.get('/galleries/:galleryId/photos', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); const page = parseInput(paginationSchema, req.query); const currentPage = page.page ?? 1; const limit = page.limit ?? 20; await services.clientSessions.assertGallery(req.client!, galleryId); const result = await services.catalog.listClientPhotos(req.client!, galleryId, currentPage, limit); res.json({ ...collectionEnvelope(result.items), meta: { count: result.items.length, total: result.total, page: currentPage, limit } }); }
     catch (error) { next(error); }
