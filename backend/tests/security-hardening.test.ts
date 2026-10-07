@@ -52,7 +52,7 @@ describe('security hardening and adversarial invariants', () => {
 
     try {
       const handler = new ProcessPhotoAssetsHandler(
-        { createPreview: vi.fn().mockResolvedValue({ mimeType: 'image/jpeg', fileSize: 2200 }), createThumbnail: vi.fn().mockResolvedValue({ mimeType: 'image/jpeg', fileSize: 800 }) },
+        { createPreview: vi.fn().mockResolvedValue({ mimeType: 'image/jpeg', fileSize: 2200, width: 2400, height: 1600 }), createThumbnail: vi.fn().mockResolvedValue({ mimeType: 'image/jpeg', fileSize: 800, width: 600, height: 400 }) },
         { verifyObject: vi.fn().mockResolvedValue({ mimeType: 'image/jpeg', fileSize: 2200 }), deleteObject: vi.fn().mockResolvedValue(undefined) },
       );
 
