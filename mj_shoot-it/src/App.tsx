@@ -1056,7 +1056,7 @@ function ClientSelectionCompletionPage() {
   );
 }
 
-function ClientGalleryPage {
+function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
