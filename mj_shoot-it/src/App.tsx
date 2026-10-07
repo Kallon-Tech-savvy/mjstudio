@@ -1,7 +1,6 @@
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useState, type FormEvent, type TouchEvent } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
 import {
-  createDownload,
   createGallery,
   createGalleryAccess,
   getGallery,
@@ -9,7 +8,6 @@ import {
   getStudioSummary,
   listSelectedPhotos,
   listStudioFeedback,
-  setStudioPhotoReview,
   getStudioDelivery,
   prepareStudioDelivery,
   releaseStudioDelivery,
