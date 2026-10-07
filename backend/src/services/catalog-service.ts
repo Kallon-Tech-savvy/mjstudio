@@ -87,7 +87,7 @@ export class CatalogService {
               WHERE a.gallery_id = g.id
                 AND a.revoked_at IS NULL
                 AND (a.expires_at IS NULL OR a.expires_at > NOW())
-              GROUP BY s.status, s.submitted_at
+              GROUP BY s.status, s.submitted_at, a.created_at
               ORDER BY a.created_at DESC
               LIMIT 1
            ) ga ON TRUE
