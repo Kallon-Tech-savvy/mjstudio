@@ -1,5 +1,5 @@
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type TouchEvent } from "react";
 import {
   createDownload,
   createGallery,
@@ -607,11 +607,11 @@ function ClientPhotoViewer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, onNavigate, previousPhoto?.photoId, nextPhoto?.photoId]);
 
-  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     setTouchStartX(event.changedTouches[0]?.clientX ?? null);
   };
 
-  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+  const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
     if (touchStartX === null) return;
     const endX = event.changedTouches[0]?.clientX ?? touchStartX;
     const distance = endX - touchStartX;
