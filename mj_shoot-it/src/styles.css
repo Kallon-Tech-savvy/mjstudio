@@ -624,6 +624,12 @@ h2 {
   margin-top: 32px;
 }
 
+.gallery-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+}
+
 .selection-bar {
   position: fixed;
   z-index: 90;
