@@ -7,6 +7,7 @@ import {
   createGalleryFeedback,
   createPhotoFeedback,
   getClientGallery,
+  getClientSelections,
   getGallery,
   getPhotographerMe,
   getStudioSummary,
@@ -723,12 +724,20 @@ function ClientGalleryPage() {
     const load = async () => {
       if (!galleryId) return;
       try {
-        const [gallery, photoResponse] = await Promise.all([
+        const [gallery, photoResponse, selectionResponse] = await Promise.all([
           getClientGallery(galleryId),
           listClientPhotos(galleryId, 1, 20),
+          getClientSelections(galleryId),
         ]);
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(photoResponse.items ?? []);
+        setSelectedPhotoIds(
+          new Set(
+            selectionResponse
+              .filter((item) => item.selection === "favourite")
+              .map((item) => item.photoId),
+          ),
+        );
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
