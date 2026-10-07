@@ -554,6 +554,9 @@ function ClientPhotoViewer({
   onSelectToggle,
   onClose,
   onNavigate,
+  totalPhotos,
+  hasMorePhotos,
+  onLoadMore,
 }: {
   galleryId: string;
   photos: ClientPhoto[];
@@ -562,6 +565,9 @@ function ClientPhotoViewer({
   onSelectToggle: (photoId: string) => void;
   onClose: () => void;
   onNavigate: (photoId: string) => void;
+  totalPhotos: number;
+  hasMorePhotos: boolean;
+  onLoadMore: () => Promise<void>;
 }) {
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof getClientPhoto>> | null>(null);
   const [error, setError] = useState("");
@@ -574,6 +580,8 @@ function ClientPhotoViewer({
   const previousPhoto = currentIndex > 0 ? photos[currentIndex - 1] : null;
   const nextPhoto = currentIndex >= 0 && currentIndex < photos.length - 1 ? photos[currentIndex + 1] : null;
   const isSelected = selectedPhotoIds.has(photoId);
+  const isAtLoadedEnd = currentIndex >= 0 && currentIndex === photos.length - 1;
+  const canAdvance = Boolean(nextPhoto) || hasMorePhotos;
 
   useEffect(() => {
     let active = true;
@@ -601,9 +609,9 @@ function ClientPhotoViewer({
       } else if (event.key === "ArrowLeft" && previousPhoto) {
         event.preventDefault();
         onNavigate(previousPhoto.photoId);
-      } else if (event.key === "ArrowRight" && nextPhoto) {
+      } else if (event.key === "ArrowRight" && canAdvance) {
         event.preventDefault();
-        onNavigate(nextPhoto.photoId);
+        void handleNext();
       }
     };
 
@@ -622,8 +630,16 @@ function ClientPhotoViewer({
     setTouchStartX(null);
 
     if (Math.abs(distance) < 48) return;
-    if (distance < 0 && nextPhoto) onNavigate(nextPhoto.photoId);
+    if (distance < 0 && canAdvance) void handleNext();
     if (distance > 0 && previousPhoto) onNavigate(previousPhoto.photoId);
+  };
+
+  const handleNext = async () => {
+    if (nextPhoto) {
+      onNavigate(nextPhoto.photoId);
+      return;
+    }
+    if (hasMorePhotos) await onLoadMore();
   };
 
   const handlePhotoFeedback = async () => {
@@ -665,7 +681,7 @@ function ClientPhotoViewer({
         <div className="viewer-toolbar">
           <div>
             <span className="viewer-count">
-              {currentIndex >= 0 ? currentIndex + 1 : "…"} of {photos.length}
+              {currentIndex >= 0 ? currentIndex + 1 : "…"} of {totalPhotos}
             </span>
             {photo?.recommended ? <span className="viewer-recommended">Recommended</span> : null}
           </div>
@@ -710,8 +726,8 @@ function ClientPhotoViewer({
           <button
             type="button"
             className="viewer-nav viewer-nav-next"
-            onClick={() => nextPhoto && onNavigate(nextPhoto.photoId)}
-            disabled={!nextPhoto}
+            onClick={() => void handleNext()}
+            disabled={!canAdvance}
             aria-label="Next photograph"
           >
             Next
@@ -1076,6 +1092,9 @@ function ClientGalleryPage() {
           onSelectToggle={(id) => void handleSelectionToggle(id)}
           onNavigate={setViewerPhotoId}
           onClose={() => setViewerPhotoId(null)}
+          totalPhotos={totalPhotos}
+          hasMorePhotos={hasMorePhotos}
+          onLoadMore={handleLoadMore}
         />
       ) : null}
     </main>
