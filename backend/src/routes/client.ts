@@ -58,7 +58,7 @@ export function clientRouter(services: ApplicationServices) {
     catch (error) { next(error); }
   });
   router.put('/galleries/:galleryId/photos/:photoId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { selection } = parseInput(selectionSchema, req.body, 'INVALID_SELECTION'); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.setSelection(req.client!, photoId, selection))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { selected } = parseInput(selectionSchema, req.body, 'INVALID_SELECTION'); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.setSelection(req.client!, photoId, selected))); }
     catch (error) { next(error); }
   });
   router.post('/galleries/:galleryId/photos/:photoId/download', auth, async (req: AuthenticatedRequest, res, next) => {
