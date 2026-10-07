@@ -878,6 +878,9 @@ function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
+  const [totalPhotos, setTotalPhotos] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
@@ -896,6 +899,8 @@ function ClientGalleryPage() {
         ]);
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(photoResponse.items ?? []);
+        setTotalPhotos(photoResponse.total ?? 0);
+        setCurrentPage(1);
         setSelectedPhotoIds(
           new Set(
             selectionResponse
@@ -1021,6 +1026,14 @@ function ClientGalleryPage() {
             })
           )}
         </div>
+
+        {hasMorePhotos ? (
+          <div className="gallery-load-more">
+            <button type="button" className="button-ghost" onClick={() => void handleLoadMore()} disabled={isLoadingMore}>
+              {isLoadingMore ? "Loading…" : "Load more photographs"}
+            </button>
+          </div>
+        ) : null}
 
         {isFeedbackOpen ? (
           <section className="gallery-feedback">
