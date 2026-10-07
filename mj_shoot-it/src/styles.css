@@ -543,6 +543,8 @@ h2 {
   padding: 0;
   overflow: hidden;
   border-radius: 0;
+  box-shadow: none;
+  background: transparent;
   transition: border-color 0.18s ease;
 }
 
@@ -564,6 +566,7 @@ h2 {
 }
 
 .client-photo-grid .photo-meta {
+  min-height: 18px;
   margin-top: 14px;
 }
 
@@ -580,20 +583,20 @@ h2 {
 }
 
 .photo-select-button {
-  width: calc(100% - 32px);
-  min-height: 44px;
-  margin-bottom: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel-bg);
-  color: var(--ink);
+  width: auto;
+  min-height: 36px;
+  margin: 0 16px 16px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: var(--muted);
   font-weight: 700;
   cursor: pointer;
 }
 
 .photo-select-button.is-selected {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+  color: var(--ink);
 }
 
 .photo-select-button:disabled {
