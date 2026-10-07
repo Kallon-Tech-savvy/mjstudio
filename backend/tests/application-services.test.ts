@@ -67,8 +67,8 @@ describe('application-service rules', () => {
 
     const handler = new ProcessPhotoAssetsHandler(
       {
-        createPreview: async () => ({ mimeType: 'image/jpeg', fileSize: 200 }),
-        createThumbnail: async () => ({ mimeType: 'image/jpeg', fileSize: 120 }),
+        createPreview: async () => ({ mimeType: 'image/jpeg', fileSize: 200, width: 2400, height: 1600 }),
+        createThumbnail: async () => ({ mimeType: 'image/jpeg', fileSize: 120, width: 600, height: 400 }),
       },
       { verifyObject: async () => ({ mimeType: 'image/jpeg', fileSize: 200 }) },
     );
