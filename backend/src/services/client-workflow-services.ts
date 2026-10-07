@@ -225,6 +225,31 @@ export class FeedbackService {
     return result.rows[0];
   }
 
+  async listForStudio(actor: PhotographerContext, galleryId: string) {
+    const membership = await resolveGalleryMembership(this.database, actor, galleryId);
+    ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.view');
+
+    const result = await this.database.query(
+      `SELECT gf.id, 'gallery' AS "feedbackType", NULL::uuid AS "photoId", NULL::text AS "filename",
+              NULL::int AS "position", gf.message, gf.created_at AS "createdAt"
+         FROM gallery_feedback gf
+         JOIN gallery_access ga ON ga.id = gf.gallery_access_id
+        WHERE ga.gallery_id = $1 AND ga.revoked_at IS NULL
+       UNION ALL
+       SELECT pf.id, 'photo' AS "feedbackType", pf.photo_id AS "photoId", p.filename,
+              p.position, pf.message, pf.created_at AS "createdAt"
+         FROM photo_feedback pf
+         JOIN gallery_access ga ON ga.id = pf.gallery_access_id
+         JOIN photos p ON p.id = pf.photo_id
+        WHERE ga.gallery_id = $1 AND ga.revoked_at IS NULL
+          AND p.gallery_id = $1 AND p.deleted_at IS NULL
+       ORDER BY "createdAt" DESC`,
+      [galleryId],
+    );
+
+    return result.rows;
+  }
+
   async createPhotoFeedback(client: ClientContext, photoId: string, message: string) {
     const normalized = this.validateMessage(message);
     await this.assertCurrentClientScope(client);
