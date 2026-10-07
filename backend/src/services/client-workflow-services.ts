@@ -203,6 +203,17 @@ export class DownloadService {
          AND g.publication_status = 'published' AND g.archived_at IS NULL
          AND ga.id = $4 AND ga.gallery_id = p.gallery_id AND ga.permission = 'view_download'
          AND ga.revoked_at IS NULL AND cs.revoked_at IS NULL
+         AND EXISTS (
+           SELECT 1
+             FROM gallery_deliveries gd
+             JOIN gallery_delivery_items gdi ON gdi.delivery_id = gd.id
+            WHERE gd.gallery_id = p.gallery_id
+              AND gd.client_id = g.client_id
+              AND gd.released_at IS NOT NULL
+              AND gd.status IN ('ready', 'completed')
+              AND gdi.photo_id = p.id
+              AND gdi.status = 'ready'
+         )
          AND (ga.expires_at IS NULL OR ga.expires_at > NOW()) AND (cs.expires_at IS NULL OR cs.expires_at > NOW())`,
       [photoId, client.galleryId, client.clientSessionId, client.galleryAccessId]);
     const photo = result.rows[0];
