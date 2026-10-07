@@ -567,7 +567,7 @@ function ClientPhotoViewer({
   onNavigate: (photoId: string) => void;
   totalPhotos: number;
   hasMorePhotos: boolean;
-  onLoadMore: () => Promise<void>;
+  onLoadMore: () => Promise<string | null>;
 }) {
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof getClientPhoto>> | null>(null);
   const [error, setError] = useState("");
@@ -639,7 +639,10 @@ function ClientPhotoViewer({
       onNavigate(nextPhoto.photoId);
       return;
     }
-    if (hasMorePhotos) await onLoadMore();
+    if (hasMorePhotos) {
+      const firstNewPhotoId = await onLoadMore();
+      if (firstNewPhotoId) onNavigate(firstNewPhotoId);
+    }
   };
 
   const handlePhotoFeedback = async () => {
