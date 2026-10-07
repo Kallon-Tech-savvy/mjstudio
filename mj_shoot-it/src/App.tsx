@@ -368,6 +368,22 @@ function PhotographerGalleriesPage() {
 
         {error ? <div className="error-box">{error}</div> : null}
 
+        {gallery?.selectionStatus === "submitted" ? (
+          <div className="selection-review-banner">
+            <div>
+              <p className="eyebrow">Client decision</p>
+              <strong>{Number(gallery.selectedCount ?? 0)} photographs selected</strong>
+              <small>
+                Selection received
+                {gallery.selectionSubmittedAt
+                  ? " · " + new Date(String(gallery.selectionSubmittedAt)).toLocaleString()
+                  : ""}
+              </small>
+            </div>
+            <span className="tag">Review</span>
+          </div>
+        ) : null}
+
         <ul className="list-stack spaced-list">
           {galleries.length === 0 ? (
             <li className="empty-state">No galleries are available for this studio yet.</li>
