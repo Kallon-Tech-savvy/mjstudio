@@ -437,7 +437,7 @@ function PhotographerGalleryDetailPage() {
           return;
         }
 
-        const [galleryResponse, photoResponse, selectionResponse] = await Promise.all([
+        const [galleryResponse, photoResponse, selectionResponse, feedbackResponse] = await Promise.all([
           getGallery(galleryId),
           listGalleryPhotos(galleryId, 1, 20),
           listSelectedPhotos(galleryId),
