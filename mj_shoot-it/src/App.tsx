@@ -812,8 +812,8 @@ function ClientSelectionReviewPage() {
         ]);
 
         const selectedIds = new Set(
-          selectionResponse
-            .filter((item) => item.selection === "favourite")
+          selectionResponse.items
+            .filter((item) => item.selected)
             .map((item) => item.photoId),
         );
 
@@ -831,6 +831,7 @@ function ClientSelectionReviewPage() {
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(loadedPhotos);
         setSelectedPhotoIds(selectedIds);
+        setSelectionStatus(selectionResponse.status);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load your selection.");
       }
@@ -840,7 +841,7 @@ function ClientSelectionReviewPage() {
   }, [galleryId]);
 
   const handleRemove = async (photoId: string) => {
-    if (!galleryId || removingPhotoId === photoId) return;
+    if (!galleryId || removingPhotoId === photoId || selectionStatus === "submitted") return;
 
     const previous = new Set(selectedPhotoIds);
     setSelectedPhotoIds((current) => {
@@ -931,7 +932,7 @@ function ClientSelectionReviewPage() {
                   type="button"
                   className="photo-select-button is-selected"
                   onClick={() => void handleRemove(photo.photoId)}
-                  disabled={removingPhotoId === photo.photoId}
+                  disabled={removingPhotoId === photo.photoId || selectionStatus === "submitted"}
                   aria-label={`Remove photograph ${photo.position + 1} from your selection`}
                 >
                   {removingPhotoId === photo.photoId ? "Removing…" : "Remove"}
