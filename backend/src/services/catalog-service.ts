@@ -68,9 +68,29 @@ export class CatalogService {
       this.database.query(
         `SELECT g.id, g.client_id AS "clientId", g.name, g.workflow_status AS "workflowStatus",
                 g.publication_status AS "publicationStatus", g.expires_at AS "expiresAt",
-                g.published_at AS "publishedAt", g.created_at AS "createdAt"
-           FROM galleries g JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
+                g.published_at AS "publishedAt", g.created_at AS "createdAt",
+                c.name AS "clientName",
+                ga.selection_status AS "selectionStatus",
+                ga.selection_submitted_at AS "selectionSubmittedAt",
+                COALESCE(ga.selected_count, 0)::int AS "selectedCount"
+           FROM galleries g
+           JOIN clients c ON c.id = g.client_id
+           JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
            JOIN studio_members sm ON sm.studio_id = g.studio_id AND sm.user_id = $1
+           LEFT JOIN LATERAL (
+             SELECT s.status AS selection_status,
+                    s.submitted_at AS selection_submitted_at,
+                    COUNT(si.id) FILTER (WHERE si.selected)::int AS selected_count
+               FROM gallery_access a
+               LEFT JOIN gallery_selections s ON s.gallery_access_id = a.id
+               LEFT JOIN gallery_selection_items si ON si.gallery_selection_id = s.id
+              WHERE a.gallery_id = g.id
+                AND a.revoked_at IS NULL
+                AND (a.expires_at IS NULL OR a.expires_at > NOW())
+              GROUP BY s.status, s.submitted_at
+              ORDER BY a.created_at DESC
+              LIMIT 1
+           ) ga ON TRUE
           WHERE g.studio_id = $2 AND g.archived_at IS NULL ORDER BY g.created_at DESC, g.id LIMIT $3 OFFSET $4`,
         [actor.userId, actor.studioId, limit, offset]),
       this.database.query<{ count: string }>(
