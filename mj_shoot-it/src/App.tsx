@@ -518,10 +518,10 @@ function PhotographerGalleryDetailPage() {
                   <article key={photo.photoId} className="photo-card studio-selection-card">
                     <div className="photo-thumb">
                       <img
-                        src={photo.thumbnail.url}
+                        src={photo.preview.url}
                         alt={`Selected photograph ${photo.position + 1}`}
-                        width={photo.thumbnail.width}
-                        height={photo.thumbnail.height}
+                        width={photo.preview.width}
+                        height={photo.preview.height}
                         loading="lazy"
                         decoding="async"
                       />
