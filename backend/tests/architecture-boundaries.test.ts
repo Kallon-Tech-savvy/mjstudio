@@ -64,6 +64,7 @@ describe('phase 10 architecture scaffolding', () => {
     const storage: ObjectStorage = {
       createUploadCapability: async () => ({ url: 'https://example.com/upload', expiresAt: '2026-01-01T00:05:00.000Z' }),
       verifyObject: async () => ({ ok: true, objectKey: 'photos/photo_123/preview.jpg' }),
+      createViewCapability: async () => ({ url: 'https://example.com/view', expiresAt: '2026-01-01T00:10:00.000Z' }),
     };
     const queue: JobQueue = {
       enqueue: async () => undefined,
@@ -74,6 +75,7 @@ describe('phase 10 architecture scaffolding', () => {
     expect(authorizationService.authorize).toBeTypeOf('function');
     expect(clock.now().toISOString()).toBe('2026-01-01T00:00:00.000Z');
     expect(storage.createUploadCapability).toBeTypeOf('function');
+    expect(storage.createViewCapability).toBeTypeOf('function');
     expect(queue.enqueue).toBeTypeOf('function');
   });
 });
