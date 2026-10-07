@@ -706,15 +706,6 @@ h2 {
   cursor: default;
 }
 
-.viewer-hint {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  padding: 0 18px 14px;
-  background: #171513;
-  color: #8f8982;
-  font-size: 0.72rem;
-}
 
 .viewer-error {
   padding: 24px;
@@ -751,10 +742,6 @@ h2 {
     min-width: 0;
   }
 
-  .viewer-hint {
-    gap: 8px;
-    font-size: 0.66rem;
-  }
 }
 
 .selection-bar {
