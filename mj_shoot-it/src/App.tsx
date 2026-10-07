@@ -577,7 +577,7 @@ function PhotographerGalleryDetailPage() {
         ) : null}
 
 
-        (          <section className="studio-delivery-section panel" style={{ marginTop: "20px" }}>
+        <section className="studio-delivery-section panel" style={{ marginTop: "20px" }}>
             <div className="panel-header compact-header">
               <div>
                 <p className="eyebrow">Delivery Workflow</p>
@@ -639,7 +639,6 @@ function PhotographerGalleryDetailPage() {
               </ul>
             ) : null}
           </section>
-        )}
 
         {feedback.length > 0 ? (
           <section className="studio-feedback-review">
