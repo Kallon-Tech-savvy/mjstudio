@@ -26,6 +26,10 @@ export type GalleryRecord = {
   name: string;
   status?: string;
   publishState?: string;
+  selectionStatus?: "draft" | "submitted" | null;
+  selectionSubmittedAt?: string | null;
+  selectedCount?: number;
+  clientName?: string;
   expiresAt?: string | null;
   createdAt?: string;
   [key: string]: unknown;
