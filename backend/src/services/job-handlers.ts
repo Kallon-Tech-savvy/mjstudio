@@ -3,7 +3,7 @@ import type { Transaction } from './service-common.js';
 import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
 import { PermanentJobError } from './job-service.js';
 
-export type DerivativeObject = { mimeType: string; fileSize: number };
+export type DerivativeObject = { mimeType: string; fileSize: number; width: number; height: number };
 export interface ImageProcessor {
   createPreview(sourceKey: string, destinationKey: string): Promise<DerivativeObject>;
   createThumbnail(sourceKey: string, destinationKey: string): Promise<DerivativeObject>;
@@ -56,13 +56,13 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         ? await this.processor.createPreview(sourceRow.storage_key, derivative.key)
         : await this.processor.createThumbnail(sourceRow.storage_key, derivative.key);
       const verified = await this.storage.verifyObject(derivative.key);
-      if (!verified || verified.fileSize <= 0 || verified.mimeType !== generated.mimeType) {
+      if (!verified || verified.fileSize <= 0 || verified.width <= 0 || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
         throw new PermanentJobError(`Generated ${derivative.type} did not pass object verification.`);
       }
       await transaction.query(
         `UPDATE photo_assets SET upload_status = 'uploaded', processing_status = 'ready',
-                mime_type = $2, file_size = $3, updated_at = NOW() WHERE id = $1`,
-        [assetId, verified.mimeType, verified.fileSize]);
+                mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1`,
+        [assetId, verified.mimeType, verified.fileSize, verified.width, verified.height]);
     }
     const readiness = await transaction.query(
       `SELECT COUNT(*) FILTER (WHERE type = 'preview' AND upload_status = 'uploaded' AND processing_status = 'ready' AND state = 'current') = 1
