@@ -112,6 +112,48 @@ export class CatalogService {
     return result.rows[0];
   }
 
+  async getClientPhoto(client: ClientContext, galleryId: string, photoId: string) {
+    if (client.galleryId !== galleryId) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
+
+    const result = await this.database.query(
+      `SELECT p.id, p.position, r.photo_id IS NOT NULL AS recommended,
+              pa.storage_key AS "previewStorageKey", pa.width AS "previewWidth",
+              pa.height AS "previewHeight", pa.mime_type AS "previewMimeType"
+         FROM photos p
+         LEFT JOIN recommendations r ON r.photo_id = p.id AND r.gallery_id = p.gallery_id
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'preview' AND pa.state = 'current'
+           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
+        WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL AND p.status = 'active'
+          AND EXISTS (
+            SELECT 1 FROM client_sessions cs
+            JOIN gallery_access ga ON ga.id = cs.gallery_access_id
+            JOIN galleries g ON g.id = ga.gallery_id
+            WHERE cs.id = $3 AND ga.id = $4 AND ga.gallery_id = p.gallery_id
+              AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
+              AND g.publication_status = 'published' AND g.archived_at IS NULL
+              AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+              AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
+          )`,
+      [photoId, galleryId, client.clientSessionId, client.galleryAccessId],
+    );
+
+    const item = result.rows[0];
+    if (!item) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+
+    return {
+      photoId: item.id,
+      position: item.position,
+      recommended: item.recommended,
+      preview: await this.photoRepresentations.createView({
+        storageKey: item.previewStorageKey,
+        width: item.previewWidth,
+        height: item.previewHeight,
+        mimeType: item.previewMimeType,
+      }, 600),
+    };
+  }
+
   async listClientPhotos(client: ClientContext, galleryId: string, page: number, limit: number) {
     validatePage(page, limit);
     if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
