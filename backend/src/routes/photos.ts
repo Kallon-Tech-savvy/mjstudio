@@ -16,6 +16,12 @@ export function photosRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body); const input = parseInput(createSchema, req.body, 'INVALID_PHOTO_DATA'); res.status(201).json(successEnvelope(await services.photos.create(req.user!, galleryId, input))); }
     catch (error) { next(error); }
   });
+  router.get('/galleries/:galleryId/selected-photos', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      res.json(successEnvelope(await services.catalog.listSelectedPhotos(req.user!, galleryId)));
+    } catch (error) { next(error); }
+  });
   router.get('/galleries/:galleryId/photos', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); const page = parseInput(paginationSchema, req.query); const currentPage = page.page ?? 1; const limit = page.limit ?? 20; const result = await services.photos.list(req.user!, galleryId, currentPage, limit); res.json({ ...collectionEnvelope(result.items), meta: { count: result.items.length, total: result.total, page: currentPage, limit } }); }
     catch (error) { next(error); }
