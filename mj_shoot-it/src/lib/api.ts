@@ -245,6 +245,10 @@ export async function getClientPhoto(galleryId: string, photoId: string): Promis
   return apiRequest<ClientPhotoDetail>(`/client/galleries/${galleryId}/photos/${photoId}`);
 }
 
+export async function getClientSelections(galleryId: string): Promise<Array<{ photoId: string; selection: string; updatedAt?: string }>> {
+  return apiRequest<Array<{ photoId: string; selection: string; updatedAt?: string }>>(`/client/galleries/${galleryId}/selection`);
+}
+
 export async function setSelection(
   galleryId: string,
   photoId: string,
