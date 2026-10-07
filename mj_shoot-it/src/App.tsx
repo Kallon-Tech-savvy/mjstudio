@@ -967,14 +967,6 @@ function ClientGalleryPage() {
                         : "Select"}
                   </button>
 
-                  <div className="feedback-inline">
-                    <button type="button" className="button-ghost" onClick={() => void handlePhotoFeedback(photo.photoId, "I like this one.")}>
-                      Like
-                    </button>
-                    <button type="button" className="button-ghost" onClick={() => void handlePhotoFeedback(photo.photoId, "This image needs a revision.")}>
-                      Request revision
-                    </button>
-                  </div>
                 </article>
               );
             })
