@@ -66,6 +66,13 @@ export type ClientPhotoDetail = {
   preview: PhotoRepresentation;
 };
 
+export type StudioSelectedPhoto = {
+  photoId: string;
+  position: number;
+  filename: string;
+  preview: PhotoRepresentation;
+};
+
 export type PhotoRecord = {
   photoId: string;
   galleryId: string;
@@ -222,6 +229,10 @@ export async function getGallery(galleryId: string): Promise<GalleryRecord> {
 
 export async function listGalleryPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: PhotoRecord[]; total: number }> {
   return apiCollectionRequest(`/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => normalizePhoto(item, galleryId));
+}
+
+export async function listSelectedPhotos(galleryId: string): Promise<StudioSelectedPhoto[]> {
+  return apiRequest<StudioSelectedPhoto[]>(`/galleries/${galleryId}/selected-photos`);
 }
 
 export async function createGalleryAccess(
