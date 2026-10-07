@@ -471,6 +471,35 @@ function PhotographerGalleryDetailPage() {
 
   const selectedPhoto = selectedPhotoIndex === null ? null : selection[selectedPhotoIndex] ?? null;
 
+  useEffect(() => {
+    if (selectedPhotoIndex === null) {
+      return;
+    }
+
+    const handleViewerKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedPhotoIndex(null);
+        return;
+      }
+
+      if (event.key === "ArrowLeft" && selectedPhotoIndex > 0) {
+        event.preventDefault();
+        setSelectedPhotoIndex((current) => (current === null ? null : Math.max(0, current - 1)));
+        return;
+      }
+
+      if (event.key === "ArrowRight" && selectedPhotoIndex < selection.length - 1) {
+        event.preventDefault();
+        setSelectedPhotoIndex((current) => (
+          current === null ? null : Math.min(selection.length - 1, current + 1)
+        ));
+      }
+    };
+
+    window.addEventListener("keydown", handleViewerKeyDown);
+    return () => window.removeEventListener("keydown", handleViewerKeyDown);
+  }, [selectedPhotoIndex, selection.length]);
+
   return (
     <main className="page-shell">
       <div className="panel">
