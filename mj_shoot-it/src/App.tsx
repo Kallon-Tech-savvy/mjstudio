@@ -775,7 +775,8 @@ function ClientSelectionReviewPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
+  const [totalPhotos, setTotalPhotos] = useState(0);
+  const [selectedPhotoIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -789,6 +790,7 @@ function ClientSelectionReviewPage() {
         ]);
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(photoResponse.items ?? []);
+        setTotalPhotos(photoResponse.total ?? 0);
         setSelectedPhotoIds(
           new Set(
             selectionResponse
@@ -968,7 +970,7 @@ function ClientGalleryPage() {
 
         <div className="gallery-summary" aria-live="polite">
           <strong>{selectedPhotoIds.size} selected</strong>
-          <span>{photos.length} photographs</span>
+          <span>{totalPhotos} photographs</span>
         </div>
 
         <div className="photo-grid client-photo-grid">
