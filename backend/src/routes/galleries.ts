@@ -19,6 +19,10 @@ export function galleriesRouter(services: ApplicationServices) {
     try { const page = parseInput(paginationSchema, req.query); const currentPage = page.page ?? 1; const limit = page.limit ?? 20; const result = await services.catalog.listGalleries(req.user!, currentPage, limit); res.json({ ...collectionEnvelope(result.items), meta: { count: result.items.length, total: result.total, page: currentPage, limit } }); }
     catch (error) { next(error); }
   });
+  router.get('/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.catalog.getStudioSelection(req.user!, galleryId))); }
+    catch (error) { next(error); }
+  });
   router.get('/:galleryId', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.galleries.get(req.user!, galleryId))); }
     catch (error) { next(error); }
