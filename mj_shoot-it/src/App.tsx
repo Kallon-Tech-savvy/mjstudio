@@ -709,6 +709,110 @@ function ClientPhotoViewer({
   );
 }
 
+function ClientSelectionReviewPage() {
+  const { galleryId } = useParams();
+  const [galleryName, setGalleryName] = useState("Gallery");
+  const [photos, setPhotos] = useState<ClientPhoto[]>([]);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      if (!galleryId) return;
+      try {
+        const [gallery, photoResponse, selectionResponse] = await Promise.all([
+          getClientGallery(galleryId),
+          listClientPhotos(galleryId, 1, 100),
+          getClientSelections(galleryId),
+        ]);
+        setGalleryName(String(gallery.name ?? "Gallery"));
+        setPhotos(photoResponse.items ?? []);
+        setSelectedPhotoIds(
+          new Set(
+            selectionResponse
+              .filter((item) => item.selection === "favourite")
+              .map((item) => item.photoId),
+          ),
+        );
+      } catch (caughtError) {
+        setError(caughtError instanceof Error ? caughtError.message : "Unable to load your selection.");
+      }
+    };
+
+    void load();
+  }, [galleryId]);
+
+  if (!galleryId) return <Navigate to="/client/access" replace />;
+
+  const selectedPhotos = photos.filter((photo) => selectedPhotoIds.has(photo.photoId));
+
+  return (
+    <main className="page-shell client-gallery-shell">
+      <div className="client-gallery selection-review-page">
+        <header className="gallery-header">
+          <div>
+            <p className="eyebrow">Review your selection</p>
+            <h1>{galleryName}</h1>
+            <p className="gallery-intro">
+              These are the photographs you have chosen. Review them before sending your selection to the photographer.
+            </p>
+          </div>
+          <Link to={`/client/gallery/${galleryId}`} className="secondary-button">
+            Back to photographs
+          </Link>
+        </header>
+
+        {error ? <div className="error-box">{error}</div> : null}
+
+        <div className="gallery-summary" aria-live="polite">
+          <strong>{selectedPhotos.length} selected</strong>
+          <span>Review before submission</span>
+        </div>
+
+        {selectedPhotos.length === 0 ? (
+          <section className="empty-state panel">
+            <h2>No photographs selected yet</h2>
+            <p>Return to the gallery and choose the photographs you want your photographer to work with.</p>
+            <Link to={`/client/gallery/${galleryId}`} className="primary-button">
+              Choose photographs
+            </Link>
+          </section>
+        ) : (
+          <div className="photo-grid client-photo-grid">
+            {selectedPhotos.map((photo) => (
+              <article key={photo.photoId} className="photo-card panel is-selected">
+                <div className="photo-thumb">
+                  <img
+                    src={photo.thumbnail.url}
+                    alt={`Selected photograph ${photo.position + 1}`}
+                    width={photo.thumbnail.width}
+                    height={photo.thumbnail.height}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <span className="photo-selected-badge">Selected</span>
+                </div>
+                <div className="photo-meta">
+                  <span className="photo-position">Photograph {photo.position + 1}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {selectedPhotos.length > 0 ? (
+          <div className="selection-review-actions">
+            <p className="muted">Submission will become a separate workflow step once the selection workflow is enabled.</p>
+            <button type="button" className="primary-button" disabled>
+              Submit selection
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
 function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
@@ -930,6 +1034,7 @@ export default function App() {
         <Route path="/photographer/galleries/:galleryId" element={<PhotographerGalleryDetailPage />} />
         <Route path="/client/access" element={<ClientAccessPage />} />
         <Route path="/client/gallery/:galleryId" element={<ClientGalleryPage />} />
+        <Route path="/client/gallery/:galleryId/selection" element={<ClientSelectionReviewPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
