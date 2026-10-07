@@ -13,6 +13,7 @@ import {
   getPhotographerMe,
   getStudioSummary,
   listSelectedPhotos,
+  listStudioFeedback,
   listClients,
   listGalleryPhotos,
   listGalleries,
@@ -29,6 +30,7 @@ import {
   type PhotographerUser,
   type ClientSelection,
   type StudioSelectedPhoto,
+  type StudioFeedback,
 } from "@/lib/api";
 
 function HomePage() {
@@ -418,6 +420,7 @@ function PhotographerGalleryDetailPage() {
   const [gallery, setGallery] = useState<Record<string, unknown> | null>(null);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
+  const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [error, setError] = useState("");
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
@@ -438,11 +441,13 @@ function PhotographerGalleryDetailPage() {
           getGallery(galleryId),
           listGalleryPhotos(galleryId, 1, 20),
           listSelectedPhotos(galleryId),
+          listStudioFeedback(galleryId),
         ]);
 
         setGallery(galleryResponse);
         setPhotos(photoResponse.items ?? []);
         setSelection(selectionResponse);
+        setFeedback(feedbackResponse);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
@@ -579,6 +584,34 @@ function PhotographerGalleryDetailPage() {
                 ))}
               </div>
             )}
+          </section>
+        ) : null}
+
+        {feedback.length > 0 ? (
+          <section className="studio-feedback-review">
+            <div className="panel-header compact-header">
+              <div>
+                <p className="eyebrow">Client feedback</p>
+                <h2>Notes from the client</h2>
+                <p className="muted">Review these notes alongside the selected photographs before delivery.</p>
+              </div>
+              <span className="tag">{feedback.length}</span>
+            </div>
+            <ul className="list-stack">
+              {feedback.map((item) => (
+                <li key={item.id} className="list-row">
+                  <div>
+                    <strong>
+                      {item.feedbackType === "photo"
+                        ? "Photograph " + (Number(item.position ?? 0) + 1)
+                        : "Gallery note"}
+                    </strong>
+                    <small>{item.filename ?? "Gallery-wide feedback"} · {new Date(item.createdAt).toLocaleString()}</small>
+                  </div>
+                  <p>{item.message}</p>
+                </li>
+              ))}
+            </ul>
           </section>
         ) : null}
 
