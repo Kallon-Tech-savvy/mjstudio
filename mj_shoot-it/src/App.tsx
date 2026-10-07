@@ -144,7 +144,6 @@ function PhotographerDashboardPage() {
   const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -207,30 +206,6 @@ function PhotographerDashboardPage() {
           </Link>
           <button type="button" className="button-ghost" onClick={handleLogout}>
             Log out
-          </button>
-        </div>
-
-        <div className="tab-navigation" style={{ display: "flex", gap: "12px", marginBottom: "20px", borderBottom: "1px solid var(--line)", paddingBottom: "12px" }}>
-          <button
-            type="button"
-            className={activeTab === "overview" ? "primary-button" : "secondary-button"}
-            onClick={() => setActiveTab("overview")}
-          >
-            Overview & Photos
-          </button>
-          <button
-            type="button"
-            className={activeTab === "proofing" ? "primary-button" : "secondary-button"}
-            onClick={() => setActiveTab("proofing")}
-          >
-            Proofing ({selection.length})
-          </button>
-          <button
-            type="button"
-            className={activeTab === "delivery" ? "primary-button" : "secondary-button"}
-            onClick={() => setActiveTab("delivery")}
-          >
-            Delivery {delivery?.releasedAt ? "✓ Released" : delivery?.canPrepare ? "• Ready to prepare" : ""}
           </button>
         </div>
 
@@ -391,22 +366,6 @@ function PhotographerGalleriesPage() {
 
         {error ? <div className="error-box">{error}</div> : null}
 
-        {gallery?.selectionStatus === "submitted" ? (
-          <div className="selection-review-banner">
-            <div>
-              <p className="eyebrow">Client decision</p>
-              <strong>{Number(gallery.selectedCount ?? 0)} photographs selected</strong>
-              <small>
-                Selection received
-                {gallery.selectionSubmittedAt
-                  ? " · " + new Date(String(gallery.selectionSubmittedAt)).toLocaleString()
-                  : ""}
-              </small>
-            </div>
-            <span className="tag">Review</span>
-          </div>
-        ) : null}
-
         <ul className="list-stack spaced-list">
           {galleries.length === 0 ? (
             <li className="empty-state">No galleries are available for this studio yet.</li>
@@ -444,11 +403,7 @@ function PhotographerGalleryDetailPage() {
   const [error, setError] = useState("");
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [delivery, setDelivery] = useState<StudioDeliveryDetails | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "proofing" | "delivery">("overview");
   const [isProcessingDelivery, setIsProcessingDelivery] = useState(false);
-
-  useEffect(() => {
-    const load = async () => {
 
   const handlePrepareDelivery = async () => {
     if (!galleryId || isProcessingDelivery) return;
@@ -478,9 +433,12 @@ function PhotographerGalleryDetailPage() {
     }
   };
 
-  if (!galleryId) {
+  useEffect(() => {
+    const load = async () => {
+      if (!galleryId) {
         return;
       }
+
       try {
         const me = await getPhotographerMe();
         if (!me?.user) {
@@ -619,8 +577,7 @@ function PhotographerGalleryDetailPage() {
         ) : null}
 
 
-        {activeTab === "delivery" ? (
-          <section className="studio-delivery-section panel" style={{ marginTop: "20px" }}>
+        (          <section className="studio-delivery-section panel" style={{ marginTop: "20px" }}>
             <div className="panel-header compact-header">
               <div>
                 <p className="eyebrow">Delivery Workflow</p>
@@ -682,7 +639,7 @@ function PhotographerGalleryDetailPage() {
               </ul>
             ) : null}
           </section>
-        ) : null}
+        )}
 
         {feedback.length > 0 ? (
           <section className="studio-feedback-review">
