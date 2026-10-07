@@ -766,12 +766,6 @@ function ClientPhotoViewer({
             </div>
           </form>
         ) : null}
-
-        <div className="viewer-hint">
-          <span>Swipe to browse</span>
-          <span>Use ← → to move</span>
-          <span>Esc to close</span>
-        </div>
       </div>
     </div>
   );
