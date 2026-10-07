@@ -93,7 +93,7 @@ export type StudioSelectionPhoto = {
   photoId: string;
   position: number;
   filename: string;
-  thumbnail: PhotoRepresentation;
+  preview: PhotoRepresentation;
 };
 
 export type StudioSelection = {
