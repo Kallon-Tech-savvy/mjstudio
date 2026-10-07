@@ -492,3 +492,267 @@ h2 {
     max-height: 100vh;
   }
 }
+
+
+/* Client gallery decision surface */
+.client-gallery-shell {
+  width: min(1280px, calc(100vw - 32px));
+}
+
+.client-gallery {
+  padding: 24px 0 120px;
+}
+
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.gallery-header h1 {
+  margin-bottom: 10px;
+}
+
+.gallery-intro {
+  max-width: 620px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.gallery-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 18px;
+  color: var(--muted);
+}
+
+.gallery-summary strong {
+  color: var(--ink);
+}
+
+.client-photo-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.client-photo-grid .photo-card {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 0;
+  transition: border-color 0.18s ease;
+}
+
+.client-photo-grid .photo-card.is-selected {
+  border-color: var(--brand);
+}
+
+.client-photo-grid .photo-thumb {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 4 / 3;
+}
+
+.client-photo-grid .photo-meta,
+.client-photo-grid .photo-select-button,
+.client-photo-grid .feedback-inline {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+.client-photo-grid .photo-meta {
+  margin-top: 14px;
+}
+
+.photo-selected-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 9px;
+  background: rgba(23, 21, 19, 0.84);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.photo-select-button {
+  width: calc(100% - 32px);
+  min-height: 44px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-bg);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.photo-select-button.is-selected {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.photo-select-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.client-photo-grid .feedback-inline {
+  margin-bottom: 16px;
+}
+
+.gallery-feedback {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  max-width: 760px;
+  margin-top: 32px;
+}
+
+.gallery-feedback .textarea {
+  min-height: 72px;
+}
+
+.feedback-trigger {
+  margin-top: 32px;
+}
+
+.selection-bar {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: min(680px, calc(100vw - 32px));
+  padding: 13px 16px;
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 12px 32px rgba(24, 18, 15, 0.18);
+}
+
+.selection-bar-note {
+  color: #c7c1ba;
+  font-size: 0.85rem;
+}
+
+.viewer-toolbar {
+  min-height: 56px;
+}
+
+.viewer-count {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-recommended {
+  display: inline-block;
+  margin-left: 10px;
+  color: #c7a98e;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.viewer-image-wrap {
+  min-height: min(68vh, 760px);
+  touch-action: pan-y;
+}
+
+.viewer-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #171513;
+}
+
+.viewer-nav,
+.viewer-select {
+  min-height: 42px;
+  border: 1px solid rgba(255,255,255,0.18);
+  padding: 0 14px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.viewer-nav:last-child {
+  justify-self: end;
+}
+
+.viewer-select {
+  min-width: 170px;
+  border-color: rgba(255,255,255,0.35);
+  font-weight: 700;
+}
+
+.viewer-select.is-selected {
+  background: #fff;
+  color: #171513;
+  border-color: #fff;
+}
+
+.viewer-nav:disabled,
+.viewer-select:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.viewer-hint {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 18px 14px;
+  background: #171513;
+  color: #8f8982;
+  font-size: 0.72rem;
+}
+
+.viewer-error {
+  padding: 24px;
+}
+
+@media (max-width: 700px) {
+  .gallery-header {
+    flex-direction: column;
+  }
+
+  .gallery-header .secondary-button {
+    display: none;
+  }
+
+  .gallery-feedback {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .selection-bar {
+    bottom: 12px;
+  }
+
+  .selection-bar-note {
+    display: none;
+  }
+
+  .viewer-controls {
+    grid-template-columns: 1fr 1.2fr 1fr;
+    padding: 12px;
+  }
+
+  .viewer-select {
+    min-width: 0;
+  }
+
+  .viewer-hint {
+    gap: 8px;
+    font-size: 0.66rem;
+  }
+}
