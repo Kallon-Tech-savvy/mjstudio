@@ -7,7 +7,8 @@ import {
   createGalleryFeedback,
   createPhotoFeedback,
   getClientGallery,
-  getClientSelections,
+  getClientSelection,
+  submitSelection,
   getGallery,
   getPhotographerMe,
   getStudioSummary,
@@ -25,6 +26,7 @@ import {
   type PhotoRecord,
   type ClientPhoto,
   type PhotographerUser,
+  type ClientSelection,
 } from "@/lib/api";
 
 function HomePage() {
@@ -797,6 +799,8 @@ function ClientSelectionReviewPage() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
+  const [selectionStatus, setSelectionStatus] = useState<ClientSelection["status"]>("draft");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -804,7 +808,7 @@ function ClientSelectionReviewPage() {
       try {
         const [gallery, selectionResponse] = await Promise.all([
           getClientGallery(galleryId),
-          getClientSelections(galleryId),
+          getClientSelection(galleryId),
         ]);
 
         const selectedIds = new Set(
@@ -848,12 +852,28 @@ function ClientSelectionReviewPage() {
     setError("");
 
     try {
-      await setSelection(galleryId, photoId, "neutral");
+      await setSelection(galleryId, photoId, false);
     } catch (caughtError) {
       setSelectedPhotoIds(previous);
       setError(caughtError instanceof Error ? caughtError.message : "This photograph could not be removed from your selection.");
     } finally {
       setRemovingPhotoId(null);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!galleryId || isSubmitting || selectionStatus === "submitted") return;
+
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      const result = await submitSelection(galleryId);
+      setSelectionStatus(result.status);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Your selection could not be submitted.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -921,14 +941,27 @@ function ClientSelectionReviewPage() {
           </div>
         )}
 
-        {selectedPhotoIds.size > 0 ? (
-          <div className="selection-review-actions">
-            <p className="muted">Submission will become a separate workflow step once the selection workflow is enabled.</p>
-            <button type="button" className="primary-button" disabled>
-              Submit selection
-            </button>
-          </div>
-        ) : null}
+        <div className="selection-review-actions">
+          {selectionStatus === "submitted" ? (
+            <p className="muted" role="status">
+              Your selection has been sent to the photographer.
+            </p>
+          ) : (
+            <>
+              <p className="muted">
+                When you're happy with these choices, send them to your photographer.
+              </p>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void handleSubmit()}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Sending…" : "Send selection"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </main>
   );
@@ -947,6 +980,7 @@ function ClientGalleryPage() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [error, setError] = useState("");
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
+  const [selectionStatus, setSelectionStatus] = useState<ClientSelection["status"]>("draft");
 
   useEffect(() => {
     const load = async () => {
@@ -955,7 +989,7 @@ function ClientGalleryPage() {
         const [gallery, photoResponse, selectionResponse] = await Promise.all([
           getClientGallery(galleryId),
           listClientPhotos(galleryId, 1, 20),
-          getClientSelections(galleryId),
+          getClientSelection(galleryId),
         ]);
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(photoResponse.items ?? []);
@@ -963,11 +997,12 @@ function ClientGalleryPage() {
         setCurrentPage(1);
         setSelectedPhotoIds(
           new Set(
-            selectionResponse
-              .filter((item) => item.selection === "favourite")
+            selectionResponse.items
+              .filter((item) => item.selected)
               .map((item) => item.photoId),
           ),
         );
+        setSelectionStatus(selectionResponse.status);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
@@ -977,7 +1012,7 @@ function ClientGalleryPage() {
   }, [galleryId]);
 
   const handleSelectionToggle = async (photoId: string) => {
-    if (!galleryId || savingPhotoId === photoId) return;
+    if (!galleryId || savingPhotoId === photoId || selectionStatus === "submitted") return;
 
     const wasSelected = selectedPhotoIds.has(photoId);
     const nextSelected = !wasSelected;
@@ -993,7 +1028,7 @@ function ClientGalleryPage() {
     setError("");
 
     try {
-      await setSelection(galleryId, photoId, nextSelected ? "favourite" : "neutral");
+      await setSelection(galleryId, photoId, nextSelected);
     } catch (caughtError) {
       setSelectedPhotoIds(previous);
       setError(caughtError instanceof Error ? caughtError.message : "Your selection could not be saved.");
@@ -1098,7 +1133,7 @@ function ClientGalleryPage() {
                     type="button"
                     className={`photo-select-button ${selected ? "is-selected" : ""}`}
                     onClick={() => void handleSelectionToggle(photo.photoId)}
-                    disabled={savingPhotoId === photo.photoId}
+                    disabled={savingPhotoId === photo.photoId || selectionStatus === "submitted"}
                     aria-pressed={selected}
                   >
                     {savingPhotoId === photo.photoId
