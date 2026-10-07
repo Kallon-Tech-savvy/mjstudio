@@ -565,6 +565,9 @@ function ClientPhotoViewer({
 }) {
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof getClientPhoto>> | null>(null);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   const currentIndex = photos.findIndex((item) => item.photoId === photoId);
@@ -621,6 +624,22 @@ function ClientPhotoViewer({
     if (Math.abs(distance) < 48) return;
     if (distance < 0 && nextPhoto) onNavigate(nextPhoto.photoId);
     if (distance > 0 && previousPhoto) onNavigate(previousPhoto.photoId);
+  };
+
+  const handlePhotoFeedback = async () => {
+    if (!feedback.trim()) return;
+    setIsFeedbackSubmitting(true);
+    setError("");
+
+    try {
+      await createPhotoFeedback(galleryId, photoId, feedback.trim());
+      setFeedback("");
+      setIsFeedbackOpen(false);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Photo feedback could not be submitted.");
+    } finally {
+      setIsFeedbackSubmitting(false);
+    }
   };
 
   if (error) {
@@ -697,7 +716,56 @@ function ClientPhotoViewer({
           >
             Next
           </button>
+
+          <button
+            type="button"
+            className="viewer-feedback-trigger"
+            onClick={() => setIsFeedbackOpen((open) => !open)}
+            disabled={!photo}
+          >
+            {isFeedbackOpen ? "Close note" : "Leave a note"}
+          </button>
         </div>
+
+        {isFeedbackOpen ? (
+          <form
+            className="viewer-feedback"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handlePhotoFeedback();
+            }}
+          >
+            <label className="viewer-feedback-label" htmlFor="photo-feedback">
+              Note about this photograph
+            </label>
+            <textarea
+              id="photo-feedback"
+              className="viewer-feedback-input"
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              placeholder="Tell your photographer what you'd like changed or reviewed."
+              autoFocus
+              disabled={isFeedbackSubmitting}
+            />
+            {error ? <div className="viewer-feedback-error">{error}</div> : null}
+            <div className="viewer-feedback-actions">
+              <button
+                type="button"
+                className="viewer-feedback-cancel"
+                onClick={() => {
+                  setFeedback("");
+                  setIsFeedbackOpen(false);
+                }}
+                disabled={isFeedbackSubmitting}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="viewer-feedback-submit" disabled={isFeedbackSubmitting || !feedback.trim()}>
+                {isFeedbackSubmitting ? "Sending…" : "Send note"}
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <div className="viewer-hint">
           <span>Swipe to browse</span>
@@ -885,16 +953,6 @@ function ClientGalleryPage() {
       setIsFeedbackOpen(false);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Your feedback could not be submitted.");
-    }
-  };
-
-  const handlePhotoFeedback = async (photoId: string, message: string) => {
-    if (!galleryId) return;
-
-    try {
-      await createPhotoFeedback(galleryId, photoId, message);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Photo feedback could not be submitted.");
     }
   };
 
