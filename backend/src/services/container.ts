@@ -10,6 +10,7 @@ import { CatalogService } from './catalog-service.js';
 import { PostgresRateLimitService } from './rate-limit-service.js';
 import { JobService } from './job-service.js';
 import { PhotoRepresentationService } from './photo-representation-service.js';
+import { ProofingService } from './proofing-service.js';
 
 export type ApplicationServices = {
   auth: PhotographerAuthService;
@@ -21,6 +22,7 @@ export type ApplicationServices = {
   recommendations: RecommendationService;
   downloads: DownloadService;
   feedback: FeedbackService;
+  proofing: ProofingService;
   catalog: CatalogService;
   rateLimits: RateLimitProvider;
   jobs: JobService;
@@ -50,6 +52,7 @@ export function createApplicationServices(providers: ServiceProviders): Applicat
     recommendations: new RecommendationService(providers.database),
     downloads: new DownloadService(providers.database, providers.photoStorage),
     feedback: new FeedbackService(providers.database),
+    proofing: new ProofingService(providers.database),
     catalog: new CatalogService(
       providers.database,
       new PhotoRepresentationService(providers.photoStorage),
@@ -71,6 +74,7 @@ export function unavailableServices(): ApplicationServices {
     recommendations: { recommend: unavailable, unrecommend: unavailable, list: unavailable } as unknown as RecommendationService,
     downloads: { create: unavailable } as unknown as DownloadService,
     feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable, listForStudio: unavailable } as unknown as FeedbackService,
+    proofing: { setReview: unavailable, list: unavailable } as unknown as ProofingService,
     catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
     rateLimits: { assertAllowed: unavailable },
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,

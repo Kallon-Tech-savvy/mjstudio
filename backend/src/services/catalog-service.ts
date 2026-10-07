@@ -133,13 +133,16 @@ export class CatalogService {
     const result = await this.database.query(
       `SELECT p.id AS "photoId", p.position, p.filename,
               pa.storage_key AS "previewStorageKey", pa.width AS "previewWidth",
-              pa.height AS "previewHeight", pa.mime_type AS "previewMimeType"
+              pa.height AS "previewHeight", pa.mime_type AS "previewMimeType",
+              COALESCE(r.status, 'pending') AS "reviewStatus",
+              r.note AS "reviewNote", r.reviewed_at AS "reviewedAt"
          FROM gallery_access a
          JOIN gallery_selections s ON s.gallery_access_id = a.id AND s.status = 'submitted'
          JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
          JOIN photos p ON p.id = si.photo_id AND p.gallery_id = $1 AND p.deleted_at IS NULL AND p.status = 'active'
          JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'preview' AND pa.state = 'current'
            AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
+         LEFT JOIN gallery_proofing_reviews r ON r.gallery_id = p.gallery_id AND r.photo_id = p.id
         WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
           AND (a.expires_at IS NULL OR a.expires_at > NOW())
         ORDER BY p.position, p.id`,
@@ -150,6 +153,9 @@ export class CatalogService {
       photoId: item.photoId,
       position: item.position,
       filename: item.filename,
+      reviewStatus: item.reviewStatus,
+      reviewNote: item.reviewNote,
+      reviewedAt: item.reviewedAt,
       preview: await this.photoRepresentations!.createView({
         storageKey: item.previewStorageKey,
         width: item.previewWidth,

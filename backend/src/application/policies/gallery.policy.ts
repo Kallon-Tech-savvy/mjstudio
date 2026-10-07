@@ -18,7 +18,8 @@ export type GalleryPermission =
   | 'photo.reorder'
   | 'photo.recommend'
   | 'photo.upload'
-  | 'activity.view';
+  | 'activity.view'
+  | 'proofing.review';
 
 export type GalleryResource = {
   id: string;
@@ -43,6 +44,7 @@ export const galleryRolePermissions: Record<GalleryRole, readonly GalleryPermiss
     'photo.recommend',
     'photo.upload',
     'activity.view',
+    'proofing.review',
   ],
   collaborator: [
     'gallery.view',

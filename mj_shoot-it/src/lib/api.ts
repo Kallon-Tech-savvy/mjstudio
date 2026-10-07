@@ -80,6 +80,9 @@ export type StudioSelectedPhoto = {
   photoId: string;
   position: number;
   filename: string;
+  reviewStatus: "pending" | "approved" | "needs_revision";
+  reviewNote?: string | null;
+  reviewedAt?: string | null;
   preview: PhotoRepresentation;
 };
 
@@ -265,6 +268,18 @@ export async function listStudioFeedback(galleryId: string): Promise<StudioFeedb
 
 export async function listSelectedPhotos(galleryId: string): Promise<StudioSelectedPhoto[]> {
   return apiRequest<StudioSelectedPhoto[]>(`/galleries/${galleryId}/selected-photos`);
+}
+
+export async function setStudioPhotoReview(
+  galleryId: string,
+  photoId: string,
+  status: "approved" | "needs_revision",
+  note?: string | null,
+): Promise<StudioSelectedPhoto> {
+  return apiRequest<StudioSelectedPhoto>(`/galleries/${galleryId}/selected-photos/${photoId}/review`, {
+    method: "PUT",
+    body: JSON.stringify({ status, note }),
+  });
 }
 
 export async function createGalleryAccess(

@@ -39,6 +39,30 @@ export function galleriesRouter(services: ApplicationServices) {
       }));
     } catch (error) { next(error); }
   });
+  router.get('/:galleryId/proofing', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      res.json(collectionEnvelope(await services.proofing.list(req.user!, galleryId)));
+    } catch (error) { next(error); }
+  });
+  router.put('/:galleryId/selected-photos/:photoId/review', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId, photoId } = parseInput(
+        z.object({ galleryId: z.string().uuid(), photoId: z.string().uuid() }),
+        req.params,
+      );
+      requireJsonBody(req.body);
+      const body = parseInput(
+        z.object({
+          status: z.enum(['approved', 'needs_revision']),
+          note: z.string().trim().max(2000).nullable().optional(),
+        }).strict(),
+        req.body,
+        'INVALID_PROOFING_REVIEW',
+      );
+      res.json(successEnvelope(await services.proofing.setReview(req.user!, galleryId, photoId, body.status, body.note)));
+    } catch (error) { next(error); }
+  });
   router.get('/:galleryId', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.galleries.get(req.user!, galleryId))); }
     catch (error) { next(error); }
