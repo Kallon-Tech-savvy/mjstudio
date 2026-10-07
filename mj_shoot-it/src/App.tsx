@@ -21,6 +21,7 @@ import {
   type ClientRecord,
   type GalleryRecord,
   type PhotoRecord,
+  type ClientPhoto,
   type PhotographerUser,
 } from "@/lib/api";
 
@@ -545,7 +546,7 @@ function ClientAccessPage() {
 function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
-  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+  const [photos, setPhotos] = useState<ClientPhoto[]>([]);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
 
@@ -655,10 +656,19 @@ function ClientGalleryPage() {
           ) : (
             photos.map((photo) => (
               <article key={photo.photoId} className="photo-card panel">
-                <div className="photo-thumb">{photo.filename}</div>
+                <div className="photo-thumb">
+                  <img
+                    src={photo.thumbnail.url}
+                    alt="Photograph from this gallery"
+                    width={photo.thumbnail.width}
+                    height={photo.thumbnail.height}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
                 <div className="photo-meta">
-                  <strong>{photo.filename}</strong>
-                  <small>{photo.status ?? "visible"}</small>
+                  <span className="photo-position">Photograph {photo.position + 1}</span>
+                  {photo.recommended ? <span className="tag">Recommended</span> : null}
                 </div>
                 <div className="selection-actions">
                   <button type="button" className="secondary-button" onClick={() => handleSelection(photo.photoId, "favourite")}>
