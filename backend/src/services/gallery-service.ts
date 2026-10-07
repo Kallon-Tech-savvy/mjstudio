@@ -40,10 +40,30 @@ export class GalleryService {
     const membership = await resolveGalleryMembership(this.database, actor, galleryId);
     ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.view');
     const result = await this.database.query(
-      `SELECT id, studio_id AS "studioId", client_id AS "clientId", name,
-              workflow_status AS "workflowStatus", publication_status AS "publicationStatus",
-              expires_at AS "expiresAt", published_at AS "publishedAt", archived_at AS "archivedAt"
-         FROM galleries WHERE id = $1 AND studio_id = $2`,
+      `SELECT g.id, g.studio_id AS "studioId", g.client_id AS "clientId", g.name,
+              g.workflow_status AS "workflowStatus", g.publication_status AS "publicationStatus",
+              g.expires_at AS "expiresAt", g.published_at AS "publishedAt", g.archived_at AS "archivedAt",
+              c.name AS "clientName",
+              ga.selection_status AS "selectionStatus",
+              ga.selection_submitted_at AS "selectionSubmittedAt",
+              COALESCE(ga.selected_count, 0)::int AS "selectedCount"
+         FROM galleries g
+         JOIN clients c ON c.id = g.client_id
+         LEFT JOIN LATERAL (
+           SELECT s.status AS selection_status,
+                  s.submitted_at AS selection_submitted_at,
+                  COUNT(si.id) FILTER (WHERE si.selected)::int AS selected_count
+             FROM gallery_access a
+             LEFT JOIN gallery_selections s ON s.gallery_access_id = a.id
+             LEFT JOIN gallery_selection_items si ON si.gallery_selection_id = s.id
+            WHERE a.gallery_id = g.id
+              AND a.revoked_at IS NULL
+              AND (a.expires_at IS NULL OR a.expires_at > NOW())
+            GROUP BY s.status, s.submitted_at
+            ORDER BY a.created_at DESC
+            LIMIT 1
+         ) ga ON TRUE
+        WHERE g.id = $1 AND g.studio_id = $2`,
       [galleryId, actor.studioId],
     );
     if (!result.rows[0]) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
