@@ -857,3 +857,52 @@ h2 {
     font-size: clamp(2.7rem, 14vw, 4rem);
   }
 }
+
+.studio-selection-review {
+  margin: 28px 0;
+  padding: 24px;
+  border: 1px solid var(--border, #ddd9d3);
+  background: var(--surface, #fff);
+}
+
+.studio-selection-grid {
+  margin-top: 24px;
+}
+
+.studio-selection-photo {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border, #ddd9d3);
+  background: var(--canvas, #f3f1ed);
+}
+
+.studio-selection-photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.studio-selection-photo figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+}
+
+.studio-selection-photo figcaption strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-selection-photo figcaption span {
+  color: var(--muted, #6d6862);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .studio-selection-review {
+    padding: 18px;
+  }
+}
