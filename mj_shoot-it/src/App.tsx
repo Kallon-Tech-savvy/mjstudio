@@ -504,7 +504,7 @@ function PhotographerGalleryDetailPage() {
             <div className="panel-header compact-header">
               <div>
                 <p className="eyebrow">Client decision</p>
-                <h2>{selection.items.length} photographs selected</h2>
+                <h2>{selection.length} photographs selected</h2>
                 <p className="muted">
                   Received{gallery.selectionSubmittedAt ? ` · ${new Date(gallery.selectionSubmittedAt).toLocaleString()}` : ""}.
                   Review these choices before preparing delivery.
