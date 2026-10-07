@@ -7,7 +7,7 @@ import { galleryParamSchema, paginationSchema, parseInput, photoParamSchema, req
 import { NotFoundError } from '../errors.js';
 
 const accessSchema = z.object({ secret: z.string().min(32).max(256), pin: z.string().regex(/^\d{6}$/) }).strict();
-const selectionSchema = z.object({ selection: z.enum(['neutral', 'favourite', 'not_for_me']) }).strict();
+const selectionSchema = z.object({ selected: z.boolean() }).strict();
 const feedbackSchema = z.object({ message: z.string().trim().min(1).max(5000) }).strict();
 
 export function clientRouter(services: ApplicationServices) {
