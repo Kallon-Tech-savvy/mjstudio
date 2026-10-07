@@ -961,6 +961,33 @@ function ClientGalleryPage() {
     }
   };
 
+  const hasMorePhotos = photos.length < totalPhotos;
+
+  const handleLoadMore = async (): Promise<string | null> => {
+    if (!galleryId || isLoadingMore || !hasMorePhotos) return null;
+
+    const nextPage = currentPage + 1;
+    setIsLoadingMore(true);
+    setError("");
+
+    try {
+      const response = await listClientPhotos(galleryId, nextPage, 20);
+      const incoming = response.items ?? [];
+      const existingIds = new Set(photos.map((photo) => photo.photoId));
+      const newPhotos = incoming.filter((photo) => !existingIds.has(photo.photoId));
+
+      setPhotos((current) => [...current, ...newPhotos]);
+      setCurrentPage(nextPage);
+      setTotalPhotos(response.total ?? totalPhotos);
+      return newPhotos[0]?.photoId ?? null;
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "More photographs could not be loaded.");
+      return null;
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   const handleGalleryFeedback = async () => {
     if (!galleryId || !feedback.trim()) return;
 
