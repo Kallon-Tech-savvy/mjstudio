@@ -375,11 +375,15 @@ function PhotographerGalleriesPage() {
             galleries.map((gallery) => (
               <li key={gallery.galleryId} className="list-row interactive-row">
                 <div>
-                  <strong>{gallery.name}</strong>
-                  <small>{gallery.status ?? "draft"}</small>
+                  <strong>{gallery.clientName ?? gallery.name}</strong>
+                  <small>
+                    {gallery.selectionStatus === "submitted"
+                      ? `${gallery.selectedCount ?? 0} photographs selected · Selection received`
+                      : gallery.status ?? "draft"}
+                  </small>
                 </div>
                 <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
-                  Open
+                  {gallery.selectionStatus === "submitted" ? "Review →" : "Open"}
                 </Link>
               </li>
             ))
