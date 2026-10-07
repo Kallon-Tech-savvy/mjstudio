@@ -89,6 +89,20 @@ export type ClientSelectionItem = {
   updatedAt?: string;
 };
 
+export type StudioSelectionPhoto = {
+  photoId: string;
+  position: number;
+  filename: string;
+  thumbnail: PhotoRepresentation;
+};
+
+export type StudioSelection = {
+  id: string | null;
+  status: "draft" | "submitted" | null;
+  submittedAt: string | null;
+  items: StudioSelectionPhoto[];
+};
+
 export type ClientSelection = {
   id: string;
   status: "draft" | "submitted";
@@ -225,6 +239,10 @@ export async function createGallery(input: {
 
 export async function getGallery(galleryId: string): Promise<GalleryRecord> {
   return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`));
+}
+
+export async function getStudioSelection(galleryId: string): Promise<StudioSelection> {
+  return apiRequest<StudioSelection>(`/galleries/${galleryId}/selection`);
 }
 
 export async function listGalleryPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: PhotoRecord[]; total: number }> {
