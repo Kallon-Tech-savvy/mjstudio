@@ -1,6 +1,6 @@
 export type StudioStatus = 'active' | 'suspended' | 'archived';
-export type UserRole = 'owner' | 'manager' | 'editor' | 'viewer';
-export type AssetKind = 'original' | 'preview' | 'thumbnail' | 'download';
+export type UserRole = 'owner' | 'editor' | 'viewer';
+export type AssetKind = 'original' | 'preview';
 export type AssetState = 'pending' | 'ready' | 'superseded' | 'failed';
 export type GalleryAccessState = 'active' | 'revoked' | 'expired';
 

@@ -3,6 +3,9 @@ export type ApiEnvelope<T> = {
   meta?: Record<string, unknown>;
 };
 
+export type WorkflowStatus = "draft" | "reviewing" | "completed";
+export type PublicationStatus = "unpublished" | "published" | "revoked";
+
 export type PhotographerUser = {
   userId: string;
   email: string;
@@ -24,8 +27,9 @@ export type GalleryRecord = {
   galleryId: string;
   clientId: string;
   name: string;
-  status?: string;
-  publishState?: string;
+  workflowStatus?: WorkflowStatus | string;
+  publicationStatus?: PublicationStatus | string;
+  status?: string; // kept so older code still compiles; mirrors workflowStatus
   expiresAt?: string | null;
   createdAt?: string;
   [key: string]: unknown;
@@ -51,7 +55,7 @@ export type PhotoRecord = {
 };
  
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5432/api";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001/api";
 
 export class ApiError extends Error {
   constructor(
@@ -117,12 +121,31 @@ async function apiCollectionRequest<T>(path: string, normalize: (item: Record<st
 }
 
 function normalizeGallery(item: Record<string, unknown>): GalleryRecord {
+  const workflowStatus = String(item.workflowStatus ?? item.workflow_status ?? item.status ?? "draft");
+  const publicationStatus = String(item.publicationStatus ?? item.publication_status ?? "unpublished");
   return {
     ...item,
     galleryId: String(item.galleryId ?? item.id ?? ""),
-    clientId: String(item.clientId ?? ""),
-    status: String(item.status ?? item.publicationStatus ?? item.workflowStatus ?? "draft"),
+    clientId: String(item.clientId ?? item.client_id ?? ""),
+    workflowStatus,
+    publicationStatus,
+    status: workflowStatus,
+    expiresAt: (item.expiresAt ?? item.expires_at ?? null) as string | null,
+    createdAt: (item.createdAt ?? item.created_at) as string | undefined,
   } as GalleryRecord;
+}
+
+export async function createClient(input: {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+}): Promise<ClientRecord> {
+  return normalizeClient(
+    await apiRequest<Record<string, unknown>>("/clients", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  );
 }
 
 function normalizeClient(item: Record<string, unknown>): ClientRecord {
@@ -171,14 +194,15 @@ export async function listGalleries(page = 1, limit = 20): Promise<{ items: Gall
 }
 
 export async function createGallery(input: {
-  clientId: string;
+  clientId?: string;
+  newClient?: { name?: string; email?: string; phone?: string };
   name: string;
+  workflowStatus?: WorkflowStatus;
   expiresAt?: string | null;
 }): Promise<GalleryRecord> {
-  return apiRequest<GalleryRecord>("/galleries", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return normalizeGallery(
+    await apiRequest<Record<string, unknown>>("/galleries", { method: "POST", body: JSON.stringify(input) }),
+  );
 }
 
 export async function getGallery(galleryId: string): Promise<GalleryRecord> {
@@ -256,4 +280,66 @@ export async function createPhotoFeedback(
     method: "POST",
     body: JSON.stringify({ message }),
   });
+}
+
+
+// Append these to src/lib/api.ts (they use its private apiRequest + normalizePhoto/normalizeGallery).
+
+export type UploadTarget = {
+  url: string;
+  method?: "PUT" | "POST";
+  headers?: Record<string, string>;
+};
+
+export type CreatedPhoto = PhotoRecord & { upload?: UploadTarget };
+
+/** Step 1: register the photo. Server responds with the record + where to send the bytes. */
+export async function createPhoto(
+  galleryId: string,
+  input: { filename: string; mimeType: string },
+): Promise<CreatedPhoto> {
+  const raw = await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}/photos`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  const upload = (raw.upload ??
+    (typeof raw.uploadUrl === "string" ? { url: raw.uploadUrl } : undefined)) as UploadTarget | undefined;
+  return { ...normalizePhoto(raw, galleryId), upload };
+}
+
+/** Step 3: tell the server the bytes landed so it can process previews. */
+export async function completePhotoUpload(photoId: string): Promise<Record<string, unknown>> {
+  return apiRequest<Record<string, unknown>>(`/photos/${photoId}/upload-complete`, { method: "POST" });
+}
+
+export async function deletePhoto(photoId: string): Promise<void> {
+  await apiRequest<void>(`/photos/${photoId}`, { method: "DELETE" });
+}
+
+export type AccessRecord = {
+  permission: string;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  [key: string]: unknown;
+};
+
+/** Only one un-revoked access exists per gallery (uq_gallery_access_current), so the UI must read before it issues. */
+export async function listGalleryAccess(galleryId: string): Promise<AccessRecord[]> {
+  const data = await apiRequest<AccessRecord[] | null>(`/galleries/${galleryId}/access`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function resetGalleryAccess(
+  galleryId: string,
+  input: { permission: "view" | "view_download"; expiresAt?: string | null },
+): Promise<{ accessKey?: string; pin?: string; [key: string]: unknown }> {
+  return apiRequest(`/galleries/${galleryId}/access/reset`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function revokeGalleryAccess(galleryId: string): Promise<void> {
+  await apiRequest<unknown>(`/galleries/${galleryId}/access/revoke`, { method: "POST" });
+}
+
+export async function publishGallery(galleryId: string): Promise<GalleryRecord> {
+  return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}/publish`, { method: "POST" }));
 }

@@ -1,0 +1,111 @@
+import {
+  BadgeIcon,
+  CameraIcon,
+  DashIcon,
+  GearIcon,
+  ScrollIcon,
+  UsersIcon,
+} from './icon'
+
+export type AdminTab =
+  | 'dashboard'
+  | 'galleries'
+  | 'clients'
+  | 'staff'
+  | 'logs'
+  | 'settings'
+
+interface AdminTabsProps {
+  activeTab: AdminTab
+  onChange: (tab: AdminTab) => void
+
+  galleryCount: number
+  clientCount: number
+
+  canViewFinances: boolean
+  canManageStaff: boolean
+  isOwner: boolean
+}
+
+export function AdminTabs({
+  activeTab,
+  onChange,
+  galleryCount,
+  clientCount,
+  canViewFinances,
+  canManageStaff,
+  isOwner,
+}: AdminTabsProps) {
+  const tabs = [
+    {
+      id: 'dashboard' as const,
+      label: 'Dashboard',
+      icon: <DashIcon />,
+    },
+
+    {
+      id: 'galleries' as const,
+      label: `Galleries (${galleryCount})`,
+      icon: <CameraIcon />,
+    },
+
+    ...(canViewFinances
+      ? [
+          {
+            id: 'clients' as const,
+            label: `Clients (${clientCount})`,
+            icon: <UsersIcon />,
+          },
+        ]
+      : []),
+
+    ...(isOwner
+      ? [
+          {
+            id: 'staff' as const,
+            label: 'Team',
+            icon: <BadgeIcon />,
+          },
+        ]
+      : []),
+
+    ...(canManageStaff
+      ? [
+          {
+            id: 'logs' as const,
+            label: 'Audit Logs',
+            icon: <ScrollIcon />,
+          },
+        ]
+      : []),
+
+    {
+      id: 'settings' as const,
+      label: 'Settings & Billing',
+      icon: <GearIcon />,
+    },
+  ]
+
+  return (
+    <nav
+      className="admin-tabs"
+      aria-label="Admin sections"
+    >
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          type="button"
+          className={`admin-tab ${
+            activeTab === tab.id
+              ? 'admin-tab--active'
+              : ''
+          }`}
+          onClick={() => onChange(tab.id)}
+        >
+          {tab.icon}
+          <span>{tab.label}</span>
+        </button>
+      ))}
+    </nav>
+  )
+}

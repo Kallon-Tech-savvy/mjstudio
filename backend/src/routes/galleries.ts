@@ -5,14 +5,31 @@ import type { ApplicationServices } from '../services/container.js';
 import { collectionEnvelope, successEnvelope } from '../utils/response.js';
 import { galleryParamSchema, paginationSchema, parseInput, requireJsonBody } from '../http/validation.js';
 
-const createSchema = z.object({ clientId: z.string().uuid(), name: z.string().trim().min(1).max(200), expiresAt: z.string().datetime().nullable().optional() }).strict();
 const updateSchema = z.object({ name: z.string().trim().min(1).max(200).optional(), expiresAt: z.string().datetime().nullable().optional() }).strict().refine((value) => Object.keys(value).length > 0);
+
+const newClientSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  email: z.string().trim().email().max(320).optional(),
+  phone: z.string().trim().min(1).max(50).optional(),
+}).strict();
+
+const createSchema = z.object({
+  clientId: z.string().uuid().optional(),
+  newClient: newClientSchema.optional(),
+  name: z.string().trim().min(1).max(200),
+  workflowStatus: z.enum(['draft', 'reviewing', 'completed']).optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+}).strict().refine((v) => (v.clientId !== undefined) !== (v.newClient !== undefined), {
+  message: 'Provide either clientId or newClient.',
+});
 
 export function galleriesRouter(services: ApplicationServices) {
   const router = Router();
   const auth = requirePhotographerAuth(services);
   router.post('/', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { requireJsonBody(req.body); const input = parseInput(createSchema, req.body, 'INVALID_GALLERY_DATA'); res.status(201).json(successEnvelope(await services.galleries.create(req.user!, { ...input, expiresAt: input.expiresAt == null ? input.expiresAt : new Date(input.expiresAt) }))); }
+    try { requireJsonBody(req.body); const input = parseInput(createSchema, req.body, 'INVALID_GALLERY_DATA'); 
+      res.status(201).json(successEnvelope(await services.galleries.create(
+        req.user!, {...input, expiresAt: input.expiresAt == null ? input.expiresAt : new Date(input.expiresAt) }))); }
     catch (error) { next(error); }
   });
   router.get('/', auth, async (req: AuthenticatedRequest, res, next) => {

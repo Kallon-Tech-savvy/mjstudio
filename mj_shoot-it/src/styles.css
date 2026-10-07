@@ -1,16 +1,29 @@
 :root {
-  --page-bg: #f4f2ee;
-  --panel-bg: #ffffff;
-  --panel-alt: #efe8df;
-  --ink: #1f1a17;
+  --page-bg: #04111f;
+  --panel-bg: #071a2e;
+  --panel-alt: #0b2742;
+  --ink: #9db4cb;
   --muted: #5e534d;
   --line: #e6ddd5;
   --brand: #8f5d3b;
-  --brand-dark: #6a3f27;
-  --accent: #d7c7b5;
+  --brand-dark: #df1d4e;
+  --accent: #rgba(209, 48, 143, 0.16);
   --success: #2d7d58;
   --danger: #b5483d;
   --shadow: 0 18px 48px rgba(24, 18, 15, 0.08);
+
+  --sea-950: #04111f;
+  --sea-900: #071a2e;
+  --sea-800: #0b2742;
+  --sea-700: #11375a;
+  --sea-600: #1b4d7a;
+  --mist: #9db4cb;
+  --foam: #e8f0f8;
+  --magenta: #df1d4e;
+  --magenta-soft: rgba(209, 48, 143, 0.16);
+  --magenta-glow: rgba(209, 48, 143, 0.35);
+  --ok: #4fc3a1;
+  --danger: #ff7a9c;
 }
 
 * {
@@ -58,7 +71,7 @@ textarea {
 }
 
 .panel {
-  background: var(--panel-bg);
+  background: var(--sea-800);
   border: 1px solid var(--line);
   border-radius: 22px;
   box-shadow: var(--shadow);
@@ -95,13 +108,13 @@ p {
 }
 
 h1 {
-  font-size: clamp(2.5rem, 4vw, 4rem);
+  font-size: clamp(2.5rem, 3vw, 4rem);
   line-height: 1.05;
   margin-bottom: 18px;
 }
 
 h2 {
-  font-size: 1.45rem;
+  font-size: clamp(2.5rem, 3vw, 4rem);
   margin-bottom: 8px;
 }
 
@@ -120,6 +133,7 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  padding-top: 12px;
 }
 
 .primary-button,
