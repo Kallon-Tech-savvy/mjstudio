@@ -40,6 +40,28 @@ export type ClientRecord = {
   [key: string]: unknown;
 };
 
+export type PhotoRepresentation = {
+  url: string;
+  expiresAt: string;
+  width: number;
+  height: number;
+  mimeType: string;
+};
+
+export type ClientPhoto = {
+  photoId: string;
+  position: number;
+  recommended: boolean;
+  thumbnail: PhotoRepresentation;
+};
+
+export type ClientPhotoDetail = {
+  photoId: string;
+  position: number;
+  recommended: boolean;
+  preview: PhotoRepresentation;
+};
+
 export type PhotoRecord = {
   photoId: string;
   galleryId: string;
@@ -210,8 +232,17 @@ export async function getClientGallery(galleryId: string): Promise<GalleryRecord
   return normalizeGallery(await apiRequest<Record<string, unknown>>(`/client/galleries/${galleryId}`));
 }
 
-export async function listClientPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: PhotoRecord[]; total: number }> {
-  return apiCollectionRequest(`/client/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => normalizePhoto(item, galleryId));
+export async function listClientPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: ClientPhoto[]; total: number }> {
+  return apiCollectionRequest<ClientPhoto>(`/client/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => ({
+    photoId: String(item.photoId ?? item.id ?? ""),
+    position: Number(item.position ?? 0),
+    recommended: Boolean(item.recommended),
+    thumbnail: item.thumbnail as PhotoRepresentation,
+  }));
+}
+
+export async function getClientPhoto(galleryId: string, photoId: string): Promise<ClientPhotoDetail> {
+  return apiRequest<ClientPhotoDetail>(`/client/galleries/${galleryId}/photos/${photoId}`);
 }
 
 export async function setSelection(
