@@ -55,6 +55,7 @@ export const galleryRolePermissions: Record<GalleryRole, readonly GalleryPermiss
     'photo.recommend',
     'photo.upload',
     'activity.view',
+    'proofing.review',
   ],
   uploader: ['gallery.view', 'photo.view', 'photo.create', 'photo.upload'],
 } as const;

@@ -275,7 +275,16 @@ export async function setStudioPhotoReview(
   photoId: string,
   status: "approved" | "needs_revision",
   note?: string | null,
-): Promise<StudioSelectedPhoto> {
+): Promise<{
+  id: string;
+  galleryId: string;
+  photoId: string;
+  status: "approved" | "needs_revision";
+  note?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  updatedAt?: string;
+}> {
   return apiRequest<StudioSelectedPhoto>(`/galleries/${galleryId}/selected-photos/${photoId}/review`, {
     method: "PUT",
     body: JSON.stringify({ status, note }),
