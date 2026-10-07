@@ -118,6 +118,47 @@ export class CatalogService {
     return { items: items.rows, total: Number(count.rows[0]?.count ?? 0) };
   }
 
+  async listSelectedPhotos(actor: PhotographerContext, galleryId: string) {
+    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
+
+    const membership = await this.database.query(
+      `SELECT 1 FROM galleries g
+         JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
+         JOIN studio_members sm ON sm.studio_id = g.studio_id AND sm.user_id = $1
+        WHERE g.id = $2 AND g.studio_id = $3 AND g.archived_at IS NULL`,
+      [actor.userId, galleryId, actor.studioId],
+    );
+    if (!membership.rows[0]) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
+
+    const result = await this.database.query(
+      `SELECT p.id AS "photoId", p.position, p.filename,
+              pa.storage_key AS "previewStorageKey", pa.width AS "previewWidth",
+              pa.height AS "previewHeight", pa.mime_type AS "previewMimeType"
+         FROM gallery_access a
+         JOIN gallery_selections s ON s.gallery_access_id = a.id AND s.status = 'submitted'
+         JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
+         JOIN photos p ON p.id = si.photo_id AND p.gallery_id = $1 AND p.deleted_at IS NULL AND p.status = 'active'
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'preview' AND pa.state = 'current'
+           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
+        WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
+          AND (a.expires_at IS NULL OR a.expires_at > NOW())
+        ORDER BY p.position, p.id`,
+      [galleryId],
+    );
+
+    return Promise.all(result.rows.map(async (item) => ({
+      photoId: item.photoId,
+      position: item.position,
+      filename: item.filename,
+      preview: await this.photoRepresentations!.createView({
+        storageKey: item.previewStorageKey,
+        width: item.previewWidth,
+        height: item.previewHeight,
+        mimeType: item.previewMimeType,
+      }, 600),
+    })));
+  }
+
   async getClientGallery(client: ClientContext, galleryId: string) {
     if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
     const result = await this.database.query(
