@@ -784,3 +784,43 @@ h2 {
     width: 100%;
   }
 }
+
+
+/* Client submission completion */
+.client-completion-page {
+  width: min(760px, 100%);
+  margin: clamp(72px, 14vh, 160px) auto;
+  padding: 0 8px;
+}
+
+.client-completion-page h1 {
+  max-width: 720px;
+  margin-bottom: 24px;
+  font-size: clamp(3rem, 7vw, 5.75rem);
+  letter-spacing: -0.045em;
+}
+
+.completion-lead {
+  max-width: 680px;
+  margin-bottom: 12px;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  line-height: 1.55;
+}
+
+.completion-lead strong {
+  font-weight: 650;
+}
+
+.completion-actions {
+  margin-top: 36px;
+}
+
+@media (max-width: 700px) {
+  .client-completion-page {
+    margin-top: 56px;
+  }
+
+  .client-completion-page h1 {
+    font-size: clamp(2.7rem, 14vw, 4rem);
+  }
+}
