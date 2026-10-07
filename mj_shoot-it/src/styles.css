@@ -984,3 +984,132 @@ h2 {
     font-size: clamp(2.7rem, 14vw, 4rem);
   }
 }
+
+/* Studio Proofing Viewer Extensions */
+.studio-photo-viewer-body {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--ink);
+}
+
+.studio-photo-viewer-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+@media (max-width: 860px) {
+  .studio-photo-viewer-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .studio-photo-viewer-sidebar {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+.status-badge-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: 2px;
+}
+
+.status-badge.status-approved,
+.status-tag.status-approved {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.status-badge.status-needs_revision,
+.status-tag.status-needs_revision {
+  background: #fce8e6;
+  color: #c5221f;
+}
+
+.status-badge.status-pending,
+.status-tag.status-pending {
+  background: #f1f3f4;
+  color: #5f6368;
+}
+
+.photo-meta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.status-tag {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: 500;
+}
+
+.proofing-actions-panel h3 {
+  font-size: 1rem;
+  margin-bottom: 12px;
+}
+
+.proofing-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.proofing-button-group .approve-button.active {
+  background: #137333;
+  color: #fff;
+}
+
+.proofing-button-group .revision-button.active {
+  background: #c5221f;
+  color: #fff;
+  border-color: #c5221f;
+}
+
+.revision-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.studio-photo-feedback-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.studio-photo-feedback-panel h4 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.compact-row {
+  padding: 8px 10px;
+}

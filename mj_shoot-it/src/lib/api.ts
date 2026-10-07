@@ -391,3 +391,65 @@ export async function createPhotoFeedback(
     body: JSON.stringify({ message }),
   });
 }
+
+
+export interface ClientDeliveryItem {
+  id: string;
+  photoId: string;
+  position: number;
+  filename: string;
+  preview?: PhotoRepresentation;
+}
+
+export interface ClientDeliveryResponse {
+  isReleased: boolean;
+  releasedAt?: string | null;
+  items: ClientDeliveryItem[];
+}
+
+export async function getClientDelivery(galleryId: string): Promise<ClientDeliveryResponse> {
+  return apiRequest<ClientDeliveryResponse>(`/client/galleries/${galleryId}/delivery`);
+}
+
+export async function downloadDeliveryPhoto(galleryId: string, photoId: string): Promise<{ download_url: string; expires_at?: string }> {
+  return apiRequest<{ download_url: string; expires_at?: string }>(`/client/galleries/${galleryId}/photos/${photoId}/download`, {
+    method: "POST",
+  });
+}
+
+
+export interface StudioDeliveryDetails {
+  id: string;
+  galleryId: string;
+  clientId: string;
+  status: "pending" | "preparing" | "ready" | "completed";
+  createdAt: string;
+  updatedAt: string;
+  readyAt?: string | null;
+  releasedAt?: string | null;
+  completedAt?: string | null;
+  items: Array<{
+    id: string;
+    deliveryId: string;
+    photoId: string;
+    assetId?: string | null;
+    filename: string;
+    position: number;
+    status: "preparing" | "ready" | "failed";
+  }>;
+  approvedCount: number;
+  totalSelectedCount: number;
+  canPrepare: boolean;
+}
+
+export async function getStudioDelivery(galleryId: string): Promise<StudioDeliveryDetails> {
+  return apiRequest<StudioDeliveryDetails>(`/galleries/${galleryId}/delivery`);
+}
+
+export async function prepareStudioDelivery(galleryId: string): Promise<StudioDeliveryDetails> {
+  return apiRequest<StudioDeliveryDetails>(`/galleries/${galleryId}/delivery/prepare`, { method: "POST" });
+}
+
+export async function releaseStudioDelivery(galleryId: string): Promise<StudioDeliveryDetails> {
+  return apiRequest<StudioDeliveryDetails>(`/galleries/${galleryId}/delivery/release`, { method: "POST" });
+}

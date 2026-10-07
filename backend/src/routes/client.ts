@@ -81,5 +81,13 @@ export function clientRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { message } = parseInput(feedbackSchema, req.body, 'INVALID_FEEDBACK'); await services.rateLimits.assertAllowed(`feedback:${req.client!.clientSessionId}:${req.ip}`, 'feedback'); await services.clientSessions.assertGallery(req.client!, galleryId); res.status(201).json(successEnvelope(await services.feedback.createPhotoFeedback(req.client!, photoId, message))); }
     catch (error) { next(error); }
   });
+
+  router.get('/galleries/:galleryId/delivery', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      res.json(successEnvelope(await services.delivery.getClientDelivery(req.client!, galleryId)));
+    } catch (error) { next(error); }
+  });
   return router;
 }
