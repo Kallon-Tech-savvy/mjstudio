@@ -1003,8 +1003,13 @@ function ClientGalleryPage() {
 
       {selectedPhotoIds.size > 0 ? (
         <div className="selection-bar" role="status" aria-live="polite">
-          <span><strong>{selectedPhotoIds.size}</strong> selected</span>
-          <span className="selection-bar-note">Open photographs to review your choices.</span>
+          <div>
+            <strong>{selectedPhotoIds.size} selected</strong>
+            <span className="selection-bar-note">Your choices are saved.</span>
+          </div>
+          <Link to={`/client/gallery/${galleryId}/selection`} className="primary-button selection-review-link">
+            Review selection
+          </Link>
         </div>
       ) : null}
 
