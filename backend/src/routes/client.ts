@@ -50,7 +50,7 @@ export function clientRouter(services: ApplicationServices) {
     } catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(collectionEnvelope(await services.selections.getSelections(req.client!))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.getSelection(req.client!))); }
     catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/photos', auth, async (req: AuthenticatedRequest, res, next) => {
