@@ -14,6 +14,7 @@ import {
   getStudioSummary,
   listClients,
   listGalleryPhotos,
+  listSelectedPhotos,
   listGalleries,
   listClientPhotos,
   getClientPhoto,
@@ -24,6 +25,7 @@ import {
   type ClientRecord,
   type GalleryRecord,
   type PhotoRecord,
+  type StudioSelectedPhoto,
   type ClientPhoto,
   type PhotographerUser,
   type ClientSelection,
@@ -415,6 +417,7 @@ function PhotographerGalleryDetailPage() {
   const navigate = useNavigate();
   const [gallery, setGallery] = useState<Record<string, unknown> | null>(null);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+  const [selectedPhotos, setSelectedPhotos] = useState<StudioSelectedPhoto[]>([]);
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [error, setError] = useState("");
 
@@ -437,6 +440,10 @@ function PhotographerGalleryDetailPage() {
 
         setGallery(galleryResponse);
         setPhotos(photoResponse.items ?? []);
+
+        if (galleryResponse.selectionStatus === "submitted") {
+          setSelectedPhotos(await listSelectedPhotos(galleryId));
+        }
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
@@ -490,6 +497,44 @@ function PhotographerGalleryDetailPage() {
         </div>
 
         {error ? <div className="error-box">{error}</div> : null}
+
+        {gallery?.selectionStatus === "submitted" ? (
+          <section className="studio-selection-review">
+            <div className="panel-header compact-header">
+              <div>
+                <p className="eyebrow">Proofing</p>
+                <h2>Client selection</h2>
+                <p className="muted">
+                  {selectedPhotos.length} photographs are ready for your review.
+                </p>
+              </div>
+              <span className="tag">Submitted</span>
+            </div>
+
+            {selectedPhotos.length === 0 ? (
+              <div className="empty-state">The client submitted an empty selection.</div>
+            ) : (
+              <div className="photo-grid studio-selection-grid">
+                {selectedPhotos.map((photo) => (
+                  <figure key={photo.photoId} className="studio-selection-photo">
+                    <img
+                      src={photo.preview.url}
+                      alt={photo.filename}
+                      width={photo.preview.width}
+                      height={photo.preview.height}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <figcaption>
+                      <strong>{photo.filename}</strong>
+                      <span>Photograph {photo.position + 1}</span>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <ul className="list-stack spaced-list">
           {photos.length === 0 ? (
