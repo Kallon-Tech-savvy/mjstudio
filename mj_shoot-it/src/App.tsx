@@ -12,9 +12,9 @@ import {
   getGallery,
   getPhotographerMe,
   getStudioSummary,
+  getStudioSelection,
   listClients,
   listGalleryPhotos,
-  listSelectedPhotos,
   listGalleries,
   listClientPhotos,
   getClientPhoto,
@@ -25,10 +25,10 @@ import {
   type ClientRecord,
   type GalleryRecord,
   type PhotoRecord,
-  type StudioSelectedPhoto,
   type ClientPhoto,
   type PhotographerUser,
   type ClientSelection,
+  type StudioSelection,
 } from "@/lib/api";
 
 function HomePage() {
@@ -417,7 +417,7 @@ function PhotographerGalleryDetailPage() {
   const navigate = useNavigate();
   const [gallery, setGallery] = useState<Record<string, unknown> | null>(null);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
-  const [selectedPhotos, setSelectedPhotos] = useState<StudioSelectedPhoto[]>([]);
+  const [selection, setSelection] = useState<StudioSelection | null>(null);
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [error, setError] = useState("");
 
@@ -433,17 +433,15 @@ function PhotographerGalleryDetailPage() {
           return;
         }
 
-        const [galleryResponse, photoResponse] = await Promise.all([
+        const [galleryResponse, photoResponse, selectionResponse] = await Promise.all([
           getGallery(galleryId),
           listGalleryPhotos(galleryId, 1, 20),
+          getStudioSelection(galleryId),
         ]);
 
         setGallery(galleryResponse);
         setPhotos(photoResponse.items ?? []);
-
-        if (galleryResponse.selectionStatus === "submitted") {
-          setSelectedPhotos(await listSelectedPhotos(galleryId));
-        }
+        setSelection(selectionResponse);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
@@ -498,38 +496,41 @@ function PhotographerGalleryDetailPage() {
 
         {error ? <div className="error-box">{error}</div> : null}
 
-        {gallery?.selectionStatus === "submitted" ? (
+        {selection?.status === "submitted" ? (
           <section className="studio-selection-review">
             <div className="panel-header compact-header">
               <div>
-                <p className="eyebrow">Proofing</p>
-                <h2>Client selection</h2>
+                <p className="eyebrow">Client decision</p>
+                <h2>{selection.items.length} photographs selected</h2>
                 <p className="muted">
-                  {selectedPhotos.length} photographs are ready for your review.
+                  Received{selection.submittedAt ? ` · ${new Date(selection.submittedAt).toLocaleString()}` : ""}.
+                  Review these choices before preparing delivery.
                 </p>
               </div>
-              <span className="tag">Submitted</span>
+              <span className="tag">Selection received</span>
             </div>
 
-            {selectedPhotos.length === 0 ? (
+            {selection.items.length === 0 ? (
               <div className="empty-state">The client submitted an empty selection.</div>
             ) : (
               <div className="photo-grid studio-selection-grid">
-                {selectedPhotos.map((photo) => (
-                  <figure key={photo.photoId} className="studio-selection-photo">
-                    <img
-                      src={photo.preview.url}
-                      alt={photo.filename}
-                      width={photo.preview.width}
-                      height={photo.preview.height}
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <figcaption>
-                      <strong>{photo.filename}</strong>
-                      <span>Photograph {photo.position + 1}</span>
-                    </figcaption>
-                  </figure>
+                {selection.items.map((photo) => (
+                  <article key={photo.photoId} className="photo-card studio-selection-card">
+                    <div className="photo-thumb">
+                      <img
+                        src={photo.thumbnail.url}
+                        alt={`Selected photograph ${photo.position + 1}`}
+                        width={photo.thumbnail.width}
+                        height={photo.thumbnail.height}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </div>
+                    <div className="photo-meta">
+                      <strong>Photograph {photo.position + 1}</strong>
+                      <small>{photo.filename}</small>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
