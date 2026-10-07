@@ -715,6 +715,7 @@ function ClientGalleryPage() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [error, setError] = useState("");
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
 
@@ -768,6 +769,7 @@ function ClientGalleryPage() {
     try {
       await createGalleryFeedback(galleryId, feedback.trim());
       setFeedback("");
+      setIsFeedbackOpen(false);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Your feedback could not be submitted.");
     }
@@ -866,7 +868,7 @@ function ClientGalleryPage() {
           )}
         </div>
 
-        {feedback.trim() ? (
+        {isFeedbackOpen ? (
           <section className="gallery-feedback">
             <textarea
               className="textarea"
@@ -880,7 +882,7 @@ function ClientGalleryPage() {
             </button>
           </section>
         ) : (
-          <button type="button" className="button-ghost feedback-trigger" onClick={() => setFeedback(" ")}>
+          <button type="button" className="button-ghost feedback-trigger" onClick={() => setIsFeedbackOpen(true)}>
             Leave a note for your photographer
           </button>
         )}
