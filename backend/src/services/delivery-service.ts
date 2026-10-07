@@ -138,7 +138,8 @@ export class DeliveryService {
          JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
          JOIN photos p ON p.id = si.photo_id AND p.deleted_at IS NULL AND p.status = 'active'
          JOIN galleries g ON g.id = p.gallery_id
-         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'original' AND pa.state = 'current'\n           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'not_required'
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'original' AND pa.state = 'current'
+           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'not_required'
          JOIN gallery_proofing_reviews pr ON pr.gallery_id = p.gallery_id AND pr.photo_id = p.id AND pr.status = 'approved'
         WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
           AND (a.expires_at IS NULL OR a.expires_at > NOW())`,
