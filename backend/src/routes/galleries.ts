@@ -20,8 +20,24 @@ export function galleriesRouter(services: ApplicationServices) {
     catch (error) { next(error); }
   });
   router.get('/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.catalog.getStudioSelection(req.user!, galleryId))); }
-    catch (error) { next(error); }
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const gallery = await services.galleries.get(req.user!, galleryId);
+      const items = gallery.selectionStatus === 'submitted'
+        ? await services.catalog.listSelectedPhotos(req.user!, galleryId)
+        : [];
+      res.json(successEnvelope({
+        id: gallery.selectionStatus === 'submitted' ? galleryId : null,
+        status: gallery.selectionStatus ?? null,
+        submittedAt: gallery.selectionSubmittedAt ?? null,
+        items: items.map((item) => ({
+          photoId: item.photoId,
+          position: item.position,
+          filename: item.filename,
+          preview: item.preview,
+        })),
+      }));
+    } catch (error) { next(error); }
   });
   router.get('/:galleryId', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.galleries.get(req.user!, galleryId))); }
