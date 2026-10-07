@@ -1,6 +1,8 @@
 import type { PhotographerContext, ClientContext } from '../auth/context.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import type { Database } from './service-common.js';
+import { PhotoRepresentationService } from './photo-representation-service.js';
+import type { PhotoStorage } from './photo-service.js';
 
 export const MAX_PAGE_SIZE = 100;
 export function validatePage(page: number, limit: number) {
@@ -10,7 +12,10 @@ export function validatePage(page: number, limit: number) {
 }
 
 export class CatalogService {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    private readonly photoRepresentations?: PhotoRepresentationService,
+  ) {}
 
   async listClients(actor: PhotographerContext, page: number, limit: number) {
     validatePage(page, limit);
@@ -110,20 +115,22 @@ export class CatalogService {
   async listClientPhotos(client: ClientContext, galleryId: string, page: number, limit: number) {
     validatePage(page, limit);
     if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
+    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
     const offset = (page - 1) * limit;
     const [items, count] = await Promise.all([
       this.database.query(
-        `SELECT p.id, p.filename, p.position, r.photo_id IS NOT NULL AS recommended,
-                p.created_at AS "createdAt"
+        `SELECT p.id, p.position, r.photo_id IS NOT NULL AS recommended,
+                pa.storage_key AS "thumbnailStorageKey", pa.width AS "thumbnailWidth",
+                pa.height AS "thumbnailHeight", pa.mime_type AS "thumbnailMimeType"
            FROM photos p LEFT JOIN recommendations r ON r.photo_id = p.id AND r.gallery_id = p.gallery_id
+           JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'thumbnail' AND pa.state = 'current'
+             AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
           WHERE p.gallery_id = $1 AND p.deleted_at IS NULL AND p.status = 'active'
             AND EXISTS (SELECT 1 FROM client_sessions cs JOIN gallery_access ga ON ga.id = cs.gallery_access_id
               JOIN galleries g ON g.id = ga.gallery_id
               WHERE cs.id = $4 AND ga.id = $5 AND ga.gallery_id = p.gallery_id AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
                 AND g.publication_status = 'published' AND g.archived_at IS NULL
                 AND (cs.expires_at IS NULL OR cs.expires_at > NOW()) AND (ga.expires_at IS NULL OR ga.expires_at > NOW()))
-            AND EXISTS (SELECT 1 FROM photo_assets pa WHERE pa.photo_id = p.id AND pa.type = 'thumbnail' AND pa.state = 'current'
-              AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready')
           ORDER BY p.position, p.id LIMIT $2 OFFSET $3`, [galleryId, limit, offset, client.clientSessionId, client.galleryAccessId]),
       this.database.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM photos p WHERE p.gallery_id = $1 AND p.deleted_at IS NULL AND p.status = 'active'
@@ -135,7 +142,18 @@ export class CatalogService {
           AND EXISTS (SELECT 1 FROM photo_assets pa WHERE pa.photo_id = p.id AND pa.type = 'thumbnail' AND pa.state = 'current'
             AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready')`, [galleryId, client.clientSessionId, client.galleryAccessId]),
     ]);
-    return { items: items.rows, total: Number(count.rows[0]?.count ?? 0) };
+    const resolvedItems = await Promise.all(items.rows.map(async (item) => ({
+      photoId: item.id,
+      position: item.position,
+      recommended: item.recommended,
+      thumbnail: await this.photoRepresentations!.createView({
+        storageKey: item.thumbnailStorageKey,
+        width: item.thumbnailWidth,
+        height: item.thumbnailHeight,
+        mimeType: item.thumbnailMimeType,
+      }, 1800),
+    })));
+    return { items: resolvedItems, total: Number(count.rows[0]?.count ?? 0) };
   }
 
   async getStudioSummary(actor: PhotographerContext) {
