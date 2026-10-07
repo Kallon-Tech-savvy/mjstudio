@@ -61,6 +61,14 @@ export function clientRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { selected } = parseInput(selectionSchema, req.body, 'INVALID_SELECTION'); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.setSelection(req.client!, photoId, selected))); }
     catch (error) { next(error); }
   });
+  router.post('/galleries/:galleryId/selection/submit', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      res.json(successEnvelope(await services.selections.submitSelection(req.client!)));
+    } catch (error) { next(error); }
+  });
+
   router.post('/galleries/:galleryId/photos/:photoId/download', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download'); await services.clientSessions.assertGallery(req.client!, galleryId); const capability = await services.downloads.create(req.client!, photoId); res.json(successEnvelope({ download_url: capability.url, expires_at: capability.expiresAt })); }
     catch (error) { next(error); }
