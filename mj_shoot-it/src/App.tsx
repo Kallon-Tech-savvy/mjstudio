@@ -14,6 +14,7 @@ import {
   listGalleryPhotos,
   listGalleries,
   listClientPhotos,
+  getClientPhoto,
   photographerLogin,
   photographerLogout,
   setSelection,
@@ -142,6 +143,7 @@ function PhotographerDashboardPage() {
   const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -543,6 +545,64 @@ function ClientAccessPage() {
   );
 }
 
+function ClientPhotoViewer({ galleryId, photoId, onClose }: { galleryId: string; photoId: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [photo, setPhoto] = useState<Awaited<ReturnType<typeof getClientPhoto>> | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void getClientPhoto(galleryId, photoId)
+      .then((result) => { if (active) setPhoto(result); })
+      .catch((caughtError) => {
+        if (active) setError(caughtError instanceof Error ? caughtError.message : "Unable to open photograph.");
+      });
+    return () => { active = false; };
+  }, [galleryId, photoId]);
+
+  if (error) {
+    return (
+      <div className="viewer-backdrop" role="dialog" aria-modal="true">
+        <div className="viewer-panel">
+          <button type="button" className="viewer-close" onClick={onClose}>Close</button>
+          <div className="error-box">{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="viewer-backdrop" role="dialog" aria-modal="true" aria-label="Photograph viewer">
+      <button type="button" className="viewer-dismiss" aria-label="Close photograph viewer" onClick={onClose} />
+      <div className="viewer-panel">
+        <div className="viewer-toolbar">
+          <span>Photograph {photo ? photo.position + 1 : "…"}</span>
+          <button type="button" className="viewer-close" onClick={onClose}>Close</button>
+        </div>
+        <div className="viewer-image-wrap">
+          {photo ? (
+            <img
+              src={photo.preview.url}
+              alt={`Photograph ${photo.position + 1} from this gallery`}
+              width={photo.preview.width}
+              height={photo.preview.height}
+              decoding="async"
+            />
+          ) : (
+            <div className="viewer-loading">Loading photograph…</div>
+          )}
+        </div>
+        {photo ? (
+          <div className="viewer-actions">
+            <button type="button" className="secondary-button" onClick={() => navigate(`/client/gallery/${galleryId}?photo=${photoId}`)}>Keep open</button>
+            <button type="button" className="primary-button" onClick={onClose}>Back to gallery</button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
@@ -656,7 +716,7 @@ function ClientGalleryPage() {
           ) : (
             photos.map((photo) => (
               <article key={photo.photoId} className="photo-card panel">
-                <div className="photo-thumb">
+                <button type="button" className="photo-thumb" onClick={() => setViewerPhotoId(photo.photoId)} aria-label={`Open photograph ${photo.position + 1}`}>
                   <img
                     src={photo.thumbnail.url}
                     alt="Photograph from this gallery"
@@ -665,7 +725,7 @@ function ClientGalleryPage() {
                     loading="lazy"
                     decoding="async"
                   />
-                </div>
+                </button>
                 <div className="photo-meta">
                   <span className="photo-position">Photograph {photo.position + 1}</span>
                   {photo.recommended ? <span className="tag">Recommended</span> : null}
@@ -694,6 +754,9 @@ function ClientGalleryPage() {
           )}
         </div>
       </div>
+      {viewerPhotoId ? (
+        <ClientPhotoViewer galleryId={galleryId} photoId={viewerPhotoId} onClose={() => setViewerPhotoId(null)} />
+      ) : null}
     </main>
   );
 }
