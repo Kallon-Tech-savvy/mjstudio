@@ -545,27 +545,94 @@ function ClientAccessPage() {
   );
 }
 
-function ClientPhotoViewer({ galleryId, photoId, onClose }: { galleryId: string; photoId: string; onClose: () => void }) {
-  const navigate = useNavigate();
+function ClientPhotoViewer({
+  galleryId,
+  photos,
+  photoId,
+  selectedPhotoIds,
+  onSelectToggle,
+  onClose,
+  onNavigate,
+}: {
+  galleryId: string;
+  photos: ClientPhoto[];
+  photoId: string;
+  selectedPhotoIds: Set<string>;
+  onSelectToggle: (photoId: string) => void;
+  onClose: () => void;
+  onNavigate: (photoId: string) => void;
+}) {
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof getClientPhoto>> | null>(null);
   const [error, setError] = useState("");
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  const currentIndex = photos.findIndex((item) => item.photoId === photoId);
+  const previousPhoto = currentIndex > 0 ? photos[currentIndex - 1] : null;
+  const nextPhoto = currentIndex >= 0 && currentIndex < photos.length - 1 ? photos[currentIndex + 1] : null;
+  const isSelected = selectedPhotoIds.has(photoId);
 
   useEffect(() => {
     let active = true;
+    setPhoto(null);
+    setError("");
+
     void getClientPhoto(galleryId, photoId)
-      .then((result) => { if (active) setPhoto(result); })
+      .then((result) => {
+        if (active) setPhoto(result);
+      })
       .catch((caughtError) => {
         if (active) setError(caughtError instanceof Error ? caughtError.message : "Unable to open photograph.");
       });
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, [galleryId, photoId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      } else if (event.key === "ArrowLeft" && previousPhoto) {
+        event.preventDefault();
+        onNavigate(previousPhoto.photoId);
+      } else if (event.key === "ArrowRight" && nextPhoto) {
+        event.preventDefault();
+        onNavigate(nextPhoto.photoId);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, onNavigate, previousPhoto?.photoId, nextPhoto?.photoId]);
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    setTouchStartX(event.changedTouches[0]?.clientX ?? null);
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartX === null) return;
+    const endX = event.changedTouches[0]?.clientX ?? touchStartX;
+    const distance = endX - touchStartX;
+    setTouchStartX(null);
+
+    if (Math.abs(distance) < 48) return;
+    if (distance < 0 && nextPhoto) onNavigate(nextPhoto.photoId);
+    if (distance > 0 && previousPhoto) onNavigate(previousPhoto.photoId);
+  };
 
   if (error) {
     return (
-      <div className="viewer-backdrop" role="dialog" aria-modal="true">
+      <div className="viewer-backdrop" role="dialog" aria-modal="true" aria-label="Photograph viewer">
         <div className="viewer-panel">
-          <button type="button" className="viewer-close" onClick={onClose}>Close</button>
-          <div className="error-box">{error}</div>
+          <div className="viewer-toolbar">
+            <span>Unable to open photograph</span>
+            <button type="button" className="viewer-close" onClick={onClose}>Close</button>
+          </div>
+          <div className="viewer-error">
+            <div className="error-box">{error}</div>
+          </div>
         </div>
       </div>
     );
@@ -574,11 +641,17 @@ function ClientPhotoViewer({ galleryId, photoId, onClose }: { galleryId: string;
   return (
     <div className="viewer-backdrop" role="dialog" aria-modal="true" aria-label="Photograph viewer">
       <button type="button" className="viewer-dismiss" aria-label="Close photograph viewer" onClick={onClose} />
-      <div className="viewer-panel">
+      <div className="viewer-panel" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="viewer-toolbar">
-          <span>Photograph {photo ? photo.position + 1 : "…"}</span>
+          <div>
+            <span className="viewer-count">
+              {currentIndex >= 0 ? currentIndex + 1 : "…"} of {photos.length}
+            </span>
+            {photo?.recommended ? <span className="viewer-recommended">Recommended</span> : null}
+          </div>
           <button type="button" className="viewer-close" onClick={onClose}>Close</button>
         </div>
+
         <div className="viewer-image-wrap">
           {photo ? (
             <img
@@ -592,12 +665,44 @@ function ClientPhotoViewer({ galleryId, photoId, onClose }: { galleryId: string;
             <div className="viewer-loading">Loading photograph…</div>
           )}
         </div>
-        {photo ? (
-          <div className="viewer-actions">
-            <button type="button" className="secondary-button" onClick={() => navigate(`/client/gallery/${galleryId}?photo=${photoId}`)}>Keep open</button>
-            <button type="button" className="primary-button" onClick={onClose}>Back to gallery</button>
-          </div>
-        ) : null}
+
+        <div className="viewer-controls" aria-label="Photograph navigation">
+          <button
+            type="button"
+            className="viewer-nav"
+            onClick={() => previousPhoto && onNavigate(previousPhoto.photoId)}
+            disabled={!previousPhoto}
+            aria-label="Previous photograph"
+          >
+            Previous
+          </button>
+
+          <button
+            type="button"
+            className={`viewer-select ${isSelected ? "is-selected" : ""}`}
+            onClick={() => onSelectToggle(photoId)}
+            aria-pressed={isSelected}
+            disabled={!photo}
+          >
+            {isSelected ? "Selected" : "Select photograph"}
+          </button>
+
+          <button
+            type="button"
+            className="viewer-nav"
+            onClick={() => nextPhoto && onNavigate(nextPhoto.photoId)}
+            disabled={!nextPhoto}
+            aria-label="Next photograph"
+          >
+            Next
+          </button>
+        </div>
+
+        <div className="viewer-hint">
+          <span>Swipe to browse</span>
+          <span>Use ← → to move</span>
+          <span>Esc to close</span>
+        </div>
       </div>
     </div>
   );
@@ -607,20 +712,20 @@ function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
+  const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
-      if (!galleryId) {
-        return;
-      }
+      if (!galleryId) return;
       try {
         const [gallery, photoResponse] = await Promise.all([
           getClientGallery(galleryId),
           listClientPhotos(galleryId, 1, 20),
         ]);
-
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(photoResponse.items ?? []);
       } catch (caughtError) {
@@ -631,41 +736,37 @@ function ClientGalleryPage() {
     void load();
   }, [galleryId]);
 
-  const handleSelection = async (photoId: string, selection: "neutral" | "favourite" | "not_for_me") => {
-    if (!galleryId) {
-      return;
-    }
+  const handleSelectionToggle = async (photoId: string) => {
+    if (!galleryId || savingPhotoId === photoId) return;
+
+    const wasSelected = selectedPhotoIds.has(photoId);
+    const nextSelected = !wasSelected;
+    const previous = new Set(selectedPhotoIds);
+
+    setSelectedPhotoIds((current) => {
+      const next = new Set(current);
+      if (nextSelected) next.add(photoId);
+      else next.delete(photoId);
+      return next;
+    });
+    setSavingPhotoId(photoId);
+    setError("");
 
     try {
-      await setSelection(galleryId, photoId, selection);
+      await setSelection(galleryId, photoId, nextSelected ? "favourite" : "neutral");
     } catch (caughtError) {
+      setSelectedPhotoIds(previous);
       setError(caughtError instanceof Error ? caughtError.message : "Your selection could not be saved.");
-    }
-  };
-
-  const handleDownload = async (photoId: string) => {
-    if (!galleryId) {
-      return;
-    }
-
-    try {
-      const result = await createDownload(galleryId, photoId);
-      if (!result.download_url) {
-        throw new Error("No downloadable file was returned.");
-      }
-      window.open(result.download_url, "_blank", "noopener,noreferrer");
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "This download is not available.");
+    } finally {
+      setSavingPhotoId(null);
     }
   };
 
   const handleGalleryFeedback = async () => {
-    if (!galleryId) {
-      return;
-    }
+    if (!galleryId || !feedback.trim()) return;
 
     try {
-      await createGalleryFeedback(galleryId, feedback);
+      await createGalleryFeedback(galleryId, feedback.trim());
       setFeedback("");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Your feedback could not be submitted.");
@@ -673,9 +774,7 @@ function ClientGalleryPage() {
   };
 
   const handlePhotoFeedback = async (photoId: string, message: string) => {
-    if (!galleryId) {
-      return;
-    }
+    if (!galleryId) return;
 
     try {
       await createPhotoFeedback(galleryId, photoId, message);
@@ -689,73 +788,121 @@ function ClientGalleryPage() {
   }
 
   return (
-    <main className="page-shell">
-      <div className="panel">
-        <div className="panel-header compact-header">
+    <main className="page-shell client-gallery-shell">
+      <div className="client-gallery">
+        <header className="gallery-header">
           <div>
-            <p className="eyebrow">Client gallery</p>
+            <p className="eyebrow">Your photographs</p>
             <h1>{galleryName}</h1>
+            <p className="gallery-intro">
+              Take your time. Open any photograph to view it larger, then select the photographs you want.
+            </p>
           </div>
-          <Link to="/client/access" className="secondary-button">
-            Back to access
-          </Link>
-        </div>
-
-        <div className="toolbar-stack">
-          <textarea className="textarea" value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Write gallery feedback" />
-          <button type="button" className="primary-button" onClick={handleGalleryFeedback} disabled={!feedback.trim()}>
-            Submit gallery feedback
-          </button>
-        </div>
+          <Link to="/client/access" className="secondary-button">Back to access</Link>
+        </header>
 
         {error ? <div className="error-box">{error}</div> : null}
 
-        <div className="photo-grid">
+        <div className="gallery-summary" aria-live="polite">
+          <strong>{selectedPhotoIds.size} selected</strong>
+          <span>{photos.length} photographs</span>
+        </div>
+
+        <div className="photo-grid client-photo-grid">
           {photos.length === 0 ? (
             <div className="empty-state">No photos are visible in this gallery yet.</div>
           ) : (
-            photos.map((photo) => (
-              <article key={photo.photoId} className="photo-card panel">
-                <button type="button" className="photo-thumb" onClick={() => setViewerPhotoId(photo.photoId)} aria-label={`Open photograph ${photo.position + 1}`}>
-                  <img
-                    src={photo.thumbnail.url}
-                    alt="Photograph from this gallery"
-                    width={photo.thumbnail.width}
-                    height={photo.thumbnail.height}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </button>
-                <div className="photo-meta">
-                  <span className="photo-position">Photograph {photo.position + 1}</span>
-                  {photo.recommended ? <span className="tag">Recommended</span> : null}
-                </div>
-                <div className="selection-actions">
-                  <button type="button" className="secondary-button" onClick={() => handleSelection(photo.photoId, "favourite")}>
-                    Favourite
+            photos.map((photo) => {
+              const selected = selectedPhotoIds.has(photo.photoId);
+              return (
+                <article key={photo.photoId} className={`photo-card panel ${selected ? "is-selected" : ""}`}>
+                  <button
+                    type="button"
+                    className="photo-thumb"
+                    onClick={() => setViewerPhotoId(photo.photoId)}
+                    aria-label={`Open photograph ${photo.position + 1}${selected ? ", selected" : ""}`}
+                  >
+                    <img
+                      src={photo.thumbnail.url}
+                      alt={`Photograph ${photo.position + 1} from this gallery`}
+                      width={photo.thumbnail.width}
+                      height={photo.thumbnail.height}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    {selected ? <span className="photo-selected-badge">Selected</span> : null}
                   </button>
-                  <button type="button" className="button-ghost" onClick={() => handleSelection(photo.photoId, "not_for_me")}>
-                    Skip
+
+                  <div className="photo-meta">
+                    <span className="photo-position">Photograph {photo.position + 1}</span>
+                    {photo.recommended ? <span className="tag">Recommended</span> : null}
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`photo-select-button ${selected ? "is-selected" : ""}`}
+                    onClick={() => void handleSelectionToggle(photo.photoId)}
+                    disabled={savingPhotoId === photo.photoId}
+                    aria-pressed={selected}
+                  >
+                    {savingPhotoId === photo.photoId
+                      ? "Saving…"
+                      : selected
+                        ? "Selected"
+                        : "Select"}
                   </button>
-                  <button type="button" className="primary-button" onClick={() => handleDownload(photo.photoId)}>
-                    Download
-                  </button>
-                </div>
-                <div className="feedback-inline">
-                  <button type="button" className="button-ghost" onClick={() => handlePhotoFeedback(photo.photoId, "I like this one.")}>
-                    Like
-                  </button>
-                  <button type="button" className="button-ghost" onClick={() => handlePhotoFeedback(photo.photoId, "This image needs a revision.")}>
-                    Request revision
-                  </button>
-                </div>
-              </article>
-            ))
+
+                  <div className="feedback-inline">
+                    <button type="button" className="button-ghost" onClick={() => void handlePhotoFeedback(photo.photoId, "I like this one.")}>
+                      Like
+                    </button>
+                    <button type="button" className="button-ghost" onClick={() => void handlePhotoFeedback(photo.photoId, "This image needs a revision.")}>
+                      Request revision
+                    </button>
+                  </div>
+                </article>
+              );
+            })
           )}
         </div>
+
+        {feedback.trim() ? (
+          <section className="gallery-feedback">
+            <textarea
+              className="textarea"
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              placeholder="Anything you'd like your photographer to know?"
+              aria-label="Gallery feedback"
+            />
+            <button type="button" className="primary-button" onClick={() => void handleGalleryFeedback()}>
+              Send note
+            </button>
+          </section>
+        ) : (
+          <button type="button" className="button-ghost feedback-trigger" onClick={() => setFeedback(" ")}>
+            Leave a note for your photographer
+          </button>
+        )}
       </div>
+
+      {selectedPhotoIds.size > 0 ? (
+        <div className="selection-bar" role="status" aria-live="polite">
+          <span><strong>{selectedPhotoIds.size}</strong> selected</span>
+          <span className="selection-bar-note">Open photographs to review your choices.</span>
+        </div>
+      ) : null}
+
       {viewerPhotoId ? (
-        <ClientPhotoViewer galleryId={galleryId} photoId={viewerPhotoId} onClose={() => setViewerPhotoId(null)} />
+        <ClientPhotoViewer
+          galleryId={galleryId}
+          photos={photos}
+          photoId={viewerPhotoId}
+          selectedPhotoIds={selectedPhotoIds}
+          onSelectToggle={(id) => void handleSelectionToggle(id)}
+          onNavigate={setViewerPhotoId}
+          onClose={() => setViewerPhotoId(null)}
+        />
       ) : null}
     </main>
   );
