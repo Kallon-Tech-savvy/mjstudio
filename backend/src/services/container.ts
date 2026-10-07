@@ -70,7 +70,7 @@ export function unavailableServices(): ApplicationServices {
     selections: { setSelection: unavailable, getSelections: unavailable, getSelection: unavailable, submitSelection: unavailable } as unknown as SelectionService,
     recommendations: { recommend: unavailable, unrecommend: unavailable, list: unavailable } as unknown as RecommendationService,
     downloads: { create: unavailable } as unknown as DownloadService,
-    feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable } as unknown as FeedbackService,
+    feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable, listForStudio: unavailable } as unknown as FeedbackService,
     catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
     rateLimits: { assertAllowed: unavailable },
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,
