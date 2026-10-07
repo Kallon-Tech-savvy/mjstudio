@@ -854,9 +854,6 @@ function ClientSelectionReviewPage() {
                   />
                   <span className="photo-selected-badge">Selected</span>
                 </div>
-                <div className="photo-meta">
-                  <span className="photo-position">Photograph {photo.position + 1}</span>
-                </div>
               </article>
             ))}
           </div>
@@ -965,7 +962,6 @@ function ClientGalleryPage() {
               Take your time. Open any photograph to view it larger, then select the photographs you want.
             </p>
           </div>
-          <Link to="/client/access" className="secondary-button">Back to access</Link>
         </header>
 
         {error ? <div className="error-box">{error}</div> : null}
@@ -1001,7 +997,6 @@ function ClientGalleryPage() {
                   </button>
 
                   <div className="photo-meta">
-                    <span className="photo-position">Photograph {photo.position + 1}</span>
                     {photo.recommended ? <span className="tag">Recommended</span> : null}
                   </div>
 
