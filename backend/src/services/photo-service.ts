@@ -6,7 +6,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
 import { inTransaction, resolveGalleryMembership, type Database } from './service-common.js';
 import { JobService } from './job-service.js';
 
-export type VerifiedStoredObject = { storageKey: string; mimeType: string; fileSize: number; width: number; height: number };
+export type VerifiedStoredObject = { storageKey: string; mimeType: string; fileSize: number; width?: number; height?: number };
 export interface PhotoStorage {
   createUploadCapability(storageKey: string, expiresInSeconds: number): Promise<{ url: string; expiresAt: Date }>;
   verifyObject(storageKey: string): Promise<VerifiedStoredObject | null>;
@@ -159,7 +159,7 @@ export class PhotoService {
       await this.jobs.enqueue({ type: 'RECONCILE_PHOTO_ASSET', payload: { assetId: asset.id } });
       throw error;
     }
-    if (!verified || verified.storageKey !== asset.storage_key || verified.fileSize <= 0 || verified.width <= 0 || verified.height <= 0) {
+    if (!verified || verified.storageKey !== asset.storage_key || verified.fileSize <= 0) {
       await inTransaction(this.database, async (transaction) => {
         await transaction.query("UPDATE photo_assets SET upload_status = 'failed', updated_at = NOW() WHERE id = $1 AND upload_status = 'pending'", [asset.id]);
         await transaction.query("UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL", [photoId]);
@@ -170,7 +170,7 @@ export class PhotoService {
       const row = await transaction.query<{ upload_status: string }>('SELECT upload_status FROM photo_assets WHERE id = $1 FOR UPDATE', [asset.id]);
       if (!row.rows[0]) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo asset not found.');
       if (row.rows[0].upload_status === 'uploaded') return { alreadyUploaded: true };
-      await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1", [asset.id, verified.mimeType, verified.fileSize, verified.width, verified.height]);
+      await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', mime_type = $2, file_size = $3, updated_at = NOW() WHERE id = $1", [asset.id, verified.mimeType, verified.fileSize]);
       const job = await this.jobs.enqueueInTransaction(transaction, {
         type: 'PROCESS_PHOTO_ASSETS',
         payload: { photoId, sourceAssetId: asset.id },
