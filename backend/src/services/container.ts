@@ -67,7 +67,7 @@ export function unavailableServices(): ApplicationServices {
     photos: { create: unavailable, get: unavailable, update: unavailable, delete: unavailable, reorder: unavailable, uploadComplete: unavailable, list: unavailable, resolveGalleryId: unavailable } as unknown as PhotoService,
     galleryAccess: { create: unavailable, get: unavailable, reset: unavailable, revoke: unavailable, resend: unavailable } as unknown as GalleryAccessService,
     clientSessions: { create: unavailable, resolve: unavailable, revoke: unavailable } as unknown as ClientSessionService,
-    selections: { setSelection: unavailable, getSelections: unavailable } as unknown as SelectionService,
+    selections: { setSelection: unavailable, getSelections: unavailable, getSelection: unavailable, submitSelection: unavailable } as unknown as SelectionService,
     recommendations: { recommend: unavailable, unrecommend: unavailable, list: unavailable } as unknown as RecommendationService,
     downloads: { create: unavailable } as unknown as DownloadService,
     feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable } as unknown as FeedbackService,
