@@ -353,14 +353,22 @@ h2 {
 }
 
 .photo-thumb {
-  display: grid;
-  place-items: center;
-  height: 200px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #edd7c7, #f7efe8);
-  color: var(--brand-dark);
-  font-weight: 700;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: #ebe7e2;
   margin-bottom: 14px;
+}
+
+.photo-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-position {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .photo-meta {
