@@ -420,6 +420,7 @@ function PhotographerGalleryDetailPage() {
   const [selection, setSelection] = useState<StudioSelection | null>(null);
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [error, setError] = useState("");
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -468,6 +469,8 @@ function PhotographerGalleryDetailPage() {
     return <Navigate to="/photographer/galleries" replace />;
   }
 
+  const selectedPhoto = selectedPhotoIndex === null ? null : selection?.items[selectedPhotoIndex] ?? null;
+
   return (
     <main className="page-shell">
       <div className="panel">
@@ -514,8 +517,21 @@ function PhotographerGalleryDetailPage() {
               <div className="empty-state">The client submitted an empty selection.</div>
             ) : (
               <div className="photo-grid studio-selection-grid">
-                {selection.items.map((photo) => (
-                  <article key={photo.photoId} className="photo-card studio-selection-card">
+                {selection.items.map((photo, index) => (
+                  <article
+                    key={photo.photoId}
+                    className="photo-card studio-selection-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedPhotoIndex(index)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedPhotoIndex(index);
+                      }
+                    }}
+                    aria-label={"Inspect photograph " + (photo.position + 1)}
+                  >
                     <div className="photo-thumb">
                       <img
                         src={photo.preview.url}
@@ -535,6 +551,35 @@ function PhotographerGalleryDetailPage() {
               </div>
             )}
           </section>
+        ) : null}
+
+        {selectedPhoto ? (
+          <div className="studio-photo-viewer" role="dialog" aria-modal="true" aria-label={"Photograph " + (selectedPhoto.position + 1)}>
+            <button type="button" className="studio-photo-viewer-backdrop" aria-label="Close photograph viewer" onClick={() => setSelectedPhotoIndex(null)} />
+            <div className="studio-photo-viewer-panel">
+              <div className="studio-photo-viewer-toolbar">
+                <div>
+                  <p className="eyebrow">Proofing</p>
+                  <strong>Photograph {selectedPhoto.position + 1}</strong>
+                  <small>{selectedPhoto.filename}</small>
+                </div>
+                <button type="button" className="button-ghost" onClick={() => setSelectedPhotoIndex(null)}>Close</button>
+              </div>
+              <div className="studio-photo-viewer-image-wrap">
+                <img
+                  src={selectedPhoto.preview.url}
+                  alt={"Selected photograph " + (selectedPhoto.position + 1)}
+                  width={selectedPhoto.preview.width}
+                  height={selectedPhoto.preview.height}
+                />
+              </div>
+              <div className="studio-photo-viewer-nav">
+                <button type="button" className="secondary-button" disabled={selectedPhotoIndex === 0} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.max(0, index - 1))}>Previous</button>
+                <span>{(selectedPhotoIndex ?? 0) + 1} / {selection.items.length}</span>
+                <button type="button" className="secondary-button" disabled={selectedPhotoIndex === selection.items.length - 1} onClick={() => setSelectedPhotoIndex((index) => index === null ? null : Math.min(selection.items.length - 1, index + 1))}>Next</button>
+              </div>
+            </div>
+          </div>
         ) : null}
 
         <ul className="list-stack spaced-list">
