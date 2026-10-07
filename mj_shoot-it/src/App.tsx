@@ -241,6 +241,35 @@ function PhotographerDashboardPage() {
       <section className="two-column-layout">
         <div className="panel">
           <div className="panel-header compact-header">
+            <div>
+              <p className="eyebrow">Needs attention</p>
+              <h2>Selection received</h2>
+            </div>
+            <span className="tag">{galleries.filter((gallery) => gallery.selectionStatus === "submitted").length}</span>
+          </div>
+          <ul className="list-stack">
+            {galleries.filter((gallery) => gallery.selectionStatus === "submitted").length === 0 ? (
+              <li className="empty-state">No client selections are waiting for review.</li>
+            ) : (
+              galleries
+                .filter((gallery) => gallery.selectionStatus === "submitted")
+                .map((gallery) => (
+                  <li key={gallery.galleryId} className="list-row interactive-row">
+                    <div>
+                      <strong>{gallery.clientName ?? gallery.name}</strong>
+                      <small>{gallery.selectedCount ?? 0} photographs selected · {gallery.name}</small>
+                    </div>
+                    <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
+                      Review →
+                    </Link>
+                  </li>
+                ))
+            )}
+          </ul>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header compact-header">
             <h2>Recent galleries</h2>
             <Link to="/photographer/galleries" className="tiny-link">
               View all
@@ -254,35 +283,11 @@ function PhotographerDashboardPage() {
                 <li key={gallery.galleryId} className="list-row">
                   <div>
                     <strong>{gallery.name}</strong>
-                    <small>{gallery.status ?? "draft"}</small>
+                    <small>{gallery.selectionStatus === "submitted" ? "Selection received" : gallery.status ?? "draft"}</small>
                   </div>
                   <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
                     Open
                   </Link>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header compact-header">
-            <h2>Clients</h2>
-            <Link to="/photographer/galleries" className="tiny-link">
-              Manage
-            </Link>
-          </div>
-          <ul className="list-stack">
-            {clients.length === 0 ? (
-              <li className="empty-state">No clients configured.</li>
-            ) : (
-              clients.map((client) => (
-                <li key={client.clientId} className="list-row">
-                  <div>
-                    <strong>{client.name}</strong>
-                    <small>{client.email ?? client.phone ?? "No contact"}</small>
-                  </div>
-                  <span className="tag">Studio client</span>
                 </li>
               ))
             )}
