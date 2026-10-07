@@ -72,6 +72,21 @@ export type PhotoRecord = {
   [key: string]: unknown;
 };
 
+export type ClientSelectionItem = {
+  photoId: string;
+  selected: boolean;
+  updatedAt?: string;
+};
+
+export type ClientSelection = {
+  id: string;
+  status: "draft" | "submitted";
+  submittedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: ClientSelectionItem[];
+};
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001/api";
 
@@ -245,18 +260,37 @@ export async function getClientPhoto(galleryId: string, photoId: string): Promis
   return apiRequest<ClientPhotoDetail>(`/client/galleries/${galleryId}/photos/${photoId}`);
 }
 
-export async function getClientSelections(galleryId: string): Promise<Array<{ photoId: string; selection: string; updatedAt?: string }>> {
-  return apiRequest<Array<{ photoId: string; selection: string; updatedAt?: string }>>(`/client/galleries/${galleryId}/selection`);
+export async function getClientSelection(galleryId: string): Promise<ClientSelection> {
+  return apiRequest<ClientSelection>(`/client/galleries/${galleryId}/selection`);
 }
 
 export async function setSelection(
   galleryId: string,
   photoId: string,
-  selection: "neutral" | "favourite" | "not_for_me",
-): Promise<{ photoId: string; selection: string }> {
-  return apiRequest<{ photoId: string; selection: string }>(`/client/galleries/${galleryId}/photos/${photoId}/selection`, {
-    method: "PUT",
-    body: JSON.stringify({ selection }),
+  selected: boolean,
+): Promise<ClientSelectionItem & { status: "draft" | "submitted" }> {
+  return apiRequest<ClientSelectionItem & { status: "draft" | "submitted" }>(
+    `/client/galleries/${galleryId}/photos/${photoId}/selection`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ selected }),
+    },
+  );
+}
+
+export async function submitSelection(galleryId: string): Promise<{
+  id: string;
+  status: "submitted";
+  submittedAt: string;
+  selectedCount: number;
+}> {
+  return apiRequest<{
+    id: string;
+    status: "submitted";
+    submittedAt: string;
+    selectedCount: number;
+  }>(`/client/galleries/${galleryId}/selection/submit`, {
+    method: "POST",
   });
 }
 
