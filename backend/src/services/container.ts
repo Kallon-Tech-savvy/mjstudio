@@ -82,6 +82,7 @@ export function unavailableProviders(database: Pool): ServiceProviders {
     photoStorage: {
       createUploadCapability: unavailable,
       verifyObject: unavailable,
+      createViewCapability: unavailable,
       createDownloadCapability: unavailable,
     },
     accessDelivery: { deliver: unavailable, resend: unavailable },
