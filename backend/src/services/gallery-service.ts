@@ -4,7 +4,8 @@ import { ensureGalleryPermission, type GalleryPermission } from '../application/
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import { assertGalleryCanArchive, assertGalleryCanPublish, inTransaction, resolveGalleryMembership, validateGalleryName, type Database } from './service-common.js';
 
-export type CreateGalleryInput = { clientId: string; name: string; expiresAt?: Date | null };
+export type NewClientInput = { name: string; email?: string; phone?: string };
+export type CreateGalleryInput = { clientId?: string; newClient?: NewClientInput; name: string; expiresAt?: Date | null };
 export type UpdateGalleryInput = { name?: string; expiresAt?: Date | null };
 
 export class GalleryService {
@@ -13,26 +14,39 @@ export class GalleryService {
   async create(actor: PhotographerContext, input: CreateGalleryInput) {
     if (!actor) throw new ForbiddenError('Authenticated photographer required.');
     if (!['owner', 'admin'].includes(actor.role)) throw new ForbiddenError('Gallery creation is not permitted for this studio role.');
+    if ((input.clientId === undefined) === (input.newClient === undefined)) throw new ValidationError('INVALID_GALLERY_DATA', 'Provide either an existing client or new client details.');
     const name = validateGalleryName(input.name);
+    const newClientName = input.newClient?.name.trim();
+    if (input.newClient && (!newClientName || newClientName.length > 200)) throw new ValidationError('INVALID_CLIENT_DATA', 'Client name must be between 1 and 200 characters.');
     return inTransaction(this.database, async (transaction) => {
       const membership = await transaction.query<{ role: string }>('SELECT role FROM studio_members WHERE studio_id = $1 AND user_id = $2 FOR SHARE', [actor.studioId, actor.userId]);
       if (!membership.rows[0]) throw new ForbiddenError('Studio membership is required.');
       if (!['owner', 'admin'].includes(membership.rows[0].role)) throw new ForbiddenError('Gallery creation is not permitted for this studio role.');
-      const client = await transaction.query('SELECT id FROM clients WHERE id = $1 AND studio_id = $2 FOR SHARE', [input.clientId, actor.studioId]);
-      if (!client.rows[0]) throw new NotFoundError('CLIENT_NOT_FOUND', 'Client not found in this studio.');
+      let clientId: string;
+      if (input.newClient) {
+        clientId = this.createId();
+        await transaction.query(
+          `INSERT INTO clients (id, studio_id, name, email, phone) VALUES ($1, $2, $3, $4, $5)`,
+          [clientId, actor.studioId, newClientName, input.newClient.email?.trim() || null, input.newClient.phone?.trim() || null],
+        );
+      } else {
+        const client = await transaction.query('SELECT id FROM clients WHERE id = $1 AND studio_id = $2 FOR SHARE', [input.clientId, actor.studioId]);
+        if (!client.rows[0]) throw new NotFoundError('CLIENT_NOT_FOUND', 'Client not found in this studio.');
+        clientId = input.clientId as string;
+      }
       if (input.expiresAt && input.expiresAt <= new Date()) throw new ValidationError('INVALID_GALLERY_DATA', 'Expiration must be in the future.');
       const galleryId = this.createId();
       await transaction.query(
         `INSERT INTO galleries (id, studio_id, client_id, name, expires_at)
          VALUES ($1, $2, $3, $4, $5)`,
-        [galleryId, actor.studioId, input.clientId, name, input.expiresAt ?? null],
+        [galleryId, actor.studioId, clientId, name, input.expiresAt ?? null],
       );
       await transaction.query(
         `INSERT INTO gallery_members (id, gallery_id, user_id, role)
          VALUES ($1, $2, $3, 'owner')`,
         [this.createId(), galleryId, actor.userId],
       );
-      return { id: galleryId, studioId: actor.studioId, clientId: input.clientId, name, workflowStatus: 'draft', publicationStatus: 'unpublished' };
+      return { id: galleryId, studioId: actor.studioId, clientId, name, workflowStatus: 'draft', publicationStatus: 'unpublished' };
     });
   }
 

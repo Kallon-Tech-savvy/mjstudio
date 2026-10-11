@@ -1,4 +1,5 @@
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { NewGalleryForm } from "@/features/studio/components/NewGalleryForm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   createGallery,
@@ -297,8 +298,7 @@ function PhotographerDashboardPage() {
 function PhotographerGalleriesPage() {
   const navigate = useNavigate();
   const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
-  const [name, setName] = useState("Spring Session");
-  const [clientId, setClientId] = useState("");
+  const [clients, setClients] = useState<ClientRecord[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -310,8 +310,9 @@ function PhotographerGalleriesPage() {
           return;
         }
 
-        const response = await listGalleries(1, 20);
+        const [response, clientResponse] = await Promise.all([listGalleries(1, 20), listClients(1, 100)]);
         setGalleries(response.items ?? []);
+        setClients(clientResponse.items ?? []);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load galleries.");
       }
@@ -320,17 +321,10 @@ function PhotographerGalleriesPage() {
     void ensureAccess();
   }, [navigate]);
 
-  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      await createGallery({ clientId, name, expiresAt: null });
-      const response = await listGalleries(1, 20);
-      setGalleries(response.items ?? []);
-      setName("");
-      setClientId("");
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to create gallery.");
-    }
+  const reload = async () => {
+    const [response, clientResponse] = await Promise.all([listGalleries(1, 20), listClients(1, 100)]);
+    setGalleries(response.items ?? []);
+    setClients(clientResponse.items ?? []);
   };
 
   return (
@@ -346,21 +340,7 @@ function PhotographerGalleriesPage() {
           </Link>
         </div>
 
-        <form className="stack" onSubmit={handleCreate}>
-          <div className="inline-grid two-up">
-            <label className="field">
-              <span>Client ID</span>
-              <input value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="UUID" required />
-            </label>
-            <label className="field">
-              <span>Gallery name</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Spring Session" required />
-            </label>
-          </div>
-          <button className="primary-button" type="submit">
-            Create gallery
-          </button>
-        </form>
+        <NewGalleryForm clients={clients} onCreated={reload} />
 
         {error ? <div className="error-box">{error}</div> : null}
 

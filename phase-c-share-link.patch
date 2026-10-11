@@ -1,0 +1,544 @@
+diff --git a/backend/src/routes/galleries.ts b/backend/src/routes/galleries.ts
+index c2636d6..695d611 100644
+--- a/backend/src/routes/galleries.ts
++++ b/backend/src/routes/galleries.ts
+@@ -88,7 +88,7 @@ export function galleriesRouter(services: ApplicationServices) {
+     try {
+       const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body);
+       const body = parseInput(z.object({ permission: z.enum(['view', 'view_download']), expiresAt: z.string().datetime().nullable().optional() }).strict(), req.body, 'INVALID_GALLERY_ACCESS');
+-      res.status(201).json(successEnvelope(await services.galleryAccess.create(req.user!, galleryId, { permission: body.permission, expiresAt: body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt) })));
++      res.set('Cache-Control', 'no-store').status(201).json(successEnvelope(await services.galleryAccess.create(req.user!, galleryId, { permission: body.permission, expiresAt: body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt) })));
+     } catch (error) { next(error); }
+   });
+   router.get('/:galleryId/access', auth, async (req: AuthenticatedRequest, res, next) => {
+@@ -100,7 +100,7 @@ export function galleriesRouter(services: ApplicationServices) {
+       const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body);
+       await services.rateLimits.assertAllowed(`access-reset:${req.user!.userId}:${req.ip}`, 'access-reset');
+       const body = parseInput(z.object({ permission: z.enum(['view', 'view_download']), expiresAt: z.string().datetime().nullable().optional() }).strict(), req.body, 'INVALID_GALLERY_ACCESS');
+-      res.json(successEnvelope(await services.galleryAccess.reset(req.user!, galleryId, body.permission, body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt))));
++      res.set('Cache-Control', 'no-store').json(successEnvelope(await services.galleryAccess.reset(req.user!, galleryId, body.permission, body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt))));
+     } catch (error) { next(error); }
+   });
+   router.post('/:galleryId/access/revoke', auth, async (req: AuthenticatedRequest, res, next) => {
+diff --git a/backend/src/services/client-access-service.ts b/backend/src/services/client-access-service.ts
+index 1a3a77f..06914f1 100644
+--- a/backend/src/services/client-access-service.ts
++++ b/backend/src/services/client-access-service.ts
+@@ -27,7 +27,9 @@ export type AccessCredentialDelivery = {
+ export type PinAttemptLimiter = { assertAllowed(key: string): Promise<void> };
+ 
+ export class GalleryAccessService {
+-  constructor(private readonly database: Database, private readonly delivery: AccessCredentialDelivery, private readonly createId: () => string = randomUUID) {}
++  // `delivery` is optional: by default the secret token and PIN are returned to the authenticated photographer
++  // once (in the create/reset response) and shared manually, e.g. over WhatsApp. Only hashes are stored.
++  constructor(private readonly database: Database, private readonly delivery?: AccessCredentialDelivery, private readonly createId: () => string = randomUUID) {}
+ 
+   async create(actor: PhotographerContext, galleryId: string, input: { permission: 'view' | 'view_download'; expiresAt?: Date | null }) {
+     const membership = await resolveGalleryMembership(this.database, actor, galleryId);
+@@ -71,6 +73,7 @@ export class GalleryAccessService {
+         AND (expires_at IS NULL OR expires_at > NOW())`, [galleryId]);
+     const active = result.rows[0];
+     if (!active) throw new NotFoundError('INVALID_GALLERY_ACCESS', 'Active gallery access not found.');
++    if (!this.delivery) throw new ConflictError('CREDENTIALS_NOT_RECOVERABLE', 'Credentials are shown only once. Regenerate access to get a new link and PIN.');
+     await this.delivery.resend({ galleryId, accessId: active.id });
+     return { resent: true, accessId: active.id };
+   }
+@@ -104,8 +107,9 @@ export class GalleryAccessService {
+         [grantId, galleryId, hashCredential(secretToken), pinHash, permission, expiresAt],
+       );
+     });
+-    await this.delivery.deliver({ galleryId, secretToken, pin });
+-    return { id: grantId, permission, expiresAt };
++    if (this.delivery) await this.delivery.deliver({ galleryId, secretToken, pin });
++    // The only time the plaintext token and PIN exist outside the photographer's response.
++    return { id: grantId, permission, expiresAt, secretToken, pin };
+   }
+ }
+ 
+diff --git a/backend/src/services/container.ts b/backend/src/services/container.ts
+index 36fc20b..87fcaf0 100644
+--- a/backend/src/services/container.ts
++++ b/backend/src/services/container.ts
+@@ -38,7 +38,7 @@ export type ServiceProviders = {
+   database: Pool;
+   passwords: PasswordVerifier;
+   photoStorage: PhotoStorage;
+-  accessDelivery: AccessCredentialDelivery;
++  accessDelivery?: AccessCredentialDelivery;
+   pinAttemptLimiter: PinAttemptLimiter;
+   rateLimits: RateLimitProvider;
+ };
+@@ -97,7 +97,6 @@ export function unavailableProviders(database: Pool): ServiceProviders {
+       createViewCapability: unavailable,
+       createDownloadCapability: unavailable,
+     },
+-    accessDelivery: { deliver: unavailable, resend: unavailable },
+     pinAttemptLimiter: { assertAllowed: (key) => rateLimits.assertAllowed(key, 'client-access') },
+     rateLimits,
+   };
+diff --git a/backend/tests/gallery-access-credentials.test.ts b/backend/tests/gallery-access-credentials.test.ts
+new file mode 100644
+index 0000000..1e4f169
+--- /dev/null
++++ b/backend/tests/gallery-access-credentials.test.ts
+@@ -0,0 +1,37 @@
++import request from 'supertest';
++import { describe, expect, it } from 'vitest';
++import { createApp } from '../src/app.js';
++import { buildPhotographerContext } from '../src/auth/context.js';
++import { UnauthorizedError } from '../src/errors.js';
++import type { ApplicationServices } from '../src/services/container.js';
++
++const GALLERY = '55555555-5555-4555-8555-555555555555';
++const credentials = { id: 'a1', permission: 'view', expiresAt: null, secretToken: 'x'.repeat(43), pin: '012345' };
++
++function app() {
++  const services = {
++    auth: { login: async () => { throw new UnauthorizedError('Invalid email or password.'); }, resolve: async () => buildPhotographerContext(), logout: async () => undefined },
++    galleryAccess: { create: async () => credentials, reset: async () => ({ ...credentials, pin: '654321' }) },
++    catalog: {}, rateLimits: { assertAllowed: async () => undefined },
++  } as unknown as ApplicationServices;
++  return createApp(services, { allowedOrigins: ['http://localhost:3000'] });
++}
++const post = (path: string, body: object) =>
++  request(app()).post(path).set('Origin', 'http://localhost:3000').set('Cookie', '__Host-mj_session=valid').send(body);
++
++describe('gallery access credentials are returned once and never cached', () => {
++  it('create returns the secret token and PIN with Cache-Control: no-store', async () => {
++    const res = await post(`/api/galleries/${GALLERY}/access`, { permission: 'view' });
++    expect(res.status).toBe(201);
++    expect(res.headers['cache-control']).toBe('no-store');
++    expect(res.body.data.secretToken).toBe(credentials.secretToken);
++    expect(res.body.data.pin).toBe('012345');
++  });
++
++  it('reset (regenerate) returns fresh credentials with Cache-Control: no-store', async () => {
++    const res = await post(`/api/galleries/${GALLERY}/access/reset`, { permission: 'view_download' });
++    expect(res.status).toBe(200);
++    expect(res.headers['cache-control']).toBe('no-store');
++    expect(res.body.data.pin).toBe('654321');
++  });
++});
+diff --git a/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx b/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx
+index 6aa483b..27d6af5 100644
+--- a/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx
++++ b/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx
+@@ -1,4 +1,5 @@
+ import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
++import { readSecretFromHash } from "@/lib/access-link";
+ import { useEffect, useState, type FormEvent, type TouchEvent } from "react";
+ import {
+   createGalleryFeedback,
+@@ -21,7 +22,9 @@ function ClientAccessPage() {
+   const navigate = useNavigate();
+   const [searchParams] = useSearchParams();
+   const galleryId = searchParams.get("galleryId") ?? "";
+-  const [secret, setSecret] = useState("");
++  // A link from the photographer carries the secret in the URL fragment, so the client only types the PIN.
++  const [secret, setSecret] = useState(() => readSecretFromHash(window.location.hash));
++  const [fromLink] = useState(() => secret !== "");
+   const [pin, setPin] = useState("");
+   const [error, setError] = useState("");
+   const [isSubmitting, setIsSubmitting] = useState(false);
+@@ -46,21 +49,25 @@ function ClientAccessPage() {
+       <div className="panel auth-panel">
+         <div className="panel-header">
+           <p className="eyebrow">Client gallery</p>
+-          <h1>Verify access</h1>
++          <h1>{fromLink ? "Enter your PIN" : "Verify access"}</h1>
+           <p className="muted">
+-            The browser is never the authority. A valid secret and PIN grant a temporary session, and the server enforces access.
++            {fromLink
++              ? "Your photographer sent you a 6-digit PIN in a separate message."
++              : "The browser is never the authority. A valid secret and PIN grant a temporary session, and the server enforces access."}
+           </p>
+         </div>
+ 
+         <form className="stack" onSubmit={handleSubmit}>
+-          <label className="field">
+-            <span>Access secret</span>
+-            <input value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="secret" required />
+-          </label>
++          {fromLink ? null : (
++            <label className="field">
++              <span>Access secret</span>
++              <input value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="secret" required />
++            </label>
++          )}
+ 
+           <label className="field">
+             <span>Six-digit PIN</span>
+-            <input value={pin} onChange={(event) => setPin(event.target.value)} placeholder="123456" inputMode="numeric" maxLength={6} required />
++            <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} autoFocus={fromLink} required />
+           </label>
+ 
+           {error ? <div className="error-box">{error}</div> : null}
+diff --git a/mj_shoot-it/src/features/studio/components/ClientPicker.tsx b/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
+index 3d277fb..8ab8414 100644
+--- a/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
++++ b/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
+@@ -114,7 +114,7 @@ export function ClientPicker({ clients, value, onChange }: Props) {
+               <input className={field} type="email" aria-label="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" />
+               {emailBad ? <p className="mt-1 text-xs text-red-300">That does not look like an email address.</p> : null}
+             </div>
+-            <input className={field} type="tel" aria-label="WhatsApp or phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="WhatsApp / phone (optional)" />
++            <input className={field} type="tel" aria-label="WhatsApp or phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="WhatsApp, with country code e.g. +232… (optional)" />
+           </div>
+         </div>
+         <div className="mt-4 flex gap-2">
+diff --git a/mj_shoot-it/src/features/studio/components/SharePanel.tsx b/mj_shoot-it/src/features/studio/components/SharePanel.tsx
+new file mode 100644
+index 0000000..514f6df
+--- /dev/null
++++ b/mj_shoot-it/src/features/studio/components/SharePanel.tsx
+@@ -0,0 +1,87 @@
++import { useState } from "react";
++import type { GalleryAccessCredentials } from "@/lib/api";
++import { buildClientLink } from "@/lib/access-link";
++import { copyText, groupPin, linkMessage, pinMessage, whatsappUrl } from "../lib/share";
++
++type Props = {
++  galleryId: string;
++  galleryName: string;
++  clientName?: string;
++  clientPhone?: string | null;
++  credentials: GalleryAccessCredentials;
++  published: boolean;
++  busy: boolean;
++  error: string;
++  onPublish: () => void;
++  onRegenerate: () => void;
++};
++
++const box = "rounded-lg border border-white/15 bg-white/5 px-3 py-2.5";
++const smallBtn = "rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-40";
++
++/** Shown right after creating or regenerating access: the link and PIN appear here once. */
++export function SharePanel({ galleryId, galleryName, clientName, clientPhone, credentials, published, busy, error, onPublish, onRegenerate }: Props) {
++  const [copied, setCopied] = useState<"link" | "pin" | null>(null);
++  const link = buildClientLink(window.location.origin, galleryId, credentials.secretToken);
++  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
++
++  const copy = async (what: "link" | "pin") => {
++    const ok = await copyText(what === "link" ? link : credentials.pin);
++    setCopied(ok ? what : null);
++    if (ok) window.setTimeout(() => setCopied((c) => (c === what ? null : c)), 2000);
++  };
++  const regenerate = () => {
++    if (window.confirm("Regenerate the link and PIN? The current ones will stop working right away, including for a client who is already viewing.")) onRegenerate();
++  };
++
++  return (
++    <section className="mt-5 space-y-4 rounded-2xl border border-white/15 bg-white/5 p-5" aria-label="Send to client">
++      <div>
++        <h2 className="text-xl font-semibold">Send to {clientName || "your client"}</h2>
++        <p className="mt-1 text-sm text-amber-200">The PIN is shown only now. Copy or send it before you leave this page. If you lose it, regenerate.</p>
++      </div>
++
++      {!published ? (
++        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300/40 bg-amber-300/10 px-3 py-2.5 text-sm">
++          <span>Not published yet. The client cannot open this link until you publish.</span>
++          <button type="button" className={smallBtn} disabled={busy} onClick={onPublish}>
++            {busy ? "Publishing…" : "Publish now"}
++          </button>
++        </div>
++      ) : null}
++      {error ? <div className="error-box">{error}</div> : null}
++
++      <div>
++        <span className="mb-1.5 block text-sm opacity-70">Link</span>
++        <div className="flex gap-2">
++          <input className={`${box} min-w-0 flex-1 text-sm`} readOnly value={link} aria-label="Client link" onFocus={(e) => e.currentTarget.select()} />
++          <button type="button" className={smallBtn} onClick={() => copy("link")}>{copied === "link" ? "Copied" : "Copy"}</button>
++        </div>
++      </div>
++
++      <div>
++        <span className="mb-1.5 block text-sm opacity-70">PIN</span>
++        <div className="flex items-center gap-2">
++          <div className={`${box} flex-1 font-mono text-2xl tracking-widest`} aria-label="PIN">{groupPin(credentials.pin)}</div>
++          <button type="button" className={smallBtn} onClick={() => copy("pin")}>{copied === "pin" ? "Copied" : "Copy"}</button>
++        </div>
++      </div>
++
++      <div className="flex flex-wrap gap-2">
++        <a className="primary-button" href={whatsappUrl(linkMessage({ clientName, galleryName, link }), clientPhone)} target="_blank" rel="noopener noreferrer">
++          Send link on WhatsApp
++        </a>
++        <a className="secondary-button" href={whatsappUrl(pinMessage(credentials.pin), clientPhone)} target="_blank" rel="noopener noreferrer">
++          Send PIN on WhatsApp
++        </a>
++        {canShare ? (
++          <button type="button" className="secondary-button" onClick={() => void navigator.share({ title: galleryName, text: linkMessage({ clientName, galleryName, link }), url: link }).catch(() => undefined)}>
++            Share…
++          </button>
++        ) : null}
++        <button type="button" className="secondary-button" disabled={busy} onClick={regenerate}>Regenerate</button>
++      </div>
++      <p className="text-xs opacity-60">The link and PIN go in two separate messages so one leaked message is not enough to open the gallery.</p>
++    </section>
++  );
++}
+diff --git a/mj_shoot-it/src/features/studio/lib/share.ts b/mj_shoot-it/src/features/studio/lib/share.ts
+new file mode 100644
+index 0000000..0ec2e78
+--- /dev/null
++++ b/mj_shoot-it/src/features/studio/lib/share.ts
+@@ -0,0 +1,49 @@
++/** Helpers for sharing a gallery link and PIN by hand (WhatsApp, SMS, any messenger). */
++
++export { buildClientLink, readSecretFromHash } from "@/lib/access-link";
++
++/** wa.me needs an international number. A local number like 076... would open the wrong chat, so only use "+..." numbers. */
++export function whatsappUrl(text: string, phone?: string | null): string {
++  const trimmed = (phone ?? "").trim();
++  const digits = trimmed.replace(/\D/g, "");
++  const international = trimmed.startsWith("+") && digits.length >= 8 && digits.length <= 15;
++  return `https://wa.me/${international ? digits : ""}?text=${encodeURIComponent(text)}`;
++}
++
++export function linkMessage(input: { clientName?: string; galleryName: string; link: string }): string {
++  const greeting = input.clientName ? `Hi ${input.clientName},` : "Hi,";
++  return `${greeting} your photos "${input.galleryName}" are ready to view: ${input.link}\n\nI'll send your PIN in a separate message.`;
++}
++
++export function pinMessage(pin: string): string {
++  return `Your PIN for the gallery is ${pin}`;
++}
++
++/** "012345" -> "012 345" for easier reading aloud. Copy always uses the plain digits. */
++export const groupPin = (pin: string) => (pin.length === 6 ? `${pin.slice(0, 3)} ${pin.slice(3)}` : pin);
++
++/** Clipboard API needs a secure context; fall back to a hidden textarea so Copy also works over plain http. */
++export async function copyText(text: string): Promise<boolean> {
++  try {
++    if (navigator.clipboard && window.isSecureContext) {
++      await navigator.clipboard.writeText(text);
++      return true;
++    }
++  } catch {
++    /* fall through to the legacy path */
++  }
++  try {
++    const area = document.createElement("textarea");
++    area.value = text;
++    area.setAttribute("readonly", "");
++    area.style.position = "fixed";
++    area.style.opacity = "0";
++    document.body.appendChild(area);
++    area.select();
++    const ok = document.execCommand("copy");
++    document.body.removeChild(area);
++    return ok;
++  } catch {
++    return false;
++  }
++}
+diff --git a/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx b/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
+index 349862a..472592f 100644
+--- a/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
++++ b/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
+@@ -1,9 +1,15 @@
+ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+ import { useEffect, useState } from "react";
++import { SharePanel } from "@/features/studio/components/SharePanel";
+ import { StudioDeliverySection, StudioFeedbackReview, StudioPhotoList, StudioSelectionReview } from "@/features/studio/components/GalleryWorkspaceSections";
+ import {
+   createGalleryAccess,
+   getGallery,
++  listClients,
++  listGalleryAccess,
++  publishGallery,
++  resetGalleryAccess,
++  type GalleryAccessCredentials,
+   getPhotographerMe,
+   getStudioDelivery,
+   listGalleryPhotos,
+@@ -157,6 +163,11 @@ export default function PhotographerGalleryDetailPage() {
+   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
+   const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
+   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
++  const [credentials, setCredentials] = useState<GalleryAccessCredentials | null>(null);
++  const [hasActiveAccess, setHasActiveAccess] = useState(false);
++  const [clientPhone, setClientPhone] = useState<string | null>(null);
++  const [isSending, setIsSending] = useState(false);
++  const [shareError, setShareError] = useState("");
+   const [error, setError] = useState("");
+   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+   const [delivery, setDelivery] = useState<StudioDeliveryDetails | null>(null);
+@@ -212,6 +223,16 @@ export default function PhotographerGalleryDetailPage() {
+         setSelection(selectionResponse);
+         setFeedback(feedbackResponse);
+         if (deliveryResponse) setDelivery(deliveryResponse);
++
++        // Non-fatal extras for the "Send to client" section.
++        const [accessResponse, clientResponse] = await Promise.all([
++          listGalleryAccess(galleryId).catch(() => null),
++          listClients(1, 100).catch(() => null),
++        ]);
++        const now = Date.now();
++        setHasActiveAccess(Boolean(accessResponse?.items.some((a) => !a.revokedAt && (!a.expiresAt || new Date(a.expiresAt).getTime() > now))));
++        const owner = clientResponse?.items.find((c) => c.clientId === String((galleryResponse as GalleryDetail).clientId ?? ""));
++        setClientPhone(owner?.phone ? String(owner.phone) : null);
+       } catch (caughtError) {
+         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
+       }
+@@ -220,16 +241,50 @@ export default function PhotographerGalleryDetailPage() {
+     void load();
+   }, [galleryId, navigate]);
+ 
+-  const handleAccessGrant = async () => {
++  const isPublished = String(gallery?.publicationStatus ?? "") === "published";
++  const markPublished = () => setGallery((current) => (current ? { ...current, publicationStatus: "published" } : current));
++
++  const handlePublish = async () => {
+     if (!galleryId) return;
++    setIsSending(true);
++    setShareError("");
++    try {
++      await publishGallery(galleryId);
++      markPublished();
++    } catch (caughtError) {
++      setShareError(caughtError instanceof Error ? caughtError.message : "Unable to publish gallery.");
++    } finally {
++      setIsSending(false);
++    }
++  };
+ 
++  // One action: issue (or regenerate) the link and PIN, then publish if needed. The credentials are shown
++  // once, so they stay on screen even if publishing fails and can be retried with "Publish now".
++  const handleSend = async () => {
++    if (!galleryId || isSending) return;
++    setIsSending(true);
++    setShareError("");
++    setError("");
++    let issued: GalleryAccessCredentials;
+     try {
+-      await createGalleryAccess(galleryId, { permission, expiresAt: null });
+-      const photoResponse = await listGalleryPhotos(galleryId, 1, 20);
+-      setPhotos(photoResponse.items ?? []);
++      const input = { permission, expiresAt: null };
++      issued = hasActiveAccess ? await resetGalleryAccess(galleryId, input) : await createGalleryAccess(galleryId, input);
+     } catch (caughtError) {
+       setError(caughtError instanceof Error ? caughtError.message : "Unable to create gallery access.");
++      setIsSending(false);
++      return;
+     }
++    setCredentials(issued);
++    setHasActiveAccess(true);
++    if (!isPublished) {
++      try {
++        await publishGallery(galleryId);
++        markPublished();
++      } catch (caughtError) {
++        setShareError(caughtError instanceof Error ? caughtError.message : "Unable to publish gallery.");
++      }
++    }
++    setIsSending(false);
+   };
+ 
+   if (!galleryId) return <Navigate to="/photographer/galleries" replace />;
+@@ -255,9 +310,29 @@ export default function PhotographerGalleryDetailPage() {
+               <option value="view_download">View + download</option>
+             </select>
+           </label>
+-          <button type="button" className="primary-button" onClick={handleAccessGrant}>Issue access link</button>
++          <button type="button" className="primary-button" disabled={isSending} onClick={handleSend}>
++            {isSending ? "Working…" : hasActiveAccess ? "Regenerate link & PIN" : "Create link & publish"}
++          </button>
+         </div>
+ 
++        {hasActiveAccess && !credentials ? (
++          <p className="muted">A client link already exists. For safety the PIN is shown only once, so regenerate to get a new link and PIN to send.</p>
++        ) : null}
++        {credentials ? (
++          <SharePanel
++            galleryId={galleryId}
++            galleryName={String(gallery?.name ?? "")}
++            clientName={gallery?.clientName ? String(gallery.clientName) : undefined}
++            clientPhone={clientPhone}
++            credentials={credentials}
++            published={isPublished}
++            busy={isSending}
++            error={shareError}
++            onPublish={handlePublish}
++            onRegenerate={handleSend}
++          />
++        ) : null}
++
+         {error ? <div className="error-box">{error}</div> : null}
+ 
+         {gallery?.selectionStatus === "submitted" ? (
+diff --git a/mj_shoot-it/src/lib/access-link.ts b/mj_shoot-it/src/lib/access-link.ts
+new file mode 100644
+index 0000000..107cc8d
+--- /dev/null
++++ b/mj_shoot-it/src/lib/access-link.ts
+@@ -0,0 +1,12 @@
++/**
++ * The secret travels in the URL fragment (#secret=...). Browsers never send the fragment to a server,
++ * so it stays out of access logs and proxies, and the app sends `Referrer-Policy: no-referrer`.
++ */
++export function buildClientLink(origin: string, galleryId: string, secretToken: string): string {
++  return `${origin}/client/access?galleryId=${encodeURIComponent(galleryId)}#secret=${encodeURIComponent(secretToken)}`;
++}
++
++/** Reads the secret back out of a URL fragment such as "#secret=abc". Returns "" when absent. */
++export function readSecretFromHash(hash: string): string {
++  return new URLSearchParams(hash.replace(/^#/, "")).get("secret") ?? "";
++}
+diff --git a/mj_shoot-it/src/lib/api.ts b/mj_shoot-it/src/lib/api.ts
+index 7ee5c3a..f39566a 100644
+--- a/mj_shoot-it/src/lib/api.ts
++++ b/mj_shoot-it/src/lib/api.ts
+@@ -295,17 +295,39 @@ export async function setStudioPhotoReview(
+   });
+ }
+ 
+-export async function createGalleryAccess(
+-  galleryId: string,
+-  input: { permission: "view" | "view_download"; expiresAt?: string | null },
+-): Promise<{ accessKey?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }> {
+-  return apiRequest<{ accessKey?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }>(
+-    `/galleries/${galleryId}/access`,
+-    {
+-      method: "POST",
+-      body: JSON.stringify(input),
+-    },
+-  );
++/** Returned ONCE by create/regenerate. Only hashes are stored, so these cannot be fetched again. */
++export type GalleryAccessCredentials = {
++  id: string;
++  permission: "view" | "view_download";
++  expiresAt?: string | null;
++  secretToken: string;
++  pin: string;
++};
++
++type AccessInput = { permission: "view" | "view_download"; expiresAt?: string | null };
++
++export async function createGalleryAccess(galleryId: string, input: AccessInput): Promise<GalleryAccessCredentials> {
++  return apiRequest<GalleryAccessCredentials>(`/galleries/${galleryId}/access`, { method: "POST", body: JSON.stringify(input) });
++}
++
++/** Regenerate: revokes the current link, PIN and client sessions, and issues new ones. */
++export async function resetGalleryAccess(galleryId: string, input: AccessInput): Promise<GalleryAccessCredentials> {
++  return apiRequest<GalleryAccessCredentials>(`/galleries/${galleryId}/access/reset`, { method: "POST", body: JSON.stringify(input) });
++}
++
++export async function publishGallery(galleryId: string): Promise<{ id: string; publicationStatus: string; publishedAt?: string }> {
++  return apiRequest(`/galleries/${galleryId}/publish`, { method: "POST" });
++}
++
++export type GalleryAccessSummary = { id: string; permission: string; expiresAt?: string | null; revokedAt?: string | null };
++
++export async function listGalleryAccess(galleryId: string): Promise<{ items: GalleryAccessSummary[]; total: number }> {
++  return apiCollectionRequest<GalleryAccessSummary>(`/galleries/${galleryId}/access`, (item) => ({
++    id: String(item.id ?? ""),
++    permission: String(item.permission ?? "view"),
++    expiresAt: (item.expiresAt as string | null | undefined) ?? null,
++    revokedAt: (item.revokedAt as string | null | undefined) ?? null,
++  }));
+ }
+ 
+ export async function verifyClientAccess(input: {

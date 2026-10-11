@@ -239,8 +239,12 @@ export async function listGalleries(page = 1, limit = 20): Promise<{ items: Gall
   return apiCollectionRequest(`/galleries?page=${page}&limit=${limit}`, normalizeGallery);
 }
 
+export type NewClientInput = { name: string; email?: string; phone?: string };
+
+/** Provide exactly one of `clientId` (existing client) or `newClient` (created together with the gallery). */
 export async function createGallery(input: {
-  clientId: string;
+  clientId?: string;
+  newClient?: NewClientInput;
   name: string;
   expiresAt?: string | null;
 }): Promise<GalleryRecord> {

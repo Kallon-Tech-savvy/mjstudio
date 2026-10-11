@@ -1,0 +1,6 @@
+/* Tailwind theme + utilities WITHOUT preflight and WITHOUT cascade layers, on purpose:
+   the existing hand-written stylesheet is unlayered and sets `font: inherit` on form controls,
+   which would beat layered utilities. Pages are migrated to Tailwind one at a time; once the
+   old stylesheet is gone, switch to the standard `@import "tailwindcss";`. */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";

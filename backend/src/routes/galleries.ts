@@ -5,7 +5,9 @@ import type { ApplicationServices } from '../services/container.js';
 import { collectionEnvelope, successEnvelope } from '../utils/response.js';
 import { galleryParamSchema, paginationSchema, parseInput, requireJsonBody } from '../http/validation.js';
 
-const createSchema = z.object({ clientId: z.string().uuid(), name: z.string().trim().min(1).max(200), expiresAt: z.string().datetime().nullable().optional() }).strict();
+const newClientSchema = z.object({ name: z.string().trim().min(1).max(200), email: z.string().trim().email().max(320).optional(), phone: z.string().trim().max(40).optional() }).strict();
+const createSchema = z.object({ clientId: z.string().uuid().optional(), newClient: newClientSchema.optional(), name: z.string().trim().min(1).max(200), expiresAt: z.string().datetime().nullable().optional() }).strict()
+  .refine((value) => (value.clientId !== undefined) !== (value.newClient !== undefined), { message: 'Provide either clientId or newClient.' });
 const updateSchema = z.object({ name: z.string().trim().min(1).max(200).optional(), expiresAt: z.string().datetime().nullable().optional() }).strict().refine((value) => Object.keys(value).length > 0);
 
 export function galleriesRouter(services: ApplicationServices) {
