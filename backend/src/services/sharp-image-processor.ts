@@ -1,7 +1,7 @@
 import sharp, { type OutputInfo } from 'sharp';
 import type { ImageProcessor, DerivativeObject } from './job-handlers.js';
 import { PermanentJobError } from './job-service.js';
-import type { LocalPhotoStorage } from './local-photo-storage.js';
+import { UnverifiedStorageObjectError, type LocalPhotoStorage } from './local-photo-storage.js';
 
 type DerivativePreset = { width: number; height: number };
 
@@ -24,8 +24,11 @@ export class SharpImageProcessor implements ImageProcessor {
     let source: Buffer;
     try {
       source = await this.storage.readObjectBytes(sourceKey);
-    } catch {
-      throw new PermanentJobError('Source image is missing or failed storage verification.');
+    } catch (error) {
+      if (error instanceof UnverifiedStorageObjectError) {
+        throw new PermanentJobError('Source image is missing or failed storage verification.');
+      }
+      throw error;
     }
     let output: { data: Buffer; info: OutputInfo };
     try {
