@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,10 @@ import { CleanupPhotoAssetsHandler, ProcessPhotoAssetsHandler, ReconcilePhotoAss
 import { JobService, JobWorker } from '../src/services/job-service.js';
 import { PhotoService } from '../src/services/photo-service.js';
 import { PhotoRepresentationService } from '../src/services/photo-representation-service.js';
+import { createApp } from '../src/app.js';
+import { CatalogService } from '../src/services/catalog-service.js';
+import { ClientSessionService } from '../src/services/client-access-service.js';
+import request from 'supertest';
 
 const databaseUrl = process.env.DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
@@ -155,6 +159,76 @@ suite('photo processing against PostgreSQL', () => {
     const photo = await database.query('SELECT status FROM photos WHERE id = $1', [photoId]);
     expect(photo.rows[0]?.status).toBe('active');
     await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+  });
+
+  it('serves a processed photo through the authenticated client gallery HTTP endpoint', async () => {
+    const bytes = await sharp({
+      create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
+    }).jpeg().toBuffer();
+    const { photoId, worker, galleryId, storage: photoStorage } = await createFixture(bytes, 'image/jpeg');
+    expect(await worker.runOne()).toBe(true);
+
+    const gallery = await database.query(
+      `SELECT g.studio_id, g.client_id FROM galleries g WHERE g.id = $1`,
+      [galleryId],
+    );
+    await database.query(
+      "UPDATE galleries SET publication_status = 'published', published_at = NOW() WHERE id = $1",
+      [galleryId],
+    );
+    const accessId = randomUUID();
+    const sessionId = randomUUID();
+    const sessionToken = randomUUID() + randomUUID();
+    await database.query(
+      `INSERT INTO gallery_access (id, gallery_id, secret_token_hash, pin_hash, permission)
+       VALUES ($1, $2, $3, $4, 'view_download')`,
+      [accessId, galleryId, createHash('sha256').update(randomUUID()).digest('hex'), 'test-pin-hash'],
+    );
+    await database.query(
+      `INSERT INTO client_sessions (id, gallery_access_id, session_token_hash, expires_at)
+       VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour')`,
+      [sessionId, accessId, createHash('sha256').update(sessionToken).digest('hex')],
+    );
+
+    const clientSessions = new ClientSessionService(database, { assertAllowed: async () => undefined });
+    const services = {
+      auth: {}, galleries: {}, photos: {}, galleryAccess: {},
+      clientSessions, selections: {}, recommendations: {}, downloads: {}, feedback: {},
+      proofing: {}, delivery: {},
+      catalog: new CatalogService(database, new PhotoRepresentationService(photoStorage)),
+      rateLimits: { assertAllowed: async () => undefined },
+      jobs: new JobService(database),
+    } as unknown as import('../src/services/container.js').ApplicationServices;
+    const app = createApp(services, { allowedOrigins: ['http://localhost:3000'], localPhotoStorage: photoStorage });
+
+    try {
+      const response = await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`);
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0]).toMatchObject({ photoId, position: 0 });
+      expect(response.body.data[0].thumbnail).toMatchObject({
+        width: 600,
+        height: 400,
+        mimeType: 'image/webp',
+      });
+
+      const thumbnailPath = new URL(response.body.data[0].thumbnail.url).pathname;
+      const imageResponse = await request(app).get(thumbnailPath);
+      expect(imageResponse.status).toBe(200);
+      expect(imageResponse.headers['content-type']).toContain('image/webp');
+      expect(imageResponse.headers['cache-control']).toBe('private, no-store');
+      expect(Buffer.from(imageResponse.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
+    } finally {
+      await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+      await database.query('DELETE FROM gallery_access WHERE id = $1', [accessId]);
+      await database.query('DELETE FROM galleries WHERE id = $1', [galleryId]);
+      await database.query('DELETE FROM clients WHERE id = $1', [gallery.rows[0].client_id]);
+      await database.query('DELETE FROM studio_members WHERE studio_id = $1', [gallery.rows[0].studio_id]);
+      await database.query('DELETE FROM studios WHERE id = $1', [gallery.rows[0].studio_id]);
+      await database.query('DELETE FROM users WHERE id = (SELECT user_id FROM studio_members WHERE studio_id = $1 LIMIT 1)', [gallery.rows[0].studio_id]).catch(() => undefined);
+    }
   });
 
   it('marks a malformed original and its processing job failed without activating the photo', async () => {
