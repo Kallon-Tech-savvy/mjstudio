@@ -62,6 +62,16 @@ describe('SharpImageProcessor', () => {
       .rejects.toThrow(/missing or failed storage verification/i);
   });
 
+  it('keeps transient source-storage read failures retryable', async () => {
+    const storage = {
+      readObjectBytes: async () => { throw new Error('temporary filesystem read failure'); },
+      writeDerivative: async () => undefined,
+    } as unknown as LocalPhotoStorage;
+
+    await expect(new SharpImageProcessor(storage).createPreview('studios/source/original', 'studios/derivatives/preview'))
+      .rejects.toThrow('temporary filesystem read failure');
+  });
+
   it('deletes derivative bytes and metadata idempotently', async () => {
     const storage = await makeStorage();
     const sourceKey = 'studios/studio-1/photos/photo-3/original';
