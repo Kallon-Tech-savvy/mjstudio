@@ -48,13 +48,14 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         }
       }
       if (existing.rows[0]) {
+        // Reuse the current derivative row: storage_key is unique even when its
+        // object has disappeared, so superseding it and inserting another row
+        // with the same key would violate the database constraint.
         await transaction.query(
-          "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
+          "UPDATE photo_assets SET upload_status = 'pending', processing_status = 'pending', updated_at = NOW() WHERE id = $1",
           [existing.rows[0].id],
         );
-        assetId = undefined;
-      }
-      if (!assetId) {
+      } else {
         assetId = randomUUID();
         await transaction.query(
           `INSERT INTO photo_assets (id, photo_id, type, state, storage_key, upload_status, processing_status)
