@@ -58,6 +58,20 @@ export function createApp(
     allowedHeaders: ['Content-Type', 'X-CSRF-Token'],
   }));
   if (options.localPhotoStorage) {
+    app.use('/api/local-photo-uploads', express.raw({ type: 'image/*', limit: '25mb' }));
+  }
+  app.use(express.json({ limit: '1mb', type: 'application/json' }));
+  app.use(cookieParser());
+  app.use((req, _res, next) => {
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.path.startsWith('/api/local-photo-uploads/') === false && req.headers['content-type'] && !req.is('application/json')) {
+      next(new UnsupportedMediaTypeError());
+      return;
+    }
+    next();
+  });
+  app.use(requireTrustedOrigin(allowedOrigins));
+
+  if (options.localPhotoStorage) {
     app.put('/api/local-photo-uploads/:token', express.raw({ type: 'image/*', limit: '25mb' }), async (req, res, next) => {
       try {
         if (!Buffer.isBuffer(req.body)) {
@@ -85,16 +99,7 @@ export function createApp(
       }
     });
   }
-  app.use(express.json({ limit: '1mb', type: 'application/json' }));
-  app.use(cookieParser());
-  app.use((req, _res, next) => {
-    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.headers['content-type'] && !req.is('application/json')) {
-      next(new UnsupportedMediaTypeError());
-      return;
-    }
-    next();
-  });
-  app.use(requireTrustedOrigin(allowedOrigins));
+
 
   app.get('/api', (_req, res) => {
     res.json({ data: { name: 'MJ Creative Art API', status: 'ready' } });
