@@ -236,6 +236,25 @@ suite('photo processing against PostgreSQL', () => {
     }
   });
 
+  it('marks a crashed job terminal when its final lease expires', async () => {
+    const bytes = await sharp({
+      create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
+    }).jpeg().toBuffer();
+    const { photoId, worker, jobs } = await createFixture(bytes, 'image/jpeg');
+    await database.query(
+      "UPDATE application_jobs SET status = 'processing', attempts = max_attempts, locked_until = NOW() - INTERVAL '1 second', lock_token = $2 WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1",
+      [photoId, randomUUID()],
+    );
+
+    expect(await worker.runOne()).toBe(false);
+    const state = await database.query(
+      "SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>'photoId' = p.id::text WHERE p.id = $1 AND j.job_type = 'PROCESS_PHOTO_ASSETS'",
+      [photoId],
+    );
+    expect(state.rows[0]).toMatchObject({ photo_status: 'failed', job_status: 'failed', attempts: 5 });
+    await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+  });
+
   it('retries a transient processing failure and activates the photo on the next attempt', async () => {
     const bytes = await sharp({
       create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
