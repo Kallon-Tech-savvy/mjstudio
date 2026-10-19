@@ -36,11 +36,12 @@ if (env.NODE_ENV !== 'production') {
 }
 const services = createApplicationServices(providers);
 const app = createApp(services, { localPhotoStorage });
-
-app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT }, 'MJ Creative Art backend started');
 });
 
+let stopping = false;
+let workerLoop: Promise<void> | undefined;
 
 if (env.NODE_ENV !== 'production' && process.env.PHOTO_WORKER_ENABLED === 'true' && localPhotoStorage) {
   const jobs = new JobService(db);
@@ -52,16 +53,42 @@ if (env.NODE_ENV !== 'production' && process.env.PHOTO_WORKER_ENABLED === 'true'
   logger.info({ workerTypes: ['PROCESS_PHOTO_ASSETS', 'CLEANUP_PHOTO_ASSETS', 'RECONCILE_PHOTO_ASSET'] }, 'Local photo asset workers enabled');
 
   const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-  const poll = async () => {
-    while (true) {
+  workerLoop = (async () => {
+    while (!stopping) {
       try {
         const worked = await Promise.all(workers.map((worker) => worker.runOne()));
-        if (!worked.some(Boolean)) await sleep(1000);
+        if (!worked.some(Boolean) && !stopping) await sleep(1000);
       } catch (error) {
         logger.error({ err: serializeError(error) }, 'Photo worker poll failed');
-        await sleep(1000);
+        if (!stopping) await sleep(1000);
       }
     }
-  };
-  void poll();
+  })();
 }
+
+let shutdownStarted = false;
+const shutdown = (signal: NodeJS.Signals) => {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  stopping = true;
+  logger.info({ signal }, 'Graceful shutdown requested');
+
+  server.close((error) => {
+    void (async () => {
+      if (workerLoop) await workerLoop;
+      await db.end();
+      if (error) {
+        logger.error({ err: serializeError(error) }, 'HTTP server failed to close cleanly');
+        process.exitCode = 1;
+        return;
+      }
+      logger.info({ signal }, 'MJ Creative Art backend stopped cleanly');
+    })().catch((shutdownError: unknown) => {
+      logger.error({ err: serializeError(shutdownError) }, 'Graceful shutdown failed');
+      process.exitCode = 1;
+    });
+  });
+};
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
