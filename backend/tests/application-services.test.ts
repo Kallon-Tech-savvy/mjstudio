@@ -81,6 +81,39 @@ describe('application-service rules', () => {
     expect(queries.some((sql) => sql.includes("state = 'superseded'"))).toBe(true);
   });
 
+
+  it('does not persist a photo when storage cannot issue an upload capability', async () => {
+    let transactionRequested = false;
+    const database = {
+      query: async (sql: string) => sql.includes('SELECT g.id, g.studio_id')
+        ? { rows: [{
+            id: 'gallery-1',
+            studio_id: '22222222-2222-4222-8222-222222222222',
+            role: 'owner',
+            workflow_status: 'reviewing',
+            publication_status: 'unpublished',
+            archived_at: null,
+          }] }
+        : { rows: [] },
+      connect: async () => {
+        transactionRequested = true;
+        throw new Error('A transaction should not start when capability creation fails.');
+      },
+    } as never;
+    const storage = {
+      createUploadCapability: async () => { throw new Error('Storage provider unavailable'); },
+    };
+    const service = new PhotoService(database, storage as never, {} as never);
+
+    await expect(service.create(buildPhotographerContext(), 'gallery-1', {
+      filename: 'portrait.jpg',
+      mimeType: 'image/jpeg',
+      fileSize: 1024,
+    })).rejects.toThrow('Storage provider unavailable');
+
+    expect(transactionRequested).toBe(false);
+  });
+
   it('rejects reorder requests that do not include the complete active gallery set', async () => {
     const database = {
       query: async (sql: string) => sql.includes('JOIN studio_members')
