@@ -136,6 +136,32 @@ suite('photo processing against PostgreSQL', () => {
     await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
   });
 
+  it('regenerates a derivative whose database row is ready but whose object is missing', async () => {
+    const bytes = await sharp({
+      create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
+    }).jpeg().toBuffer();
+    const { photoId, assetId, worker, jobs, storage: fixtureStorage } = await createFixture(bytes, 'image/jpeg');
+    expect(await worker.runOne()).toBe(true);
+    const previewKey = \`studios/assets/\${photoId}/preview\`;
+    await fixtureStorage.deleteObject(previewKey);
+    await database.query(
+      "UPDATE application_jobs SET status = 'failed', failed_at = NOW() WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1",
+      [photoId],
+    );
+    await jobs.enqueue({ type: 'PROCESS_PHOTO_ASSETS', payload: { photoId, sourceAssetId: assetId } });
+
+    expect(await worker.runOne()).toBe(true);
+    expect(await fixtureStorage.verifyObject(previewKey)).toMatchObject({ mimeType: 'image/webp', width: 900, height: 600 });
+    const previewRows = await database.query(
+      "SELECT state, upload_status, processing_status FROM photo_assets WHERE photo_id = $1 AND type = 'preview' ORDER BY created_at DESC",
+      [photoId],
+    );
+    expect(previewRows.rows[0]).toMatchObject({ state: 'current', upload_status: 'uploaded', processing_status: 'ready' });
+    const photo = await database.query('SELECT status FROM photos WHERE id = $1', [photoId]);
+    expect(photo.rows[0]?.status).toBe('active');
+    await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+  });
+
   it('reconciliation queues processing when a verified original upload was left pending', async () => {
     const bytes = await sharp({
       create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
