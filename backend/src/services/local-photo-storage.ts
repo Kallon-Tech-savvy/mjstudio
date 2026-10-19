@@ -113,7 +113,13 @@ export class LocalPhotoStorage implements PhotoStorage {
     const objectPath = this.resolveObjectPath(capability.key);
     await mkdir(dirname(objectPath), { recursive: true });
     await writeFile(objectPath, bytes, { flag: 'wx', mode: 0o600 });
-    await writeFile(this.metadataPath(objectPath), JSON.stringify({ mimeType: detectedType }), { flag: 'wx', mode: 0o600 });
+    try {
+      await writeFile(this.metadataPath(objectPath), JSON.stringify({ mimeType: detectedType }), { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      // Do not leave an object that cannot be verified or retried after a sidecar-write failure.
+      await rm(objectPath, { force: true });
+      throw error;
+    }
   }
 
   async readCapability(token: string): Promise<{ bytes: Buffer; mimeType: string; download: boolean } | null> {
