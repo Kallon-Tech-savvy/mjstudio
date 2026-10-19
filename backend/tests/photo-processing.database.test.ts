@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 import sharp from 'sharp';
 import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 import { SharpImageProcessor } from '../src/services/sharp-image-processor.js';
-import { ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
+import { CleanupPhotoAssetsHandler, ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
 import { JobService, JobWorker } from '../src/services/job-service.js';
 import { PhotoService } from '../src/services/photo-service.js';
 import { PhotoRepresentationService } from '../src/services/photo-representation-service.js';
@@ -117,6 +117,15 @@ suite('photo processing against PostgreSQL', () => {
 
     const job = await database.query("SELECT status FROM application_jobs WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1", [photoId]);
     expect(job.rows[0]?.status).toBe('completed');
+
+    // Exercise the persisted cleanup queue against the original and both derivatives.
+    await database.query('UPDATE photos SET deleted_at = NOW() WHERE id = $1', [photoId]);
+    await jobs.enqueue({ type: 'CLEANUP_PHOTO_ASSETS', payload: { photoId } });
+    const cleanupWorker = new JobWorker(jobs, new CleanupPhotoAssetsHandler(storage));
+    expect(await cleanupWorker.runOne()).toBe(true);
+    expect(await storage.verifyObject(`studios/${(await database.query('SELECT studio_id FROM galleries WHERE id = $1', [galleryId])).rows[0].studio_id}/galleries/${galleryId}/photos/${photoId}/original`)).toBeNull();
+    expect(await storage.verifyObject(`studios/assets/${photoId}/preview`)).toBeNull();
+    expect(await storage.verifyObject(`studios/assets/${photoId}/thumbnail`)).toBeNull();
     await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
   });
 
