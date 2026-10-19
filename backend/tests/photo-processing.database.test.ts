@@ -236,6 +236,37 @@ suite('photo processing against PostgreSQL', () => {
     }
   });
 
+  it('retries a transient processing failure and activates the photo on the next attempt', async () => {
+    const bytes = await sharp({
+      create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
+    }).jpeg().toBuffer();
+    const { photoId, worker: successfulWorker, jobs } = await createFixture(bytes, 'image/jpeg');
+    const transientProcessor = {
+      createPreview: async () => { throw new Error('temporary filesystem read failure'); },
+      createThumbnail: async () => { throw new Error('preview should fail first'); },
+    };
+    const failingWorker = new JobWorker(jobs, new ProcessPhotoAssetsHandler(transientProcessor, storage));
+
+    expect(await failingWorker.runOne()).toBe(true);
+    const afterFailure = await database.query(
+      'SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>\\'photoId\\' = p.id::text WHERE p.id = $1 AND j.job_type = \\'PROCESS_PHOTO_ASSETS\\'',
+      [photoId],
+    );
+    expect(afterFailure.rows[0]).toMatchObject({ photo_status: 'processing', job_status: 'pending', attempts: 1 });
+
+    await database.query(
+      'UPDATE application_jobs SET available_at = NOW() WHERE job_type = \\'PROCESS_PHOTO_ASSETS\\' AND payload->>\\'photoId\\' = $1',
+      [photoId],
+    );
+    expect(await successfulWorker.runOne()).toBe(true);
+    const afterRetry = await database.query(
+      'SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>\\'photoId\\' = p.id::text WHERE p.id = $1 AND j.job_type = \\'PROCESS_PHOTO_ASSETS\\'',
+      [photoId],
+    );
+    expect(afterRetry.rows[0]).toMatchObject({ photo_status: 'active', job_status: 'completed', attempts: 2 });
+    await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+  });
+
   it('marks a malformed original and its processing job failed without activating the photo', async () => {
     const malformed = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
     const { photoId, worker } = await createFixture(malformed, 'image/jpeg');
