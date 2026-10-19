@@ -54,6 +54,12 @@ if (env.NODE_ENV !== 'production' && process.env.PHOTO_WORKER_ENABLED === 'true'
 
   const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
   workerLoop = (async () => {
+    try {
+      const removed = await localPhotoStorage.cleanupStaleTemporaryFiles();
+      if (removed > 0) logger.info({ removed }, 'Removed stale photo derivative temporary files');
+    } catch (error) {
+      logger.error({ err: serializeError(error) }, 'Stale photo derivative temporary-file cleanup failed');
+    }
     while (!stopping) {
       try {
         const worked = await Promise.all(workers.map((worker) => worker.runOne()));
