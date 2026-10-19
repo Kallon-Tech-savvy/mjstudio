@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -32,6 +32,24 @@ describe('LocalPhotoStorage', () => {
       mimeType: 'image/jpeg',
       fileSize: jpeg.length,
     });
+  });
+
+  it('removes an original if its metadata sidecar cannot be written, allowing a safe retry', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const key = 'studios/studio-1/original';
+    const capability = await storage.createUploadCapability(key, 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    const sidecarDirectory = join(root, 'studios/studio-1/original.metadata.json');
+    await mkdir(sidecarDirectory, { recursive: true });
+
+    await expect(storage.acceptUpload(token, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9])))
+      .rejects.toThrow();
+
+    await rm(sidecarDirectory, { recursive: true, force: true });
+    await expect(storage.acceptUpload(token, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9])))
+      .resolves.toBeUndefined();
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg' });
   });
 
   it('rejects tampered and expired capabilities', async () => {
