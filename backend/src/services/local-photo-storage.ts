@@ -84,12 +84,12 @@ export class LocalPhotoStorage implements PhotoStorage {
     this.resolveObjectPath(key);
     const payload: Capability = { key, expiresAt: Date.now() + expiresInSeconds * 1000, operation };
     const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    const token = encoded + '.' + this.sign(encoded);
+    const token = encoded + '~' + this.sign(encoded);
     return { url: `${this.baseUrl.replace(/\/$/, '')}/api/${route}/${token}`, expiresAt: new Date(payload.expiresAt) };
   }
 
   private verifyCapability(token: string, expectedOperation?: Capability['operation']): Capability | null {
-    const [encoded, signature, extra] = token.split('.');
+    const [encoded, signature, extra] = token.split('~');
     if (!encoded || !signature || extra !== undefined) return null;
     const expected = this.sign(encoded);
     const left = Buffer.from(signature);
