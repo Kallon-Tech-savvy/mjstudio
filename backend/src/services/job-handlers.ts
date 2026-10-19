@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Transaction } from './service-common.js';
-import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
+import type { JobHandler, ClaimedJob, JobService, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
 import { PermanentJobError } from './job-service.js';
 
 export type DerivativeObject = { mimeType: string; fileSize: number; width?: number; height?: number };
@@ -90,7 +90,7 @@ export class CleanupPhotoAssetsHandler implements JobHandler<'CLEANUP_PHOTO_ASSE
 
 export class ReconcilePhotoAssetHandler implements JobHandler<'RECONCILE_PHOTO_ASSET'> {
   type = 'RECONCILE_PHOTO_ASSET' as const;
-  constructor(private readonly storage: AssetStorage) {}
+  constructor(private readonly storage: AssetStorage, private readonly jobs: Pick<JobService, 'enqueueInTransaction'>) {}
 
   async execute(job: ClaimedJob<'RECONCILE_PHOTO_ASSET'>, transaction: Transaction) {
     const { assetId } = job.payload;
@@ -108,6 +108,12 @@ export class ReconcilePhotoAssetHandler implements JobHandler<'RECONCILE_PHOTO_A
     if (object && asset.type !== 'original' && asset.processing_status === 'ready' && object.fileSize > 0) return;
     if (object && asset.upload_status === 'pending') {
       await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', updated_at = NOW() WHERE id = $1", [assetId]);
+      if (asset.type === 'original') {
+        await this.jobs.enqueueInTransaction(transaction, {
+          type: 'PROCESS_PHOTO_ASSETS',
+          payload: { photoId: asset.photo_id, sourceAssetId: assetId },
+        });
+      }
     }
   }
 }
