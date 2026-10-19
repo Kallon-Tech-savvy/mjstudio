@@ -72,7 +72,7 @@ export function createApp(
   app.use(requireTrustedOrigin(allowedOrigins));
 
   if (options.localPhotoStorage) {
-    app.put('/api/local-photo-uploads/:token', express.raw({ type: 'image/*', limit: '25mb' }), async (req, res, next) => {
+    app.put('/api/local-photo-uploads/:token', async (req, res, next) => {
       try {
         if (!Buffer.isBuffer(req.body)) {
           res.status(415).json({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Upload must use an image content type.' } });
