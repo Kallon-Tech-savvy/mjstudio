@@ -30,6 +30,9 @@ export class PhotoService {
     const photoId = this.createId();
     const assetId = this.createId();
     const storageKey = `studios/${actor.studioId}/galleries/${galleryId}/photos/${photoId}/original`;
+    // Request the upload capability before creating persistent rows. If storage is
+    // unavailable, the request fails without leaving a photo that cannot be uploaded.
+    const capability = await this.storage.createUploadCapability(storageKey, 600);
     const result = await inTransaction(this.database, async (transaction) => {
       const state = await transaction.query('SELECT archived_at FROM galleries WHERE id = $1 AND studio_id = $2 FOR UPDATE', [galleryId, actor.studioId]);
       if (!state.rows[0]) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
@@ -46,7 +49,6 @@ export class PhotoService {
         [assetId, photoId, storageKey, input.mimeType.trim(), input.fileSize ?? null]);
       return photo.rows[0];
     });
-    const capability = await this.storage.createUploadCapability(storageKey, 600);
     return {
       photo: { id: result.id, position: result.position, status: result.status },
       asset: { id: assetId, type: 'original', uploadStatus: 'pending', processingStatus: 'not_required', state: 'current' },
