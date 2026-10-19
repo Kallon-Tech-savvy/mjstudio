@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ForbiddenError, ValidationError } from '../errors.js';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -41,9 +41,20 @@ export class LocalPhotoStorage implements PhotoStorage {
         stat(objectPath),
         readFile(this.metadataPath(objectPath), 'utf8'),
       ]);
-      const metadata = JSON.parse(metadataText) as { mimeType?: string; width?: number; height?: number };
+      const metadata = JSON.parse(metadataText) as {
+        mimeType?: string;
+        width?: number;
+        height?: number;
+        fileSize?: number;
+        sha256?: string;
+      };
       const mimeType = this.detectImageMimeType(file);
       if (!mimeType || metadata.mimeType !== mimeType || fileStat.size < 1) return null;
+      // Derivative object and sidecar are separate filesystem entries. A crash between
+      // their renames must leave a detectable mismatch rather than trusted stale metadata.
+      if (metadata.fileSize !== undefined && metadata.fileSize !== fileStat.size) return null;
+      if (metadata.sha256 !== undefined
+        && metadata.sha256 !== createHash('sha256').update(file).digest('hex')) return null;
       return { storageKey, mimeType, fileSize: fileStat.size, ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height) ? { width: metadata.width, height: metadata.height } : {}) };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -83,6 +94,8 @@ export class LocalPhotoStorage implements PhotoStorage {
         mimeType: metadata.mimeType,
         width: metadata.width,
         height: metadata.height,
+        fileSize: metadata.fileSize,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
       }), { flag: 'wx', mode: 0o600 });
       await rename(temporaryObject, objectPath);
       await rename(temporaryMetadata, sidecarPath);
