@@ -152,13 +152,16 @@ export class JobWorker<T extends JobType> {
     // Keep the 60-second lease alive while image processing or storage I/O is in progress.
     // Serialize heartbeats so a slow database request cannot create an unbounded queue.
     let heartbeatInFlight = Promise.resolve();
+    let heartbeatRunning = false;
     const timer = setInterval(() => {
-      heartbeatInFlight = heartbeatInFlight
-        .then(() => this.jobs.heartbeat(job))
+      if (heartbeatRunning) return;
+      heartbeatRunning = true;
+      heartbeatInFlight = this.jobs.heartbeat(job)
         .catch(() => {
           // Completion/failure still checks the lock token. A lost lease is rejected there;
           // transient heartbeat failures are retried on the next interval.
-        });
+        })
+        .finally(() => { heartbeatRunning = false; });
     }, this.heartbeatIntervalMs);
 
     try {
