@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { ForbiddenError, ValidationError } from '../errors.js';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
@@ -50,13 +51,13 @@ export class LocalPhotoStorage implements PhotoStorage {
 
   async acceptUpload(token: string, contentType: string, bytes: Buffer): Promise<void> {
     const capability = this.verifyCapability(token, 'upload');
-    if (!capability) throw new Error('Upload capability is invalid or expired.');
+    if (!capability) throw new ForbiddenError('Upload capability is invalid or expired.');
     if (!Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > this.maxUploadBytes) {
-      throw new Error('Upload must contain an image within the configured size limit.');
+      throw new ValidationError('INVALID_UPLOAD_SIZE', 'Upload must contain an image within the configured size limit.');
     }
     const detectedType = this.detectImageMimeType(bytes);
     if (!detectedType || detectedType !== contentType.split(';')[0]?.trim().toLowerCase()) {
-      throw new Error('Upload content type does not match a supported image format.');
+      throw new ValidationError('INVALID_UPLOAD_TYPE', 'Upload content type does not match a supported image format.');
     }
     const objectPath = this.resolveObjectPath(capability.key);
     await mkdir(dirname(objectPath), { recursive: true });
