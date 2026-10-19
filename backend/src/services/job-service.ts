@@ -135,15 +135,39 @@ export interface JobHandler<T extends JobType = JobType> {
 }
 
 export class JobWorker<T extends JobType> {
-  constructor(private readonly jobs: JobService, private readonly handler: JobHandler<T>) {}
+  constructor(
+    private readonly jobs: JobService,
+    private readonly handler: JobHandler<T>,
+    private readonly heartbeatIntervalMs = 20_000,
+  ) {
+    if (!Number.isSafeInteger(heartbeatIntervalMs) || heartbeatIntervalMs <= 0 || heartbeatIntervalMs >= 60_000) {
+      throw new RangeError('Heartbeat interval must be a positive number below the 60-second job lease.');
+    }
+  }
 
   async runOne() {
     const job = await this.jobs.claim(this.handler.type);
     if (!job) return false;
+
+    // Keep the 60-second lease alive while image processing or storage I/O is in progress.
+    // Serialize heartbeats so a slow database request cannot create an unbounded queue.
+    let heartbeatInFlight = Promise.resolve();
+    const timer = setInterval(() => {
+      heartbeatInFlight = heartbeatInFlight
+        .then(() => this.jobs.heartbeat(job))
+        .catch(() => {
+          // Completion/failure still checks the lock token. A lost lease is rejected there;
+          // transient heartbeat failures are retried on the next interval.
+        });
+    }, this.heartbeatIntervalMs);
+
     try {
       await this.jobs.complete(job, (transaction) => this.handler.execute(job, transaction));
     } catch (error) {
       await this.jobs.fail(job, error);
+    } finally {
+      clearInterval(timer);
+      await heartbeatInFlight;
     }
     return true;
   }
