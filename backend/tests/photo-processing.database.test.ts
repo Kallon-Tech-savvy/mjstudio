@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 import sharp from 'sharp';
 import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 import { SharpImageProcessor } from '../src/services/sharp-image-processor.js';
-import { CleanupPhotoAssetsHandler, ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
+import { CleanupPhotoAssetsHandler, ProcessPhotoAssetsHandler, ReconcilePhotoAssetHandler } from '../src/services/job-handlers.js';
 import { JobService, JobWorker } from '../src/services/job-service.js';
 import { PhotoService } from '../src/services/photo-service.js';
 import { PhotoRepresentationService } from '../src/services/photo-representation-service.js';
@@ -30,7 +30,7 @@ suite('photo processing against PostgreSQL', () => {
     if (storageRoot) await rm(storageRoot, { recursive: true, force: true });
   });
 
-  async function createFixture(imageBytes: Buffer, mimeType: string) {
+  async function createFixture(imageBytes: Buffer, mimeType: string, completeUpload = true) {
     const userId = randomUUID();
     const studioId = randomUUID();
     const clientId = randomUUID();
@@ -67,16 +67,19 @@ suite('photo processing against PostgreSQL', () => {
     await storage.acceptUpload(token, mimeType, imageBytes);
     const jobs = new JobService(database);
     const photoService = new PhotoService(database, storage, jobs);
-    await photoService.uploadComplete({
-      userId,
-      email: `${userId}@integration.test`,
-      displayName: 'Integration Photographer',
-      studioId,
-      membershipId,
-      role: 'owner',
-    }, galleryId, photoId);
+    if (completeUpload) {
+      await photoService.uploadComplete({
+        userId,
+        email: `${userId}@integration.test`,
+        displayName: 'Integration Photographer',
+        studioId,
+        membershipId,
+        role: 'owner',
+      }, galleryId, photoId);
+    }
     const worker = new JobWorker(jobs, new ProcessPhotoAssetsHandler(new SharpImageProcessor(storage), storage));
-    return { photoId, worker, jobs, storage, storageKey, galleryId };
+    const reconcileWorker = new JobWorker(jobs, new ReconcilePhotoAssetHandler(storage, jobs));
+    return { photoId, worker, reconcileWorker, jobs, storage, storageKey, galleryId, assetId };
   }
 
   it('claims a persisted job, generates both verified derivatives, and activates the photo transactionally', async () => {
@@ -126,6 +129,31 @@ suite('photo processing against PostgreSQL', () => {
     expect(await storage.verifyObject(storageKey)).toBeNull();
     expect(await storage.verifyObject(`studios/assets/${photoId}/preview`)).toBeNull();
     expect(await storage.verifyObject(`studios/assets/${photoId}/thumbnail`)).toBeNull();
+    await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+  });
+
+  it('reconciliation queues processing when a verified original upload was left pending', async () => {
+    const bytes = await sharp({
+      create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
+    }).jpeg().toBuffer();
+    const { photoId, assetId, worker, reconcileWorker, jobs } = await createFixture(bytes, 'image/jpeg', false);
+
+    await jobs.enqueue({ type: 'RECONCILE_PHOTO_ASSET', payload: { assetId } });
+    expect(await reconcileWorker.runOne()).toBe(true);
+    const original = await database.query(
+      "SELECT upload_status FROM photo_assets WHERE id = $1",
+      [assetId],
+    );
+    expect(original.rows[0]?.upload_status).toBe('uploaded');
+    const processingJob = await database.query(
+      "SELECT status FROM application_jobs WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1",
+      [photoId],
+    );
+    expect(processingJob.rows[0]?.status).toBe('pending');
+
+    expect(await worker.runOne()).toBe(true);
+    const photo = await database.query('SELECT status FROM photos WHERE id = $1', [photoId]);
+    expect(photo.rows[0]?.status).toBe('active');
     await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
   });
 
