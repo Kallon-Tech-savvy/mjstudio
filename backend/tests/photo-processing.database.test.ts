@@ -260,7 +260,7 @@ suite('photo processing against PostgreSQL', () => {
     );
     expect(await successfulWorker.runOne()).toBe(true);
     const afterRetry = await database.query(
-      'SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>\\'photoId\\' = p.id::text WHERE p.id = $1 AND j.job_type = \\'PROCESS_PHOTO_ASSETS\\'',
+      "SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>'photoId' = p.id::text WHERE p.id = $1 AND j.job_type = 'PROCESS_PHOTO_ASSETS'",
       [photoId],
     );
     expect(afterRetry.rows[0]).toMatchObject({ photo_status: 'active', job_status: 'completed', attempts: 2 });
