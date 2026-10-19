@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -32,6 +32,29 @@ describe('LocalPhotoStorage', () => {
       mimeType: 'image/jpeg',
       fileSize: jpeg.length,
     });
+  });
+
+  it('rejects a derivative when its object bytes no longer match the metadata sidecar', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const key = 'studios/studio-1/preview.webp';
+    const bytes = Buffer.from('RIFF0000WEBPvalid-a');
+    await storage.writeDerivative(key, bytes, {
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+    });
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({
+      storageKey: key,
+      mimeType: 'image/webp',
+      width: 320,
+      height: 240,
+    });
+
+    // Simulate a crash/interrupted replacement between object and sidecar renames.
+    await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
   });
 
   it('removes an original if its metadata sidecar cannot be written, allowing a safe retry', async () => {
