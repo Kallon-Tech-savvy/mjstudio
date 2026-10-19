@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ForbiddenError, ValidationError } from '../errors.js';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
@@ -105,6 +105,43 @@ export class LocalPhotoStorage implements PhotoStorage {
         rm(temporaryMetadata, { force: true }),
       ]);
     }
+  }
+
+  /** Remove only UUID-named derivative temp files older than the safety window. */
+  async cleanupStaleTemporaryFiles(maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
+    if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 60 * 60 * 1000) {
+      throw new Error('Temporary-file cleanup age must be at least one hour.');
+    }
+    const cutoff = Date.now() - maxAgeMs;
+    let removed = 0;
+    const walk = async (directory: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+      }
+      for (const entry of entries) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) {
+          await walk(path);
+          continue;
+        }
+        // Never follow symlinks or delete arbitrary files: only our exact UUID temp suffix.
+        if (!entry.isFile() || !/\\.tmp-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.name)) continue;
+        try {
+          const fileStat = await stat(path);
+          if (fileStat.mtimeMs >= cutoff) continue;
+          await rm(path, { force: true });
+          removed += 1;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+    };
+    await walk(this.root);
+    return removed;
   }
 
   async deleteObject(storageKey: string): Promise<void> {
