@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type OutputInfo } from 'sharp';
 import type { ImageProcessor, DerivativeObject } from './job-handlers.js';
 import { PermanentJobError } from './job-service.js';
 import type { LocalPhotoStorage } from './local-photo-storage.js';
@@ -27,7 +27,7 @@ export class SharpImageProcessor implements ImageProcessor {
     } catch {
       throw new PermanentJobError('Source image is missing or failed storage verification.');
     }
-    let output: { data: Buffer; info: sharp.OutputInfo };
+    let output: { data: Buffer; info: OutputInfo };
     try {
       output = await sharp(source, { failOn: 'error', limitInputPixels: 40_000_000 })
         .rotate()
@@ -40,7 +40,7 @@ export class SharpImageProcessor implements ImageProcessor {
     if (!output.info.width || !output.info.height || output.data.length === 0 || output.info.format !== 'webp') {
       throw new PermanentJobError('Image processor returned invalid derivative metadata.');
     }
-    const result: DerivativeObject = {
+    const result = {
       mimeType: 'image/webp',
       fileSize: output.data.length,
       width: output.info.width,
