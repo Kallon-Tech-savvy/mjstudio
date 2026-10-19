@@ -6,6 +6,8 @@ import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
 type Capability = { key: string; expiresAt: number; operation: 'upload' | 'view' | 'download' };
 
+export class UnverifiedStorageObjectError extends Error {}
+
 export class LocalPhotoStorage implements PhotoStorage {
   private readonly root: string;
 
