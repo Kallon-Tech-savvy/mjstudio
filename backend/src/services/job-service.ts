@@ -118,6 +118,12 @@ export class JobService implements JobQueue {
         WHERE id = $1 AND lock_token = $2 AND status = 'processing'`,
       [job.id, job.lockToken, terminal, backoffSeconds, details]);
     if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
+    if (terminal && job.type === 'PROCESS_PHOTO_ASSETS') {
+      await this.database.query(
+        "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+        [job.payload.photoId],
+      );
+    }
   }
 }
 
