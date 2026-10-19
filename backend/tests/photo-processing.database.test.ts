@@ -202,6 +202,10 @@ suite('photo processing against PostgreSQL', () => {
     const app = createApp(services, { allowedOrigins: ['http://localhost:3000'], localPhotoStorage: photoStorage });
 
     try {
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos`)
+        .expect(401);
+
       const response = await request(app)
         .get(`/api/client/galleries/${galleryId}/photos`)
         .set('Cookie', `__Secure-mj_client_session=${sessionToken}`);
