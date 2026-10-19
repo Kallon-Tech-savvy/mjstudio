@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -55,6 +55,28 @@ describe('LocalPhotoStorage', () => {
     // Simulate a crash/interrupted replacement between object and sidecar renames.
     await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
     await expect(storage.verifyObject(key)).resolves.toBeNull();
+  });
+
+  it('cleans only stale UUID temporary files and preserves recent or unrelated files', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const directory = join(root, 'studios', 'studio-1');
+    await mkdir(directory, { recursive: true });
+    const oldTemp = join(directory, 'preview.webp.tmp-123e4567-e89b-42d3-a456-426614174000');
+    const recentTemp = join(directory, 'thumbnail.webp.tmp-123e4567-e89b-42d3-a456-426614174001');
+    const unrelated = join(directory, 'notes.tmp-not-a-uuid');
+    await Promise.all([
+      writeFile(oldTemp, 'orphaned'),
+      writeFile(recentTemp, 'active'),
+      writeFile(unrelated, 'not ours'),
+    ]);
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await utimes(oldTemp, old, old);
+
+    await expect(storage.cleanupStaleTemporaryFiles(60 * 60 * 1000)).resolves.toBe(1);
+    await expect(rm(oldTemp)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(rm(recentTemp)).resolves.toBeUndefined();
+    await expect(rm(unrelated)).resolves.toBeUndefined();
   });
 
   it('removes an original if its metadata sidecar cannot be written, allowing a safe retry', async () => {
