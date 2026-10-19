@@ -2,6 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../src/app.js';
 import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 
 const roots: string[] = [];
@@ -49,6 +51,22 @@ describe('LocalPhotoStorage', () => {
     const token = new URL(capability.url).pathname.split('/').at(-1)!;
     await expect(storage.acceptUpload(token, 'image/png', Buffer.from([0xff, 0xd8, 0xff])))
       .rejects.toThrow(/content type/i);
+  });
+
+  it('accepts a binary upload through the HTTP route before JSON parsing', async () => {
+    const storage = await makeStorage();
+    const app = createApp(undefined, { localPhotoStorage: storage, allowedOrigins: [] });
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-2/original';
+    const capability = await storage.createUploadCapability(key, 60);
+    const uploadPath = new URL(capability.url).pathname;
+
+    await request(app)
+      .put(uploadPath)
+      .set('Content-Type', 'image/jpeg')
+      .send(Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+      .expect(204);
+
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg' });
   });
 
   it('returns null when the stored object is missing', async () => {
