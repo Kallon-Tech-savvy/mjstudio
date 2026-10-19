@@ -47,12 +47,12 @@ suite('photo processing against PostgreSQL', () => {
     await database.query('INSERT INTO studio_members (id, studio_id, user_id, role) VALUES ($1, $2, $3, $4)', [
       membershipId, studioId, userId, 'owner',
     ]);
-    await database.query('INSERT INTO gallery_members (id, gallery_id, user_id, role) VALUES ($1, $2, $3, $4)', [
-      randomUUID(), galleryId, userId, 'owner',
-    ]);
     await database.query('INSERT INTO clients (id, studio_id, name) VALUES ($1, $2, $3)', [clientId, studioId, 'Integration Client']);
     await database.query('INSERT INTO galleries (id, studio_id, client_id, name) VALUES ($1, $2, $3, $4)', [
       galleryId, studioId, clientId, 'Processing Test Gallery',
+    ]);
+    await database.query('INSERT INTO gallery_members (id, gallery_id, user_id, role) VALUES ($1, $2, $3, $4)', [
+      randomUUID(), galleryId, userId, 'owner',
     ]);
     await database.query('INSERT INTO photos (id, gallery_id, filename, position, status) VALUES ($1, $2, $3, 0, $4)', [
       photoId, galleryId, 'integration.jpg', 'processing',
