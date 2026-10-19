@@ -83,7 +83,7 @@ suite('photo processing against PostgreSQL', () => {
     const bytes = await sharp({
       create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
     }).jpeg().toBuffer();
-    const { photoId, worker, jobs } = await createFixture(bytes, 'image/jpeg');
+    const { photoId, worker, jobs, storageKey } = await createFixture(bytes, 'image/jpeg');
 
     expect(await worker.runOne()).toBe(true);
     const photo = await database.query('SELECT status FROM photos WHERE id = $1', [photoId]);
@@ -123,7 +123,7 @@ suite('photo processing against PostgreSQL', () => {
     await jobs.enqueue({ type: 'CLEANUP_PHOTO_ASSETS', payload: { photoId } });
     const cleanupWorker = new JobWorker(jobs, new CleanupPhotoAssetsHandler(storage));
     expect(await cleanupWorker.runOne()).toBe(true);
-    expect(await storage.verifyObject(`studios/${(await database.query('SELECT studio_id FROM galleries WHERE id = $1', [galleryId])).rows[0].studio_id}/galleries/${galleryId}/photos/${photoId}/original`)).toBeNull();
+    expect(await storage.verifyObject(storageKey)).toBeNull();
     expect(await storage.verifyObject(`studios/assets/${photoId}/preview`)).toBeNull();
     expect(await storage.verifyObject(`studios/assets/${photoId}/thumbnail`)).toBeNull();
     await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
