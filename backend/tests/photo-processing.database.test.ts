@@ -9,6 +9,7 @@ import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 import { SharpImageProcessor } from '../src/services/sharp-image-processor.js';
 import { ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
 import { JobService, JobWorker } from '../src/services/job-service.js';
+import { PhotoService } from '../src/services/photo-service.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
@@ -41,8 +42,12 @@ suite('photo processing against PostgreSQL', () => {
       userId, `${userId}@integration.test`, 'Integration Photographer', 'test-hash',
     ]);
     await database.query('INSERT INTO studios (id, name) VALUES ($1, $2)', [studioId, 'Integration Studio']);
+    const membershipId = randomUUID();
     await database.query('INSERT INTO studio_members (id, studio_id, user_id, role) VALUES ($1, $2, $3, $4)', [
-      randomUUID(), studioId, userId, 'owner',
+      membershipId, studioId, userId, 'owner',
+    ]);
+    await database.query('INSERT INTO gallery_members (id, gallery_id, user_id, role) VALUES ($1, $2, $3, $4)', [
+      randomUUID(), galleryId, userId, 'owner',
     ]);
     await database.query('INSERT INTO clients (id, studio_id, name) VALUES ($1, $2, $3)', [clientId, studioId, 'Integration Client']);
     await database.query('INSERT INTO galleries (id, studio_id, client_id, name) VALUES ($1, $2, $3, $4)', [
@@ -53,16 +58,24 @@ suite('photo processing against PostgreSQL', () => {
     ]);
     await database.query(
       `INSERT INTO photo_assets (id, photo_id, type, state, storage_key, mime_type, file_size, upload_status, processing_status)
-       VALUES ($1, $2, 'original', 'current', $3, $4, $5, 'uploaded', 'not_required')`,
+       VALUES ($1, $2, 'original', 'current', $3, $4, $5, 'pending', 'not_required')`,
       [assetId, photoId, storageKey, mimeType, imageBytes.length],
     );
     const upload = await storage.createUploadCapability(storageKey, 60);
     const token = new URL(upload.url).pathname.split('/').at(-1)!;
     await storage.acceptUpload(token, mimeType, imageBytes);
     const jobs = new JobService(database);
-    await jobs.enqueue({ type: 'PROCESS_PHOTO_ASSETS', payload: { photoId, sourceAssetId: assetId } });
+    const photoService = new PhotoService(database, storage, jobs);
+    await photoService.uploadComplete({
+      userId,
+      email: `${userId}@integration.test`,
+      displayName: 'Integration Photographer',
+      studioId,
+      membershipId,
+      role: 'owner',
+    }, galleryId, photoId);
     const worker = new JobWorker(jobs, new ProcessPhotoAssetsHandler(new SharpImageProcessor(storage), storage));
-    return { photoId, worker, jobs };
+    return { photoId, worker, jobs, storage, storageKey, galleryId };
   }
 
   it('claims a persisted job, generates both verified derivatives, and activates the photo transactionally', async () => {
