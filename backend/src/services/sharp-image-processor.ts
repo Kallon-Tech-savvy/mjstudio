@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import type { ImageProcessor, DerivativeObject } from './job-handlers.js';
+import { PermanentJobError } from './job-service.js';
 import type { LocalPhotoStorage } from './local-photo-storage.js';
 
 type DerivativePreset = { width: number; height: number };
@@ -20,7 +21,12 @@ export class SharpImageProcessor implements ImageProcessor {
   }
 
   private async createDerivative(sourceKey: string, destinationKey: string, preset: DerivativePreset): Promise<DerivativeObject> {
-    const source = await this.storage.readObjectBytes(sourceKey);
+    let source: Buffer;
+    try {
+      source = await this.storage.readObjectBytes(sourceKey);
+    } catch {
+      throw new PermanentJobError('Source image is missing or failed storage verification.');
+    }
     let output: { data: Buffer; info: sharp.OutputInfo };
     try {
       output = await sharp(source, { failOn: 'error', limitInputPixels: 40_000_000 })
@@ -29,10 +35,10 @@ export class SharpImageProcessor implements ImageProcessor {
         .webp({ quality: 82, effort: 4 })
         .toBuffer({ resolveWithObject: true });
     } catch {
-      throw new Error('Source image could not be decoded for derivative generation.');
+      throw new PermanentJobError('Source image could not be decoded for derivative generation.');
     }
     if (!output.info.width || !output.info.height || output.data.length === 0 || output.info.format !== 'webp') {
-      throw new Error('Image processor returned invalid derivative metadata.');
+      throw new PermanentJobError('Image processor returned invalid derivative metadata.');
     }
     const result: DerivativeObject = {
       mimeType: 'image/webp',
