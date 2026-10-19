@@ -1,6 +1,6 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ForbiddenError, ValidationError } from '../errors.js';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
@@ -39,14 +39,65 @@ export class LocalPhotoStorage implements PhotoStorage {
         stat(objectPath),
         readFile(this.metadataPath(objectPath), 'utf8'),
       ]);
-      const metadata = JSON.parse(metadataText) as { mimeType?: string };
+      const metadata = JSON.parse(metadataText) as { mimeType?: string; width?: number; height?: number };
       const mimeType = this.detectImageMimeType(file);
       if (!mimeType || metadata.mimeType !== mimeType || fileStat.size < 1) return null;
-      return { storageKey, mimeType, fileSize: fileStat.size };
+      return { storageKey, mimeType, fileSize: fileStat.size, ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height) ? { width: metadata.width, height: metadata.height } : {}) };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
+  }
+
+  async readObjectBytes(storageKey: string): Promise<Buffer> {
+    const verified = await this.verifyObject(storageKey);
+    if (!verified) throw new Error('Source image object is missing or failed verification.');
+    return readFile(this.resolveObjectPath(storageKey));
+  }
+
+  async writeDerivative(
+    storageKey: string,
+    bytes: Buffer,
+    metadata: { mimeType: string; fileSize: number; width: number; height: number },
+  ): Promise<void> {
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length !== metadata.fileSize
+      || !Number.isSafeInteger(metadata.width) || metadata.width < 1
+      || !Number.isSafeInteger(metadata.height) || metadata.height < 1
+      || metadata.mimeType !== 'image/webp') {
+      throw new Error('Derivative bytes or metadata are invalid.');
+    }
+    if (this.detectImageMimeType(bytes) !== metadata.mimeType) {
+      throw new Error('Derivative content does not match its declared MIME type.');
+    }
+    const objectPath = this.resolveObjectPath(storageKey);
+    const sidecarPath = this.metadataPath(objectPath);
+    await mkdir(dirname(objectPath), { recursive: true });
+    const suffix = `.tmp-${randomUUID()}`;
+    const temporaryObject = `${objectPath}${suffix}`;
+    const temporaryMetadata = `${sidecarPath}${suffix}`;
+    try {
+      await writeFile(temporaryObject, bytes, { flag: 'wx', mode: 0o600 });
+      await writeFile(temporaryMetadata, JSON.stringify({
+        mimeType: metadata.mimeType,
+        width: metadata.width,
+        height: metadata.height,
+      }), { flag: 'wx', mode: 0o600 });
+      await rename(temporaryObject, objectPath);
+      await rename(temporaryMetadata, sidecarPath);
+    } finally {
+      await Promise.all([
+        rm(temporaryObject, { force: true }),
+        rm(temporaryMetadata, { force: true }),
+      ]);
+    }
+  }
+
+  async deleteObject(storageKey: string): Promise<void> {
+    const objectPath = this.resolveObjectPath(storageKey);
+    await Promise.all([
+      rm(objectPath, { force: true }),
+      rm(this.metadataPath(objectPath), { force: true }),
+    ]);
   }
 
   async acceptUpload(token: string, contentType: string, bytes: Buffer): Promise<void> {
