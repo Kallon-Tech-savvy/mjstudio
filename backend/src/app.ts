@@ -19,10 +19,11 @@ import { photosRouter } from './routes/photos.js';
 import { recommendationsRouter } from './routes/recommendations.js';
 import { clientRouter } from './routes/client.js';
 import { unavailableServices, type ApplicationServices } from './services/container.js';
+import type { LocalPhotoStorage } from './services/local-photo-storage.js';
 
 export function createApp(
   services: ApplicationServices = unavailableServices(),
-  options: { allowedOrigins?: string[] } = {},
+  options: { allowedOrigins?: string[]; localPhotoStorage?: LocalPhotoStorage } = {},
 ): Express {
   const app = express();
   const allowedOrigins = options.allowedOrigins ?? env.FRONTEND_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -56,6 +57,34 @@ export function createApp(
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-CSRF-Token'],
   }));
+  if (options.localPhotoStorage) {
+    app.put('/api/local-photo-uploads/:token', express.raw({ type: 'image/*', limit: '25mb' }), async (req, res, next) => {
+      try {
+        if (!Buffer.isBuffer(req.body)) {
+          res.status(415).json({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Upload must use an image content type.' } });
+          return;
+        }
+        await options.localPhotoStorage!.acceptUpload(req.params.token, String(req.headers['content-type'] ?? ''), req.body);
+        res.status(204).send();
+      } catch (error) {
+        next(error);
+      }
+    });
+    app.get('/api/local-photo-objects/:token', async (req, res, next) => {
+      try {
+        const object = await options.localPhotoStorage!.readCapability(req.params.token);
+        if (!object) {
+          res.status(404).json({ error: { code: 'PHOTO_OBJECT_NOT_FOUND', message: 'Photo object not found or capability expired.' } });
+          return;
+        }
+        res.type(object.mimeType).set('Cache-Control', 'private, no-store');
+        if (object.download) res.set('Content-Disposition', 'attachment');
+        res.send(object.bytes);
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
   app.use(express.json({ limit: '1mb', type: 'application/json' }));
   app.use(cookieParser());
   app.use((req, _res, next) => {
