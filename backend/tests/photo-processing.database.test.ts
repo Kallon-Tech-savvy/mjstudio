@@ -10,6 +10,7 @@ import { SharpImageProcessor } from '../src/services/sharp-image-processor.js';
 import { ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
 import { JobService, JobWorker } from '../src/services/job-service.js';
 import { PhotoService } from '../src/services/photo-service.js';
+import { PhotoRepresentationService } from '../src/services/photo-representation-service.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
@@ -97,6 +98,23 @@ suite('photo processing against PostgreSQL', () => {
       expect.objectContaining({ type: 'preview', upload_status: 'uploaded', processing_status: 'ready', mime_type: 'image/webp', width: 900, height: 600 }),
       expect.objectContaining({ type: 'thumbnail', upload_status: 'uploaded', processing_status: 'ready', mime_type: 'image/webp', width: 600, height: 400 }),
     ]));
+    const preview = await database.query(
+      `SELECT storage_key, mime_type, width, height FROM photo_assets
+        WHERE photo_id = $1 AND type = 'preview' AND state = 'current'`,
+      [photoId],
+    );
+    const representation = await new PhotoRepresentationService(storage).createView({
+      storageKey: preview.rows[0].storage_key,
+      mimeType: preview.rows[0].mime_type,
+      width: preview.rows[0].width,
+      height: preview.rows[0].height,
+    }, 60);
+    const viewToken = new URL(representation.url).pathname.split('/').at(-1)!;
+    const previewResponse = await storage.readCapability(viewToken);
+    expect(previewResponse?.mimeType).toBe('image/webp');
+    expect(previewResponse?.bytes.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(representation).toMatchObject({ width: 900, height: 600, mimeType: 'image/webp' });
+
     const job = await database.query("SELECT status FROM application_jobs WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1", [photoId]);
     expect(job.rows[0]?.status).toBe('completed');
     await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
