@@ -63,6 +63,28 @@ export class JobService implements JobQueue {
 
   async claim<T extends JobType>(type: T, leaseSeconds = 60): Promise<ClaimedJob<T> | null> {
     return inTransaction(this.database, async (transaction) => {
+      // A worker may crash after its final allowed claim. Reap expired leases at
+      // the attempt limit so they do not remain "processing" forever.
+      const exhausted = await transaction.query<{ payload: unknown }>(
+        `UPDATE application_jobs
+            SET status = 'failed', failed_at = NOW(), locked_until = NULL, lock_token = NULL,
+                last_error = COALESCE(last_error, 'Job lease expired after maximum attempts'),
+                updated_at = NOW()
+          WHERE job_type = $1 AND status = 'processing'
+            AND locked_until < NOW() AND attempts >= max_attempts
+          RETURNING payload`,
+        [type],
+      );
+      if (type === 'PROCESS_PHOTO_ASSETS') {
+        for (const expired of exhausted.rows) {
+          const payload = jobPayloadSchemas.PROCESS_PHOTO_ASSETS.parse(expired.payload);
+          await transaction.query(
+            "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+            [payload.photoId],
+          );
+        }
+      }
+
       const row = await transaction.query<{
         id: string; job_type: T; payload: unknown; attempts: number; lock_token: string;
       }>(
