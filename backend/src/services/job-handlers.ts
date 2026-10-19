@@ -3,7 +3,7 @@ import type { Transaction } from './service-common.js';
 import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
 import { PermanentJobError } from './job-service.js';
 
-export type DerivativeObject = { mimeType: string; fileSize: number; width: number; height: number };
+export type DerivativeObject = { mimeType: string; fileSize: number; width?: number; height?: number };
 export interface ImageProcessor {
   createPreview(sourceKey: string, destinationKey: string): Promise<DerivativeObject>;
   createThumbnail(sourceKey: string, destinationKey: string): Promise<DerivativeObject>;
@@ -56,7 +56,7 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         ? await this.processor.createPreview(sourceRow.storage_key, derivative.key)
         : await this.processor.createThumbnail(sourceRow.storage_key, derivative.key);
       const verified = await this.storage.verifyObject(derivative.key);
-      if (!verified || verified.fileSize <= 0 || verified.width <= 0 || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
+      if (!verified || verified.fileSize <= 0 || !verified.width || verified.width <= 0 || !verified.height || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
         throw new PermanentJobError(`Generated ${derivative.type} did not pass object verification.`);
       }
       await transaction.query(
