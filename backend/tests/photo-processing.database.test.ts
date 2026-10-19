@@ -249,13 +249,13 @@ suite('photo processing against PostgreSQL', () => {
 
     expect(await failingWorker.runOne()).toBe(true);
     const afterFailure = await database.query(
-      'SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>\\'photoId\\' = p.id::text WHERE p.id = $1 AND j.job_type = \\'PROCESS_PHOTO_ASSETS\\'',
+      "SELECT p.status AS photo_status, j.status AS job_status, j.attempts FROM photos p JOIN application_jobs j ON j.payload->>'photoId' = p.id::text WHERE p.id = $1 AND j.job_type = 'PROCESS_PHOTO_ASSETS'",
       [photoId],
     );
     expect(afterFailure.rows[0]).toMatchObject({ photo_status: 'processing', job_status: 'pending', attempts: 1 });
 
     await database.query(
-      'UPDATE application_jobs SET available_at = NOW() WHERE job_type = \\'PROCESS_PHOTO_ASSETS\\' AND payload->>\\'photoId\\' = $1',
+      "UPDATE application_jobs SET available_at = NOW() WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1",
       [photoId],
     );
     expect(await successfulWorker.runOne()).toBe(true);
