@@ -22,7 +22,7 @@ const upload = async (storage: LocalPhotoStorage, key: string, bytes: Buffer, mi
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-);
+});
 
 describe('SharpImageProcessor', () => {
   it('creates verified WebP previews and thumbnails without enlarging the source', async () => {
@@ -76,6 +76,7 @@ describe('SharpImageProcessor', () => {
     await storage.deleteObject(derivativeKey);
     await expect(storage.verifyObject(derivativeKey)).resolves.toBeNull();
   });
+
   it('processes an uploaded original through verified derivatives into a usable gallery preview', async () => {
     const storage = await makeStorage();
     const photoId = '11111111-1111-4111-8111-111111111111';
