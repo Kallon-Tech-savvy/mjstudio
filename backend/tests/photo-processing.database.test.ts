@@ -83,7 +83,7 @@ suite('photo processing against PostgreSQL', () => {
     }
     const worker = new JobWorker(jobs, new ProcessPhotoAssetsHandler(new SharpImageProcessor(storage), storage));
     const reconcileWorker = new JobWorker(jobs, new ReconcilePhotoAssetHandler(storage, jobs));
-    return { photoId, worker, reconcileWorker, jobs, storage, storageKey, galleryId, assetId };
+    return { photoId, worker, reconcileWorker, jobs, storage, storageKey, galleryId, assetId, userId };
   }
 
   it('claims a persisted job, generates both verified derivatives, and activates the photo transactionally', async () => {
@@ -165,7 +165,7 @@ suite('photo processing against PostgreSQL', () => {
     const bytes = await sharp({
       create: { width: 900, height: 600, channels: 3, background: { r: 40, g: 100, b: 160 } },
     }).jpeg().toBuffer();
-    const { photoId, worker, galleryId, storage: photoStorage } = await createFixture(bytes, 'image/jpeg');
+    const { photoId, worker, galleryId, storage: photoStorage, userId } = await createFixture(bytes, 'image/jpeg');
     expect(await worker.runOne()).toBe(true);
 
     const gallery = await database.query(
@@ -222,12 +222,13 @@ suite('photo processing against PostgreSQL', () => {
       expect(Buffer.from(imageResponse.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
     } finally {
       await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
+      await database.query('DELETE FROM client_sessions WHERE id = $1', [sessionId]);
       await database.query('DELETE FROM gallery_access WHERE id = $1', [accessId]);
       await database.query('DELETE FROM galleries WHERE id = $1', [galleryId]);
       await database.query('DELETE FROM clients WHERE id = $1', [gallery.rows[0].client_id]);
       await database.query('DELETE FROM studio_members WHERE studio_id = $1', [gallery.rows[0].studio_id]);
       await database.query('DELETE FROM studios WHERE id = $1', [gallery.rows[0].studio_id]);
-      await database.query('DELETE FROM users WHERE id = (SELECT user_id FROM studio_members WHERE studio_id = $1 LIMIT 1)', [gallery.rows[0].studio_id]).catch(() => undefined);
+      await database.query('DELETE FROM users WHERE id = $1', [userId]);
     }
   });
 
