@@ -36,7 +36,9 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         `SELECT id, upload_status, processing_status, state FROM photo_assets
           WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
       let assetId: string | undefined = existing.rows[0]?.id;
-      if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') {
+      const readyExisting = existing.rows[0]?.upload_status === 'uploaded'
+        && existing.rows[0]?.processing_status === 'ready';
+      if (readyExisting) {
         // Database state alone is insufficient: the object may have been lost or
         // corrupted after the original processing transaction committed.
         const verifiedExisting = await this.storage.verifyObject(derivative.key);
@@ -47,15 +49,22 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
           continue;
         }
       }
-      if (existing.rows[0]) {
-        // Reuse the current derivative row: storage_key is unique even when its
-        // object has disappeared, so superseding it and inserting another row
-        // with the same key would violate the database constraint.
+      if (readyExisting && existing.rows[0]) {
+        // Reuse the current ready row for a missing/corrupt object. Keep upload_status
+        // uploaded because the database transition guard forbids uploaded -> pending.
         await transaction.query(
-          "UPDATE photo_assets SET upload_status = 'pending', processing_status = 'pending', updated_at = NOW() WHERE id = $1",
+          "UPDATE photo_assets SET processing_status = 'failed', updated_at = NOW() WHERE id = $1",
           [existing.rows[0].id],
         );
-      } else {
+      } else if (existing.rows[0]) {
+        // A non-ready current row can be superseded and replaced as before.
+        await transaction.query(
+          "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
+          [existing.rows[0].id],
+        );
+        assetId = undefined;
+      }
+      if (!assetId) {
         assetId = randomUUID();
         await transaction.query(
           `INSERT INTO photo_assets (id, photo_id, type, state, storage_key, upload_status, processing_status)
