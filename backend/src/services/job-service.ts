@@ -109,21 +109,23 @@ export class JobService implements JobQueue {
     const terminal = permanent || job.attempts >= maxAttempts;
     const backoffSeconds = Math.min(3600, 2 ** Math.max(0, job.attempts - 1) * 15);
     const details = error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2000) : 'Unknown job failure';
-    const result = await this.database.query(
-      `UPDATE application_jobs
-          SET status = CASE WHEN $3 THEN 'failed' ELSE 'pending' END,
-              failed_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
-              available_at = CASE WHEN $3 THEN available_at ELSE NOW() + make_interval(secs => $4) END,
-              locked_until = NULL, lock_token = NULL, last_error = $5, updated_at = NOW()
-        WHERE id = $1 AND lock_token = $2 AND status = 'processing'`,
-      [job.id, job.lockToken, terminal, backoffSeconds, details]);
-    if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
-    if (terminal && job.type === 'PROCESS_PHOTO_ASSETS') {
-      await this.database.query(
-        "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
-        [(job.payload as ProcessPhotoAssetsPayload).photoId],
-      );
-    }
+    await inTransaction(this.database, async (transaction) => {
+      const result = await transaction.query(
+        `UPDATE application_jobs
+            SET status = CASE WHEN $3 THEN 'failed' ELSE 'pending' END,
+                failed_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
+                available_at = CASE WHEN $3 THEN available_at ELSE NOW() + make_interval(secs => $4) END,
+                locked_until = NULL, lock_token = NULL, last_error = $5, updated_at = NOW()
+          WHERE id = $1 AND lock_token = $2 AND status = 'processing'`,
+        [job.id, job.lockToken, terminal, backoffSeconds, details]);
+      if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
+      if (terminal && job.type === 'PROCESS_PHOTO_ASSETS') {
+        await transaction.query(
+          "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+          [(job.payload as ProcessPhotoAssetsPayload).photoId],
+        );
+      }
+    });
   }
 }
 
