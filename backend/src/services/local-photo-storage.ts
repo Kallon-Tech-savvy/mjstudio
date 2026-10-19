@@ -53,7 +53,7 @@ export class LocalPhotoStorage implements PhotoStorage {
 
   async readObjectBytes(storageKey: string): Promise<Buffer> {
     const verified = await this.verifyObject(storageKey);
-    if (!verified) throw new Error('Source image object is missing or failed verification.');
+    if (!verified) throw new UnverifiedStorageObjectError('Source image object is missing or failed verification.');
     return readFile(this.resolveObjectPath(storageKey));
   }
 
