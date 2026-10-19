@@ -142,7 +142,7 @@ suite('photo processing against PostgreSQL', () => {
     }).jpeg().toBuffer();
     const { photoId, assetId, worker, jobs, storage: fixtureStorage } = await createFixture(bytes, 'image/jpeg');
     expect(await worker.runOne()).toBe(true);
-    const previewKey = \`studios/assets/\${photoId}/preview\`;
+    const previewKey = `studios/assets/${photoId}/preview`;
     await fixtureStorage.deleteObject(previewKey);
     await database.query(
       "UPDATE application_jobs SET status = 'failed', failed_at = NOW() WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1",
