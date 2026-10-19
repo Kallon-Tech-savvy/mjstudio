@@ -36,7 +36,17 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         `SELECT id, upload_status, processing_status, state FROM photo_assets
           WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
       let assetId: string | undefined = existing.rows[0]?.id;
-      if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
+      if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') {
+        // Database state alone is insufficient: the object may have been lost or
+        // corrupted after the original processing transaction committed.
+        const verifiedExisting = await this.storage.verifyObject(derivative.key);
+        if (verifiedExisting && verifiedExisting.fileSize > 0
+          && verifiedExisting.mimeType === 'image/webp'
+          && Number.isSafeInteger(verifiedExisting.width) && (verifiedExisting.width ?? 0) > 0
+          && Number.isSafeInteger(verifiedExisting.height) && (verifiedExisting.height ?? 0) > 0) {
+          continue;
+        }
+      }
       if (existing.rows[0]) {
         await transaction.query(
           "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
