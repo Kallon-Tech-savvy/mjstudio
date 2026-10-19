@@ -1,0 +1,58 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
+
+const roots: string[] = [];
+const makeStorage = async () => {
+  const root = await mkdtemp(join(tmpdir(), 'mjstudio-storage-'));
+  roots.push(root);
+  return new LocalPhotoStorage(root, 'http://localhost:3001', 'test-secret-that-is-at-least-32-characters-long');
+};
+
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe('LocalPhotoStorage', () => {
+  it('accepts a signed upload and verifies the stored image metadata', async () => {
+    const storage = await makeStorage();
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/original';
+    const capability = await storage.createUploadCapability(key, 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+
+    await storage.acceptUpload(token, 'image/jpeg', jpeg);
+
+    await expect(storage.verifyObject(key)).resolves.toEqual({
+      storageKey: key,
+      mimeType: 'image/jpeg',
+      fileSize: jpeg.length,
+    });
+  });
+
+  it('rejects tampered and expired capabilities', async () => {
+    const storage = await makeStorage();
+    const capability = await storage.createUploadCapability('studios/studio-1/original', 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+
+    await expect(storage.acceptUpload(`${token}tampered`, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff])))
+      .rejects.toThrow(/invalid or expired/i);
+  });
+
+  it('rejects traversal keys and content-type spoofing', async () => {
+    const storage = await makeStorage();
+    await expect(storage.createUploadCapability('../outside.jpg', 60)).rejects.toThrow(/unsafe storage key/i);
+
+    const capability = await storage.createUploadCapability('studios/studio-1/original', 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    await expect(storage.acceptUpload(token, 'image/png', Buffer.from([0xff, 0xd8, 0xff])))
+      .rejects.toThrow(/content type/i);
+  });
+
+  it('returns null when the stored object is missing', async () => {
+    const storage = await makeStorage();
+    await expect(storage.verifyObject('studios/studio-1/missing')).resolves.toBeNull();
+  });
+});
