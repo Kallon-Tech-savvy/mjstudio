@@ -121,7 +121,7 @@ export class JobService implements JobQueue {
     if (terminal && job.type === 'PROCESS_PHOTO_ASSETS') {
       await this.database.query(
         "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
-        [job.payload.photoId],
+        [(job.payload as ProcessPhotoAssetsPayload).photoId],
       );
     }
   }
