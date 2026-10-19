@@ -129,7 +129,7 @@ export class LocalPhotoStorage implements PhotoStorage {
           continue;
         }
         // Never follow symlinks or delete arbitrary files: only our exact UUID temp suffix.
-        if (!entry.isFile() || !/\\.tmp-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.name)) continue;
+        if (!entry.isFile() || !/\.tmp-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.name)) continue;
         try {
           const fileStat = await stat(path);
           if (fileStat.mtimeMs >= cutoff) continue;
