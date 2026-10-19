@@ -1,5 +1,5 @@
 import sharp, { type OutputInfo } from 'sharp';
-import type { ImageProcessor } from './job-handlers.js';
+import type { ImageProcessor, DerivativeObject } from './job-handlers.js';
 import { PermanentJobError } from './job-service.js';
 import type { LocalPhotoStorage } from './local-photo-storage.js';
 
