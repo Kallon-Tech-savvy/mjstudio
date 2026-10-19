@@ -17,6 +17,23 @@ jobs:
   backend:
     name: Backend tests and build
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mjstudio_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: mjstudio_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mjstudio_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     defaults:
       run:
         working-directory: backend
@@ -31,6 +48,8 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Apply database migrations for integration tests
+        run: npm run migrate
       - name: Run backend tests
         run: npm test
       - name: Build backend
