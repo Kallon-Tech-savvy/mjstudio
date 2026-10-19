@@ -48,7 +48,7 @@ if (env.NODE_ENV !== 'production' && process.env.PHOTO_WORKER_ENABLED === 'true'
   const workers = [
     new JobWorker(jobs, new ProcessPhotoAssetsHandler(new SharpImageProcessor(localPhotoStorage), localPhotoStorage)),
     new JobWorker(jobs, new CleanupPhotoAssetsHandler(localPhotoStorage)),
-    new JobWorker(jobs, new ReconcilePhotoAssetHandler(localPhotoStorage)),
+    new JobWorker(jobs, new ReconcilePhotoAssetHandler(localPhotoStorage, jobs)),
   ];
   logger.info({ workerTypes: ['PROCESS_PHOTO_ASSETS', 'CLEANUP_PHOTO_ASSETS', 'RECONCILE_PHOTO_ASSET'] }, 'Local photo asset workers enabled');
 
