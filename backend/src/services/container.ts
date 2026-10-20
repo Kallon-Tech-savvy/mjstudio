@@ -96,6 +96,7 @@ export function unavailableProviders(database: Pool): ServiceProviders {
       verifyObject: unavailable,
       createViewCapability: unavailable,
       createDownloadCapability: unavailable,
+      readObjectBytes: unavailable,
     },
     accessDelivery: { deliver: unavailable },
     pinAttemptLimiter: { assertAllowed: (key) => rateLimits.assertAllowed(key, 'client-access') },
