@@ -102,7 +102,7 @@ export function createApp(
 
 
   app.get('/api', (_req, res) => {
-    res.json({ data: { name: 'MJ Creative Art API', status: 'ready' } });
+    res.json({ data: { name: 'MJ Creative Art API', status: 'running' } });
   });
 
   app.use('/api', healthRouter);
