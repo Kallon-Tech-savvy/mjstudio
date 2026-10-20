@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -131,6 +131,23 @@ describe('LocalPhotoStorage', () => {
       .expect(204);
 
     await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg' });
+  });
+
+
+  it('rejects symlinked parent directories instead of reading or writing outside the storage root', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const outside = await mkdtemp(join(tmpdir(), 'mjstudio-outside-'));
+    roots.push(outside);
+    await writeFile(join(outside, 'secret'), 'outside');
+    await symlink(outside, join(root, 'studios'), 'dir');
+
+    await expect(storage.verifyObject('studios/secret')).rejects.toThrow(/real directories/i);
+    const capability = await storage.createUploadCapability('studios/new-photo/original', 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    await expect(storage.acceptUpload(token, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9])))
+      .rejects.toThrow(/real directories/i);
+    await expect(rm(join(outside, 'new-photo'), { recursive: true, force: true })).resolves.toBeUndefined();
   });
 
   it('returns null when the stored object is missing', async () => {
