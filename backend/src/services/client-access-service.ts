@@ -164,7 +164,8 @@ export class ClientSessionService {
     const grant = await this.database.query<{ id: string; pin_hash: string; gallery_id: string }>(
       `SELECT ga.id, ga.pin_hash, ga.gallery_id FROM gallery_access ga JOIN galleries g ON g.id = ga.gallery_id
         WHERE ga.secret_token_hash = $1 AND ga.revoked_at IS NULL AND g.publication_status = 'published'
-          AND g.archived_at IS NULL AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`, [hashCredential(secretToken)]);
+          AND g.archived_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > NOW())
+          AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`, [hashCredential(secretToken)]);
     const access = grant.rows[0];
     if (!access || !(await verifyPin(pin, access.pin_hash))) {
       throw new NotFoundError('INVALID_GALLERY_ACCESS', 'Gallery access could not be verified.');
@@ -176,7 +177,8 @@ export class ClientSessionService {
       const current = await transaction.query(
         `SELECT ga.id FROM gallery_access ga JOIN galleries g ON g.id = ga.gallery_id
           WHERE ga.id = $1 AND ga.revoked_at IS NULL AND g.publication_status = 'published'
-            AND g.archived_at IS NULL AND (ga.expires_at IS NULL OR ga.expires_at > NOW()) FOR UPDATE OF ga`,
+            AND g.archived_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > NOW())
+            AND (ga.expires_at IS NULL OR ga.expires_at > NOW()) FOR UPDATE OF ga`,
         [access.id]);
       if (!current.rows[0]) throw new NotFoundError('INVALID_GALLERY_ACCESS', 'Gallery access could not be verified.');
       await transaction.query(
@@ -200,6 +202,7 @@ export class ClientSessionService {
          JOIN galleries g ON g.id = ga.gallery_id
         WHERE cs.session_token_hash = $1 AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
           AND g.archived_at IS NULL AND g.publication_status = 'published'
+          AND (g.expires_at IS NULL OR g.expires_at > NOW())
           AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
           AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`, [hashCredential(sessionToken)]);
     const row = result.rows[0];
