@@ -58,8 +58,10 @@ export function clientRouter(services: ApplicationServices) {
       const type = z.enum(['thumbnail', 'preview']).parse(req.params.type);
       await services.clientSessions.assertGallery(req.client!, galleryId);
       const asset = await services.catalog.getClientRepresentation(req.client!, galleryId, photoId, type);
+      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      if (!verified) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
       const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
-      res.set('Content-Type', asset.mimeType)
+      res.set('Content-Type', verified.mimeType)
         .set('Cache-Control', 'private, no-store')
         .set('X-Content-Type-Options', 'nosniff')
         .set('Content-Length', String(bytes.length))
