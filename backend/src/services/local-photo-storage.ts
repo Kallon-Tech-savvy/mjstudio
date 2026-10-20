@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ForbiddenError, ValidationError } from '../errors.js';
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
@@ -35,6 +35,7 @@ export class LocalPhotoStorage implements PhotoStorage {
 
   async verifyObject(storageKey: string): Promise<VerifiedStoredObject | null> {
     const objectPath = this.resolveObjectPath(storageKey);
+    await this.assertSafeParentDirectories(objectPath);
     try {
       const [file, fileStat, metadataText] = await Promise.all([
         readFile(objectPath),
@@ -84,7 +85,7 @@ export class LocalPhotoStorage implements PhotoStorage {
     }
     const objectPath = this.resolveObjectPath(storageKey);
     const sidecarPath = this.metadataPath(objectPath);
-    await mkdir(dirname(objectPath), { recursive: true });
+    await this.assertSafeParentDirectories(objectPath, true);
     const suffix = `.tmp-${randomUUID()}`;
     const temporaryObject = `${objectPath}${suffix}`;
     const temporaryMetadata = `${sidecarPath}${suffix}`;
@@ -140,12 +141,14 @@ export class LocalPhotoStorage implements PhotoStorage {
         }
       }
     };
+    await this.assertSafeRoot();
     await walk(this.root);
     return removed;
   }
 
   async deleteObject(storageKey: string): Promise<void> {
     const objectPath = this.resolveObjectPath(storageKey);
+    await this.assertSafeParentDirectories(objectPath);
     await Promise.all([
       rm(objectPath, { force: true }),
       rm(this.metadataPath(objectPath), { force: true }),
@@ -163,7 +166,7 @@ export class LocalPhotoStorage implements PhotoStorage {
       throw new ValidationError('INVALID_UPLOAD_TYPE', 'Upload content type does not match a supported image format.');
     }
     const objectPath = this.resolveObjectPath(capability.key);
-    await mkdir(dirname(objectPath), { recursive: true });
+    await this.assertSafeParentDirectories(objectPath, true);
     await writeFile(objectPath, bytes, { flag: 'wx', mode: 0o600 });
     try {
       await writeFile(this.metadataPath(objectPath), JSON.stringify({ mimeType: detectedType }), { flag: 'wx', mode: 0o600 });
@@ -236,6 +239,48 @@ export class LocalPhotoStorage implements PhotoStorage {
       throw new Error('Storage key resolves outside the configured storage root.');
     }
     return path;
+  }
+
+
+  /**
+   * Reject pre-existing symlinks in the storage root or any parent directory.
+   * Create missing parent directories one component at a time when requested.
+   * This prevents path traversal through planted symlink directories; the local
+   * adapter is development-only and is not a race-proof hostile multi-user store.
+   */
+  private async assertSafeRoot(): Promise<void> {
+    const rootStat = await lstat(this.root);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+      throw new Error('Photo storage root must be a real directory, not a symlink.');
+    }
+  }
+
+  private async assertSafeParentDirectories(objectPath: string, create = false): Promise<void> {
+    await this.assertSafeRoot();
+    const parent = dirname(objectPath);
+    const relativeParent = relative(this.root, parent);
+    let current = this.root;
+    if (!relativeParent || relativeParent === '.') return;
+    for (const part of relativeParent.split(sep)) {
+      current = resolve(current, part);
+      try {
+        const info = await lstat(current);
+        if (info.isSymbolicLink() || !info.isDirectory()) {
+          throw new Error('Photo storage parent path must contain only real directories.');
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !create) throw error;
+        try {
+          await mkdir(current, { mode: 0o700 });
+        } catch (mkdirError) {
+          if ((mkdirError as NodeJS.ErrnoException).code !== 'EEXIST') throw mkdirError;
+        }
+        const info = await lstat(current);
+        if (info.isSymbolicLink() || !info.isDirectory()) {
+          throw new Error('Photo storage parent path must contain only real directories.');
+        }
+      }
+    }
   }
 
   private metadataPath(objectPath: string): string {
