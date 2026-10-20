@@ -22,7 +22,6 @@ const verifyPin = async (pin: string, storedHash: string) => {
 
 export type AccessCredentialDelivery = {
   deliver(input: { galleryId: string; secretToken: string; pin: string }): Promise<void>;
-  resend(input: { galleryId: string; accessId: string }): Promise<void>;
 };
 export type PinAttemptLimiter = { assertAllowed(key: string): Promise<void> };
 
@@ -65,14 +64,23 @@ export class GalleryAccessService {
 
   async resend(actor: PhotographerContext, galleryId: string) {
     const membership = await resolveGalleryMembership(this.database, actor, galleryId);
-    ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.access.view');
-    const result = await this.database.query<{ id: string }>(
-      `SELECT id FROM gallery_access WHERE gallery_id = $1 AND revoked_at IS NULL
-        AND (expires_at IS NULL OR expires_at > NOW())`, [galleryId]);
+    ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.access.reset');
+    const result = await this.database.query<{
+      id: string;
+      permission: 'view' | 'view_download';
+      expiresAt: Date | string | null;
+    }>(
+      `SELECT id, permission, expires_at AS "expiresAt"
+         FROM gallery_access WHERE gallery_id = $1 AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > NOW())`, [galleryId]);
     const active = result.rows[0];
     if (!active) throw new NotFoundError('INVALID_GALLERY_ACCESS', 'Active gallery access not found.');
-    await this.delivery.resend({ galleryId, accessId: active.id });
-    return { resent: true, accessId: active.id };
+
+    // Credential hashes are intentionally irreversible. Rotate instead of asking
+    // a delivery provider to recover secrets it should never be able to read.
+    const expiresAt = active.expiresAt == null ? null : new Date(active.expiresAt);
+    const replacement = await this.issue(actor, galleryId, active.permission, expiresAt, true);
+    return { resent: true, accessId: replacement.id, permission: replacement.permission, expiresAt: replacement.expiresAt };
   }
 
   private async issue(actor: PhotographerContext, galleryId: string, permission: 'view' | 'view_download', expiresAt: Date | null, replace: boolean) {
