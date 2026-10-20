@@ -222,6 +222,29 @@ export class CatalogService {
     };
   }
 
+  async getClientRepresentation(client: ClientContext, galleryId: string, photoId: string, type: 'thumbnail' | 'preview') {
+    if (client.galleryId !== galleryId) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    const result = await this.database.query<{ storageKey: string; mimeType: string }>(
+      `SELECT pa.storage_key AS "storageKey", pa.mime_type AS "mimeType"
+         FROM photos p
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = $5 AND pa.state = 'current'
+           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
+         JOIN galleries g ON g.id = p.gallery_id
+         JOIN client_sessions cs ON cs.id = $3
+         JOIN gallery_access ga ON ga.id = cs.gallery_access_id
+        WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL AND p.status = 'active'
+          AND ga.id = $4 AND ga.gallery_id = g.id AND cs.gallery_access_id = ga.id
+          AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
+          AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+          AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
+          AND g.publication_status = 'published' AND g.archived_at IS NULL
+          AND (g.expires_at IS NULL OR g.expires_at > NOW())`,
+      [photoId, galleryId, client.clientSessionId, client.galleryAccessId, type],
+    );
+    const asset = result.rows[0];
+    if (!asset) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    return asset;
+  }
   async listClientPhotos(client: ClientContext, galleryId: string, page: number, limit: number) {
     validatePage(page, limit);
     if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
