@@ -1,4 +1,5 @@
 import type { PhotographerContext, ClientContext } from '../auth/context.js';
+import { env } from '../config/env.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import type { Database } from './service-common.js';
 import { PhotoRepresentationService } from './photo-representation-service.js';
@@ -214,7 +215,7 @@ export class CatalogService {
       position: item.position,
       recommended: item.recommended,
       preview: {
-        url: `/api/client/galleries/${galleryId}/photos/${item.id}/representations/preview`,
+        url: new URL(`/api/client/galleries/${galleryId}/photos/${item.id}/representations/preview`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
         width: item.previewWidth,
         height: item.previewHeight,
         mimeType: item.previewMimeType,
@@ -281,7 +282,7 @@ export class CatalogService {
       position: item.position,
       recommended: item.recommended,
       thumbnail: {
-        url: `/api/client/galleries/${galleryId}/photos/${item.id}/representations/thumbnail`,
+        url: new URL(`/api/client/galleries/${galleryId}/photos/${item.id}/representations/thumbnail`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
         width: item.thumbnailWidth,
         height: item.thumbnailHeight,
         mimeType: item.thumbnailMimeType,
