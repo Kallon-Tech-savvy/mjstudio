@@ -45,7 +45,7 @@ describe('API foundation', () => {
           mimeType: 'image/webp',
         }),
       },
-      photoStorage: { readObjectBytes },
+      photoStorage: { verifyObject: async () => ({ storageKey: 'studios/studio-1/galleries/gallery-1/photos/photo-1/preview', mimeType: 'image/webp', fileSize: bytes.length }), readObjectBytes },
     } as unknown as ApplicationServices;
 
     const response = await request(createApp(services, { allowedOrigins: ['http://localhost:3000'] }))
@@ -66,7 +66,7 @@ describe('API foundation', () => {
       ...baseServices(),
       clientSessions: { resolve: async () => client, assertGallery: async () => undefined },
       catalog: { getClientRepresentation: async () => { throw new Error('must not be called'); } },
-      photoStorage: { readObjectBytes: async () => { throw new Error('must not be called'); } },
+      photoStorage: { verifyObject: async () => { throw new Error('must not be called'); }, readObjectBytes: async () => { throw new Error('must not be called'); } },
     } as unknown as ApplicationServices;
     const response = await request(createApp(services))
       .get('/api/client/galleries/55555555-5555-4555-8555-555555555555/photos/44444444-4444-4444-8444-444444444444/representations/original')
