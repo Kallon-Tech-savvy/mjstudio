@@ -12,6 +12,8 @@ export interface PhotoStorage {
   verifyObject(storageKey: string): Promise<VerifiedStoredObject | null>;
   createViewCapability(storageKey: string, expiresInSeconds: number): Promise<{ url: string; expiresAt: Date }>;
   createDownloadCapability(storageKey: string, expiresInSeconds: number): Promise<{ url: string; expiresAt: Date }>;
+  /** Read a server-selected object after the caller has revalidated authorization. */
+  readObjectBytes(storageKey: string): Promise<Buffer>;
 }
 export class PhotoService {
   constructor(
