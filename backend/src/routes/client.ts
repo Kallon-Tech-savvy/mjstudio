@@ -49,6 +49,21 @@ export function clientRouter(services: ApplicationServices) {
       res.json(successEnvelope(photo));
     } catch (error) { next(error); }
   });
+  router.get('/galleries/:galleryId/photos/:photoId/representations/:type', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const { photoId } = parseInput(photoParamSchema, req.params);
+      const type = z.enum(['thumbnail', 'preview']).parse(req.params.type);
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      const asset = await services.catalog.getClientRepresentation(req.client!, galleryId, photoId, type);
+      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      res.set('Content-Type', asset.mimeType)
+        .set('Cache-Control', 'private, no-store')
+        .set('X-Content-Type-Options', 'nosniff')
+        .set('Content-Length', String(bytes.length))
+        .send(bytes);
+    } catch (error) { next(error); }
+  });
   router.get('/galleries/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.getSelection(req.client!))); }
     catch (error) { next(error); }
