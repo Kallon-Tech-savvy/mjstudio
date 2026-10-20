@@ -99,6 +99,12 @@ export class GalleryAccessService {
       if (expectedCurrentGrantId && current.rows[0]?.id !== expectedCurrentGrantId) {
         throw new ConflictError('INVALID_GALLERY_ACCESS', 'Gallery access changed during resend. Retry the request.');
       }
+      // The grant may expire after the initial lookup but before this transaction
+      // acquires its lock. Do not rotate it using an expiry that is now in the past.
+      if (expectedCurrentGrantId && current.rows[0]?.expires_at
+        && new Date(current.rows[0].expires_at) <= new Date()) {
+        throw new ConflictError('INVALID_GALLERY_ACCESS', 'Gallery access expired during resend. Reset access and try again.');
+      }
       if (current.rows[0]?.expires_at && new Date(current.rows[0].expires_at) <= new Date()) {
         await transaction.query('UPDATE gallery_access SET revoked_at = NOW(), updated_at = NOW() WHERE id = $1', [current.rows[0].id]);
         await transaction.query('UPDATE client_sessions SET revoked_at = NOW(), updated_at = NOW() WHERE gallery_access_id = $1 AND revoked_at IS NULL', [current.rows[0].id]);
