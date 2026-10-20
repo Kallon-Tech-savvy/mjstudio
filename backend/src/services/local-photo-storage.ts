@@ -264,6 +264,12 @@ export class LocalPhotoStorage implements PhotoStorage {
 
   private async assertSafeParentDirectories(objectPath: string, create = false): Promise<void> {
     await this.assertSafeRoot(create);
+    try {
+      await lstat(this.root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !create) return;
+      throw error;
+    }
     const parent = dirname(objectPath);
     const relativeParent = relative(this.root, parent);
     let current = this.root;
