@@ -26,6 +26,42 @@ const baseServices = () => ({
 }) as unknown as ApplicationServices;
 
 describe('API foundation', () => {
+  it('rate-limits credential resend before calling the access service', async () => {
+    const actor = buildPhotographerContext();
+    const rateLimitCalls: Array<{ key: string; scope: string }> = [];
+    let resendCalled = false;
+    const services = {
+      ...baseServices(),
+      auth: {
+        login: async () => { throw new UnauthorizedError('Invalid email or password.'); },
+        resolve: async () => actor,
+        logout: async () => undefined,
+      },
+      galleryAccess: {
+        resend: async () => {
+          resendCalled = true;
+          return { resent: true, accessId: 'new-grant' };
+        },
+      },
+      rateLimits: {
+        assertAllowed: async (key: string, scope: string) => {
+          rateLimitCalls.push({ key, scope });
+        },
+      },
+    } as unknown as ApplicationServices;
+
+    const response = await request(createApp(services, { allowedOrigins: ['http://localhost:3000'] }))
+      .post('/api/galleries/55555555-5555-4555-8555-555555555555/access/resend')
+      .set('Origin', 'http://localhost:3000')
+      .set('Cookie', '__Host-mj_session=valid');
+
+    expect(response.status).toBe(200);
+    expect(rateLimitCalls).toHaveLength(1);
+    expect(rateLimitCalls[0]?.scope).toBe('access-reset');
+    expect(rateLimitCalls[0]?.key).toMatch(new RegExp('^access-resend:' + actor.userId + ':'));
+    expect(resendCalled).toBe(true);
+  });
+
   it('does not claim provider readiness from the API root endpoint', async () => {
     const response = await request(createApp()).get('/api');
 
