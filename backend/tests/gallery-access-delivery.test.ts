@@ -220,7 +220,7 @@ describe('gallery credential delivery failure', () => {
       galleryId: '33333333-3333-4333-8333-333333333333',
     });
     expect(delivery.deliver.mock.calls[0]?.[0].secretToken).toEqual(expect.any(String));
-    expect(delivery.deliver.mock.calls[0]?.[0].pin).toMatch(/^\\d{6}$/);
+    expect(delivery.deliver.mock.calls[0]?.[0].pin).toMatch(/^\d{6}$/);
     expect(transactionQueries.some((sql) => sql.includes('UPDATE gallery_access SET revoked_at = NOW()'))).toBe(true);
     expect(transactionQueries.some((sql) => sql.includes('UPDATE client_sessions SET revoked_at = NOW()'))).toBe(true);
   });
