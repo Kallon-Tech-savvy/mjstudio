@@ -94,7 +94,8 @@ export class GalleryAccessService {
       if (!gallery.rows[0]) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
       const current = await transaction.query<{ id: string; expires_at: Date | null }>(
         'SELECT id, expires_at FROM gallery_access WHERE gallery_id = $1 AND revoked_at IS NULL FOR UPDATE', [galleryId]);
-      let hasCurrentGrant = Boolean(current.rows[0]);
+      const hadCurrentGrant = Boolean(current.rows[0]);
+      let hasCurrentGrant = hadCurrentGrant;
       if (expectedCurrentGrantId && current.rows[0]?.id !== expectedCurrentGrantId) {
         throw new ConflictError('INVALID_GALLERY_ACCESS', 'Gallery access changed during resend. Retry the request.');
       }
@@ -104,9 +105,13 @@ export class GalleryAccessService {
         hasCurrentGrant = false;
       }
       if (replace) {
-        if (!hasCurrentGrant) throw new NotFoundError('INVALID_GALLERY_ACCESS', 'Active gallery access not found.');
-        await transaction.query('UPDATE gallery_access SET revoked_at = NOW(), updated_at = NOW() WHERE id = $1', [current.rows[0].id]);
-        await transaction.query('UPDATE client_sessions SET revoked_at = NOW(), updated_at = NOW() WHERE gallery_access_id = $1 AND revoked_at IS NULL', [current.rows[0].id]);
+        // Reset may replace an expired, still-unrevoked grant. Resend separately
+        // requires a currently valid grant before entering this transaction.
+        if (!hadCurrentGrant) throw new NotFoundError('INVALID_GALLERY_ACCESS', 'Active gallery access not found.');
+        if (hasCurrentGrant) {
+          await transaction.query('UPDATE gallery_access SET revoked_at = NOW(), updated_at = NOW() WHERE id = $1', [current.rows[0].id]);
+          await transaction.query('UPDATE client_sessions SET revoked_at = NOW(), updated_at = NOW() WHERE gallery_access_id = $1 AND revoked_at IS NULL', [current.rows[0].id]);
+        }
       } else if (hasCurrentGrant) {
         throw new ConflictError('INVALID_GALLERY_ACCESS', 'Gallery already has active access; reset it instead.');
       }
