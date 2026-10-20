@@ -53,11 +53,10 @@ describe('API foundation', () => {
       .set('Cookie', '__Secure-mj_client_session=valid-session');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({});
     expect(response.headers['content-type']).toContain('image/webp');
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.headers['x-content-type-options']).toBe('nosniff');
-    expect(response.body).toEqual(bytes);
+    expect(Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.text ?? '')).toEqual(bytes);
     expect(readObjectBytes).toHaveBeenCalledTimes(1);
   });
 
