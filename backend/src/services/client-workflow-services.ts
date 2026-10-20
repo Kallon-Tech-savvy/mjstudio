@@ -139,7 +139,8 @@ export class SelectionService {
       `SELECT 1 FROM client_sessions cs JOIN gallery_access ga ON ga.id = cs.gallery_access_id
          JOIN galleries g ON g.id = ga.gallery_id
         WHERE cs.id = $1 AND ga.id = $2 AND ga.gallery_id = $3 AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
-          AND g.archived_at IS NULL AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+          AND g.archived_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > NOW())
+          AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
           AND g.publication_status = 'published' AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`,
       [client.clientSessionId, client.galleryAccessId, client.galleryId],
     );
@@ -201,8 +202,11 @@ export class DownloadService {
          AND EXISTS (SELECT 1 FROM photo_assets pv WHERE pv.photo_id = p.id AND pv.type = 'preview' AND pv.state = 'current' AND pv.upload_status = 'uploaded' AND pv.processing_status = 'ready')
          AND EXISTS (SELECT 1 FROM photo_assets pt WHERE pt.photo_id = p.id AND pt.type = 'thumbnail' AND pt.state = 'current' AND pt.upload_status = 'uploaded' AND pt.processing_status = 'ready')
          AND g.publication_status = 'published' AND g.archived_at IS NULL
+         AND (g.expires_at IS NULL OR g.expires_at > NOW())
          AND ga.id = $4 AND ga.gallery_id = p.gallery_id AND ga.permission = 'view_download'
+         AND cs.gallery_access_id = ga.id
          AND ga.revoked_at IS NULL AND cs.revoked_at IS NULL
+         AND (g.expires_at IS NULL OR g.expires_at > NOW())
          AND EXISTS (
            SELECT 1
              FROM gallery_deliveries gd
@@ -284,7 +288,9 @@ export class FeedbackService {
     const grant = await this.database.query(
       `SELECT 1 FROM client_sessions cs JOIN gallery_access ga ON ga.id = cs.gallery_access_id JOIN galleries g ON g.id = ga.gallery_id
         WHERE cs.id = $1 AND ga.id = $2 AND ga.gallery_id = $3 AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
-          AND g.archived_at IS NULL AND g.publication_status = 'published' AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+          AND g.archived_at IS NULL AND g.publication_status = 'published'
+          AND (g.expires_at IS NULL OR g.expires_at > NOW())
+          AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
           AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`,
       [client.clientSessionId, client.galleryAccessId, client.galleryId]);
     if (!grant.rows[0]) throw new ForbiddenError('INVALID_GALLERY_ACCESS');

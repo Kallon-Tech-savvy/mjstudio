@@ -199,6 +199,7 @@ export class CatalogService {
             WHERE cs.id = $3 AND ga.id = $4 AND ga.gallery_id = p.gallery_id
               AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
               AND g.publication_status = 'published' AND g.archived_at IS NULL
+              AND (g.expires_at IS NULL OR g.expires_at > NOW())
               AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
               AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
           )`,
@@ -247,6 +248,7 @@ export class CatalogService {
             JOIN galleries g ON g.id = ga.gallery_id
             WHERE cs.id = $2 AND ga.id = $3 AND ga.gallery_id = p.gallery_id AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
               AND g.publication_status = 'published' AND g.archived_at IS NULL
+              AND (g.expires_at IS NULL OR g.expires_at > NOW())
               AND (cs.expires_at IS NULL OR cs.expires_at > NOW()) AND (ga.expires_at IS NULL OR ga.expires_at > NOW()))
           AND EXISTS (SELECT 1 FROM photo_assets pa WHERE pa.photo_id = p.id AND pa.type = 'thumbnail' AND pa.state = 'current'
             AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready')`, [galleryId, client.clientSessionId, client.galleryAccessId]),

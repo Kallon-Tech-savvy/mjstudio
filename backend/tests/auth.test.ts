@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ensureGalleryAccessAllowed, ensurePhotographerCanAccessStudio } from '../src/auth/authorization.js';
 import { buildClientContext, buildPhotographerContext } from '../src/auth/context.js';
 import { validateLoginPayload } from '../src/routes/auth.js';
+import { ClientSessionService } from '../src/services/client-access-service.js';
+import { UnauthorizedError } from '../src/errors.js';
 
 describe('authentication foundation', () => {
   it('should reject empty credentials in the auth contract', () => {
@@ -23,6 +25,35 @@ describe('authentication foundation', () => {
     expect(photographer.membershipId).toBeDefined();
     expect(client.galleryAccessId).toBe('ga-1');
     expect(client.permission).toBe('view');
+  });
+
+
+  it('rejects client sessions when the gallery itself has expired', async () => {
+    const statements: string[] = [];
+    const database = {
+      query: async (sql: string) => {
+        statements.push(sql);
+        if (sql.includes('FROM client_sessions cs')) {
+          // Model the row a database would return if the query omitted the gallery-expiry predicate.
+          if (!sql.includes('(g.expires_at IS NULL OR g.expires_at > NOW())')) {
+            return { rows: [{
+              session_id: 'session-1',
+              access_id: 'access-1',
+              gallery_id: 'gallery-1',
+              permission: 'view',
+              session_expires_at: new Date(Date.now() + 60_000),
+              access_expires_at: null,
+            }] };
+          }
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    };
+    const service = new ClientSessionService(database as never, { assertAllowed: async () => undefined });
+
+    await expect(service.resolve('session-token')).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(statements.some((sql) => sql.includes('UPDATE client_sessions SET last_seen_at'))).toBe(false);
   });
 
   it('should allow a photographer to access their own studio only', () => {
