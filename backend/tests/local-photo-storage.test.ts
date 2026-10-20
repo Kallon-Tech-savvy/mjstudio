@@ -159,6 +159,24 @@ describe('LocalPhotoStorage', () => {
     await expect(storage.verifyObject(key)).resolves.toBeNull();
   });
 
+  it('rejects a storage root whose ancestor is a symlink', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'mjstudio-root-ancestor-'));
+    const alias = join(tmpdir(), `mjstudio-root-alias-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    roots.push(outside, alias);
+    const realRoot = join(outside, 'storage');
+    await mkdir(realRoot);
+    await symlink(outside, alias, 'dir');
+
+    const storage = new LocalPhotoStorage(
+      join(alias, 'storage'),
+      'http://localhost:3001',
+      'test-secret-that-is-at-least-32-characters-long',
+    );
+
+    await expect(storage.verifyObject('studios/studio-1/missing'))
+      .rejects.toThrow(/root and its ancestors/i);
+  });
+
   it('rejects symlinked parent directories instead of reading or writing outside the storage root', async () => {
     const storage = await makeStorage();
     const root = roots[roots.length - 1]!;
