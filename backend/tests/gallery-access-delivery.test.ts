@@ -162,6 +162,55 @@ describe('gallery credential delivery failure', () => {
   });
 
 
+  it('allows reset to replace an expired but not yet revoked grant', async () => {
+    const queries: string[] = [];
+    let insertedGrant: unknown[] | undefined;
+    const transaction = {
+      query: vi.fn(async (sql: string, values?: unknown[]) => {
+        queries.push(sql);
+        if (sql.includes('SELECT id FROM galleries')) return { rows: [{ id: 'gallery-1' }] };
+        if (sql.includes('SELECT id, expires_at FROM gallery_access')) {
+          return { rows: [{ id: 'expired-grant', expires_at: new Date('2025-01-01T00:00:00.000Z') }] };
+        }
+        if (sql.includes('INSERT INTO gallery_access')) insertedGrant = values;
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const database = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM galleries g')) {
+          return { rows: [{
+            id: 'gallery-1',
+            studio_id: '22222222-2222-4222-8222-222222222222',
+            role: 'owner',
+            workflow_status: 'reviewing',
+            publication_status: 'draft',
+            archived_at: null,
+          }] };
+        }
+        return { rows: [] };
+      }),
+      connect: vi.fn(async () => transaction),
+    } as unknown as Database;
+    const delivery = { deliver: vi.fn().mockResolvedValue(undefined) };
+    const service = new GalleryAccessService(database, delivery, () => 'replacement-grant');
+    const actor = buildPhotographerContext({
+      userId: '11111111-1111-4111-8111-111111111111',
+      studioId: '22222222-2222-4222-8222-222222222222',
+      role: 'owner',
+    });
+    const newExpiry = new Date('2027-01-15T12:00:00.000Z');
+
+    await expect(service.reset(actor, '33333333-3333-4333-8333-333333333333', 'view', newExpiry))
+      .resolves.toMatchObject({ id: 'replacement-grant', permission: 'view', expiresAt: newExpiry });
+
+    expect(insertedGrant?.[0]).toBe('replacement-grant');
+    expect(insertedGrant?.[5]).toEqual(newExpiry);
+    expect(queries.some((sql) => sql.includes('UPDATE gallery_access SET revoked_at = NOW()'))).toBe(true);
+    expect(delivery.deliver).toHaveBeenCalledTimes(1);
+  });
+
   it('rotates credentials on resend while preserving permission and expiry', async () => {
     const oldExpiry = new Date('2027-01-15T12:00:00.000Z');
     const transactionQueries: string[] = [];
