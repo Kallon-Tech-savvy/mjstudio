@@ -37,10 +37,19 @@ export class LocalPhotoStorage implements PhotoStorage {
     const objectPath = this.resolveObjectPath(storageKey);
     await this.assertSafeParentDirectories(objectPath);
     try {
+      const sidecarPath = this.metadataPath(objectPath);
+      const [objectEntry, sidecarEntry] = await Promise.all([
+        lstat(objectPath),
+        lstat(sidecarPath),
+      ]);
+      // lstat is intentional: stat/readFile alone follow a symlink at the leaf,
+      // even when every parent directory is safe.
+      if (!objectEntry.isFile() || objectEntry.isSymbolicLink()
+        || !sidecarEntry.isFile() || sidecarEntry.isSymbolicLink()) return null;
       const [file, fileStat, metadataText] = await Promise.all([
         readFile(objectPath),
         stat(objectPath),
-        readFile(this.metadataPath(objectPath), 'utf8'),
+        readFile(sidecarPath, 'utf8'),
       ]);
       const metadata = JSON.parse(metadataText) as {
         mimeType?: string;
