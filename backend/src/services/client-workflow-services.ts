@@ -202,6 +202,7 @@ export class DownloadService {
          AND EXISTS (SELECT 1 FROM photo_assets pt WHERE pt.photo_id = p.id AND pt.type = 'thumbnail' AND pt.state = 'current' AND pt.upload_status = 'uploaded' AND pt.processing_status = 'ready')
          AND g.publication_status = 'published' AND g.archived_at IS NULL
          AND ga.id = $4 AND ga.gallery_id = p.gallery_id AND ga.permission = 'view_download'
+         AND cs.gallery_access_id = ga.id
          AND ga.revoked_at IS NULL AND cs.revoked_at IS NULL
          AND EXISTS (
            SELECT 1
