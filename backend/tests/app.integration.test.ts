@@ -26,6 +26,14 @@ const baseServices = () => ({
 }) as unknown as ApplicationServices;
 
 describe('API foundation', () => {
+  it('does not claim provider readiness from the API root endpoint', async () => {
+    const response = await request(createApp()).get('/api');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('running');
+    expect(response.body.data.status).not.toBe('ready');
+  });
+
   it('GET /api/health should return the API health envelope', async () => {
     const response = await request(createApp()).get('/api/health');
 
