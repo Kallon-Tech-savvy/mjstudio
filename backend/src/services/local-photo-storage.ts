@@ -248,15 +248,22 @@ export class LocalPhotoStorage implements PhotoStorage {
    * This prevents path traversal through planted symlink directories; the local
    * adapter is development-only and is not a race-proof hostile multi-user store.
    */
-  private async assertSafeRoot(): Promise<void> {
-    const rootStat = await lstat(this.root);
+  private async assertSafeRoot(create = false): Promise<void> {
+    let rootStat;
+    try {
+      rootStat = await lstat(this.root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !create) return;
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+      rootStat = await lstat(this.root);
+    }
     if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
       throw new Error('Photo storage root must be a real directory, not a symlink.');
     }
   }
 
   private async assertSafeParentDirectories(objectPath: string, create = false): Promise<void> {
-    await this.assertSafeRoot();
+    await this.assertSafeRoot(create);
     const parent = dirname(objectPath);
     const relativeParent = relative(this.root, parent);
     let current = this.root;
