@@ -63,6 +63,28 @@ export class JobService implements JobQueue {
 
   async claim<T extends JobType>(type: T, leaseSeconds = 60): Promise<ClaimedJob<T> | null> {
     return inTransaction(this.database, async (transaction) => {
+      // A worker may crash after its final allowed claim. Reap expired leases at
+      // the attempt limit so they do not remain "processing" forever.
+      const exhausted = await transaction.query<{ payload: unknown }>(
+        `UPDATE application_jobs
+            SET status = 'failed', failed_at = NOW(), locked_until = NULL, lock_token = NULL,
+                last_error = COALESCE(last_error, 'Job lease expired after maximum attempts'),
+                updated_at = NOW()
+          WHERE job_type = $1 AND status = 'processing'
+            AND locked_until < NOW() AND attempts >= max_attempts
+          RETURNING payload`,
+        [type],
+      );
+      if (type === 'PROCESS_PHOTO_ASSETS') {
+        for (const expired of exhausted.rows) {
+          const payload = jobPayloadSchemas.PROCESS_PHOTO_ASSETS.parse(expired.payload);
+          await transaction.query(
+            "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+            [payload.photoId],
+          );
+        }
+      }
+
       const row = await transaction.query<{
         id: string; job_type: T; payload: unknown; attempts: number; lock_token: string;
       }>(
@@ -109,15 +131,23 @@ export class JobService implements JobQueue {
     const terminal = permanent || job.attempts >= maxAttempts;
     const backoffSeconds = Math.min(3600, 2 ** Math.max(0, job.attempts - 1) * 15);
     const details = error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2000) : 'Unknown job failure';
-    const result = await this.database.query(
-      `UPDATE application_jobs
-          SET status = CASE WHEN $3 THEN 'failed' ELSE 'pending' END,
-              failed_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
-              available_at = CASE WHEN $3 THEN available_at ELSE NOW() + make_interval(secs => $4) END,
-              locked_until = NULL, lock_token = NULL, last_error = $5, updated_at = NOW()
-        WHERE id = $1 AND lock_token = $2 AND status = 'processing'`,
-      [job.id, job.lockToken, terminal, backoffSeconds, details]);
-    if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
+    await inTransaction(this.database, async (transaction) => {
+      const result = await transaction.query(
+        `UPDATE application_jobs
+            SET status = CASE WHEN $3 THEN 'failed' ELSE 'pending' END,
+                failed_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
+                available_at = CASE WHEN $3 THEN available_at ELSE NOW() + make_interval(secs => $4) END,
+                locked_until = NULL, lock_token = NULL, last_error = $5, updated_at = NOW()
+          WHERE id = $1 AND lock_token = $2 AND status = 'processing'`,
+        [job.id, job.lockToken, terminal, backoffSeconds, details]);
+      if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
+      if (terminal && job.type === 'PROCESS_PHOTO_ASSETS') {
+        await transaction.query(
+          "UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+          [(job.payload as ProcessPhotoAssetsPayload).photoId],
+        );
+      }
+    });
   }
 }
 
@@ -127,15 +157,42 @@ export interface JobHandler<T extends JobType = JobType> {
 }
 
 export class JobWorker<T extends JobType> {
-  constructor(private readonly jobs: JobService, private readonly handler: JobHandler<T>) {}
+  constructor(
+    private readonly jobs: JobService,
+    private readonly handler: JobHandler<T>,
+    private readonly heartbeatIntervalMs = 20_000,
+  ) {
+    if (!Number.isSafeInteger(heartbeatIntervalMs) || heartbeatIntervalMs <= 0 || heartbeatIntervalMs >= 60_000) {
+      throw new RangeError('Heartbeat interval must be a positive number below the 60-second job lease.');
+    }
+  }
 
   async runOne() {
     const job = await this.jobs.claim(this.handler.type);
     if (!job) return false;
+
+    // Keep the 60-second lease alive while image processing or storage I/O is in progress.
+    // Serialize heartbeats so a slow database request cannot create an unbounded queue.
+    let heartbeatInFlight = Promise.resolve();
+    let heartbeatRunning = false;
+    const timer = setInterval(() => {
+      if (heartbeatRunning) return;
+      heartbeatRunning = true;
+      heartbeatInFlight = this.jobs.heartbeat(job)
+        .catch(() => {
+          // Completion/failure still checks the lock token. A lost lease is rejected there;
+          // transient heartbeat failures are retried on the next interval.
+        })
+        .finally(() => { heartbeatRunning = false; });
+    }, this.heartbeatIntervalMs);
+
     try {
       await this.jobs.complete(job, (transaction) => this.handler.execute(job, transaction));
     } catch (error) {
       await this.jobs.fail(job, error);
+    } finally {
+      clearInterval(timer);
+      await heartbeatInFlight;
     }
     return true;
   }

@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Transaction } from './service-common.js';
-import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
+import type { JobHandler, ClaimedJob, JobService, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
 import { PermanentJobError } from './job-service.js';
 
-export type DerivativeObject = { mimeType: string; fileSize: number; width: number; height: number };
+export type DerivativeObject = { mimeType: string; fileSize: number; width?: number; height?: number };
 export interface ImageProcessor {
   createPreview(sourceKey: string, destinationKey: string): Promise<DerivativeObject>;
   createThumbnail(sourceKey: string, destinationKey: string): Promise<DerivativeObject>;
@@ -36,8 +36,28 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         `SELECT id, upload_status, processing_status, state FROM photo_assets
           WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
       let assetId: string | undefined = existing.rows[0]?.id;
-      if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
-      if (existing.rows[0]) {
+      const readyExisting = existing.rows[0]?.upload_status === 'uploaded'
+        && existing.rows[0]?.processing_status === 'ready';
+      if (readyExisting) {
+        // Database state alone is insufficient: the object may have been lost or
+        // corrupted after the original processing transaction committed.
+        const verifiedExisting = await this.storage.verifyObject(derivative.key);
+        if (verifiedExisting && verifiedExisting.fileSize > 0
+          && verifiedExisting.mimeType === 'image/webp'
+          && Number.isSafeInteger(verifiedExisting.width) && (verifiedExisting.width ?? 0) > 0
+          && Number.isSafeInteger(verifiedExisting.height) && (verifiedExisting.height ?? 0) > 0) {
+          continue;
+        }
+      }
+      if (readyExisting && existing.rows[0]) {
+        // The object is missing/corrupt despite a ready row. Record that discrepancy
+        // before transitioning through failed -> processing for a valid retry path.
+        await transaction.query(
+          "UPDATE photo_assets SET processing_status = 'failed', updated_at = NOW() WHERE id = $1",
+          [existing.rows[0].id],
+        );
+      } else if (existing.rows[0]) {
+        // A non-ready current row can be superseded and replaced as before.
         await transaction.query(
           "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
           [existing.rows[0].id],
@@ -51,12 +71,14 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
            VALUES ($1, $2, $3, 'current', $4, 'pending', 'pending')`,
           [assetId, photoId, derivative.type, derivative.key]);
       }
-      await transaction.query("UPDATE photo_assets SET processing_status = 'processing', updated_at = NOW() WHERE id = $1 AND processing_status IN ('pending', 'failed')", [assetId]);
+      // The database transition graph requires failed -> pending -> processing.
+      await transaction.query("UPDATE photo_assets SET processing_status = 'pending', updated_at = NOW() WHERE id = $1 AND processing_status = 'failed'", [assetId]);
+      await transaction.query("UPDATE photo_assets SET processing_status = 'processing', updated_at = NOW() WHERE id = $1 AND processing_status = 'pending'", [assetId]);
       const generated = derivative.type === 'preview'
         ? await this.processor.createPreview(sourceRow.storage_key, derivative.key)
         : await this.processor.createThumbnail(sourceRow.storage_key, derivative.key);
       const verified = await this.storage.verifyObject(derivative.key);
-      if (!verified || verified.fileSize <= 0 || verified.width <= 0 || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
+      if (!verified || verified.fileSize <= 0 || !verified.width || verified.width <= 0 || !verified.height || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
         throw new PermanentJobError(`Generated ${derivative.type} did not pass object verification.`);
       }
       await transaction.query(
@@ -90,7 +112,7 @@ export class CleanupPhotoAssetsHandler implements JobHandler<'CLEANUP_PHOTO_ASSE
 
 export class ReconcilePhotoAssetHandler implements JobHandler<'RECONCILE_PHOTO_ASSET'> {
   type = 'RECONCILE_PHOTO_ASSET' as const;
-  constructor(private readonly storage: AssetStorage) {}
+  constructor(private readonly storage: AssetStorage, private readonly jobs: Pick<JobService, 'enqueueInTransaction'>) {}
 
   async execute(job: ClaimedJob<'RECONCILE_PHOTO_ASSET'>, transaction: Transaction) {
     const { assetId } = job.payload;
@@ -108,6 +130,12 @@ export class ReconcilePhotoAssetHandler implements JobHandler<'RECONCILE_PHOTO_A
     if (object && asset.type !== 'original' && asset.processing_status === 'ready' && object.fileSize > 0) return;
     if (object && asset.upload_status === 'pending') {
       await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', updated_at = NOW() WHERE id = $1", [assetId]);
+      if (asset.type === 'original') {
+        await this.jobs.enqueueInTransaction(transaction, {
+          type: 'PROCESS_PHOTO_ASSETS',
+          payload: { photoId: asset.photo_id, sourceAssetId: assetId },
+        });
+      }
     }
   }
 }

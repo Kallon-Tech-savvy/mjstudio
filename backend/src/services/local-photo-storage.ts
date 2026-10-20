@@ -1,10 +1,12 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ForbiddenError, ValidationError } from '../errors.js';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
 type Capability = { key: string; expiresAt: number; operation: 'upload' | 'view' | 'download' };
+
+export class UnverifiedStorageObjectError extends Error {}
 
 export class LocalPhotoStorage implements PhotoStorage {
   private readonly root: string;
@@ -39,14 +41,115 @@ export class LocalPhotoStorage implements PhotoStorage {
         stat(objectPath),
         readFile(this.metadataPath(objectPath), 'utf8'),
       ]);
-      const metadata = JSON.parse(metadataText) as { mimeType?: string };
+      const metadata = JSON.parse(metadataText) as {
+        mimeType?: string;
+        width?: number;
+        height?: number;
+        fileSize?: number;
+        sha256?: string;
+      };
       const mimeType = this.detectImageMimeType(file);
       if (!mimeType || metadata.mimeType !== mimeType || fileStat.size < 1) return null;
-      return { storageKey, mimeType, fileSize: fileStat.size };
+      // Derivative object and sidecar are separate filesystem entries. A crash between
+      // their renames must leave a detectable mismatch rather than trusted stale metadata.
+      if (metadata.fileSize !== undefined && metadata.fileSize !== fileStat.size) return null;
+      if (metadata.sha256 !== undefined
+        && metadata.sha256 !== createHash('sha256').update(file).digest('hex')) return null;
+      return { storageKey, mimeType, fileSize: fileStat.size, ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height) ? { width: metadata.width, height: metadata.height } : {}) };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
+  }
+
+  async readObjectBytes(storageKey: string): Promise<Buffer> {
+    const verified = await this.verifyObject(storageKey);
+    if (!verified) throw new UnverifiedStorageObjectError('Source image object is missing or failed verification.');
+    return readFile(this.resolveObjectPath(storageKey));
+  }
+
+  async writeDerivative(
+    storageKey: string,
+    bytes: Buffer,
+    metadata: { mimeType: string; fileSize: number; width: number; height: number },
+  ): Promise<void> {
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length !== metadata.fileSize
+      || !Number.isSafeInteger(metadata.width) || metadata.width < 1
+      || !Number.isSafeInteger(metadata.height) || metadata.height < 1
+      || metadata.mimeType !== 'image/webp') {
+      throw new Error('Derivative bytes or metadata are invalid.');
+    }
+    if (this.detectImageMimeType(bytes) !== metadata.mimeType) {
+      throw new Error('Derivative content does not match its declared MIME type.');
+    }
+    const objectPath = this.resolveObjectPath(storageKey);
+    const sidecarPath = this.metadataPath(objectPath);
+    await mkdir(dirname(objectPath), { recursive: true });
+    const suffix = `.tmp-${randomUUID()}`;
+    const temporaryObject = `${objectPath}${suffix}`;
+    const temporaryMetadata = `${sidecarPath}${suffix}`;
+    try {
+      await writeFile(temporaryObject, bytes, { flag: 'wx', mode: 0o600 });
+      await writeFile(temporaryMetadata, JSON.stringify({
+        mimeType: metadata.mimeType,
+        width: metadata.width,
+        height: metadata.height,
+        fileSize: metadata.fileSize,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      }), { flag: 'wx', mode: 0o600 });
+      await rename(temporaryObject, objectPath);
+      await rename(temporaryMetadata, sidecarPath);
+    } finally {
+      await Promise.all([
+        rm(temporaryObject, { force: true }),
+        rm(temporaryMetadata, { force: true }),
+      ]);
+    }
+  }
+
+  /** Remove only UUID-named derivative temp files older than the safety window. */
+  async cleanupStaleTemporaryFiles(maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
+    if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 60 * 60 * 1000) {
+      throw new Error('Temporary-file cleanup age must be at least one hour.');
+    }
+    const cutoff = Date.now() - maxAgeMs;
+    let removed = 0;
+    const walk = async (directory: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+      }
+      for (const entry of entries) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) {
+          await walk(path);
+          continue;
+        }
+        // Never follow symlinks or delete arbitrary files: only our exact UUID temp suffix.
+        if (!entry.isFile() || !/\.tmp-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.name)) continue;
+        try {
+          const fileStat = await stat(path);
+          if (fileStat.mtimeMs >= cutoff) continue;
+          await rm(path, { force: true });
+          removed += 1;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+    };
+    await walk(this.root);
+    return removed;
+  }
+
+  async deleteObject(storageKey: string): Promise<void> {
+    const objectPath = this.resolveObjectPath(storageKey);
+    await Promise.all([
+      rm(objectPath, { force: true }),
+      rm(this.metadataPath(objectPath), { force: true }),
+    ]);
   }
 
   async acceptUpload(token: string, contentType: string, bytes: Buffer): Promise<void> {
@@ -62,7 +165,13 @@ export class LocalPhotoStorage implements PhotoStorage {
     const objectPath = this.resolveObjectPath(capability.key);
     await mkdir(dirname(objectPath), { recursive: true });
     await writeFile(objectPath, bytes, { flag: 'wx', mode: 0o600 });
-    await writeFile(this.metadataPath(objectPath), JSON.stringify({ mimeType: detectedType }), { flag: 'wx', mode: 0o600 });
+    try {
+      await writeFile(this.metadataPath(objectPath), JSON.stringify({ mimeType: detectedType }), { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      // Do not leave an object that cannot be verified or retried after a sidecar-write failure.
+      await rm(objectPath, { force: true });
+      throw error;
+    }
   }
 
   async readCapability(token: string): Promise<{ bytes: Buffer; mimeType: string; download: boolean } | null> {

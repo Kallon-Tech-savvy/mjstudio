@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -32,6 +32,69 @@ describe('LocalPhotoStorage', () => {
       mimeType: 'image/jpeg',
       fileSize: jpeg.length,
     });
+  });
+
+  it('rejects a derivative when its object bytes no longer match the metadata sidecar', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const key = 'studios/studio-1/preview.webp';
+    const bytes = Buffer.from('RIFF0000WEBPvalid-a');
+    await storage.writeDerivative(key, bytes, {
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+    });
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({
+      storageKey: key,
+      mimeType: 'image/webp',
+      width: 320,
+      height: 240,
+    });
+
+    // Simulate a crash/interrupted replacement between object and sidecar renames.
+    await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+  });
+
+  it('cleans only stale UUID temporary files and preserves recent or unrelated files', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const directory = join(root, 'studios', 'studio-1');
+    await mkdir(directory, { recursive: true });
+    const oldTemp = join(directory, 'preview.webp.tmp-123e4567-e89b-42d3-a456-426614174000');
+    const recentTemp = join(directory, 'thumbnail.webp.tmp-123e4567-e89b-42d3-a456-426614174001');
+    const unrelated = join(directory, 'notes.tmp-not-a-uuid');
+    await Promise.all([
+      writeFile(oldTemp, 'orphaned'),
+      writeFile(recentTemp, 'active'),
+      writeFile(unrelated, 'not ours'),
+    ]);
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await utimes(oldTemp, old, old);
+
+    await expect(storage.cleanupStaleTemporaryFiles(60 * 60 * 1000)).resolves.toBe(1);
+    await expect(rm(oldTemp)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(rm(recentTemp)).resolves.toBeUndefined();
+    await expect(rm(unrelated)).resolves.toBeUndefined();
+  });
+
+  it('removes an original if its metadata sidecar cannot be written, allowing a safe retry', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const key = 'studios/studio-1/original';
+    const capability = await storage.createUploadCapability(key, 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    const sidecarDirectory = join(root, 'studios/studio-1/original.metadata.json');
+    await mkdir(sidecarDirectory, { recursive: true });
+
+    await expect(storage.acceptUpload(token, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9])))
+      .rejects.toThrow();
+
+    await rm(sidecarDirectory, { recursive: true, force: true });
+    await expect(storage.acceptUpload(token, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9])))
+      .resolves.toBeUndefined();
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg' });
   });
 
   it('rejects tampered and expired capabilities', async () => {

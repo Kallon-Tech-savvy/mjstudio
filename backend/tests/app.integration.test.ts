@@ -1,9 +1,14 @@
 import request from 'supertest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { UnauthorizedError } from '../src/errors.js';
 import { buildPhotographerContext } from '../src/auth/context.js';
 import type { ApplicationServices } from '../src/services/container.js';
+import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 
 const baseServices = () => ({
   auth: {
@@ -135,4 +140,43 @@ describe('API foundation', () => {
     expect(response.body.error.code).toBe('AUTHENTICATION_REQUIRED');
     expect(JSON.stringify(response.body)).not.toContain('stack');
   });
+
+  it('accepts a binary photo upload and serves it through a view capability', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mjstudio-api-upload-'));
+    try {
+      const storage = new LocalPhotoStorage(root, 'http://localhost:3001', 'integration-test-secret-that-is-long-enough');
+      const app = createApp(baseServices(), {
+        allowedOrigins: ['http://localhost:3000'],
+        localPhotoStorage: storage,
+      });
+      const bytes = await sharp({
+        create: { width: 40, height: 30, channels: 3, background: { r: 80, g: 120, b: 160 } },
+      }).jpeg().toBuffer();
+      const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/original';
+      const uploadCapability = await storage.createUploadCapability(key, 60);
+      const uploadPath = new URL(uploadCapability.url).pathname;
+
+      const uploaded = await request(app)
+        .put(uploadPath)
+        .set('Origin', 'http://localhost:3000')
+        .set('Content-Type', 'image/jpeg')
+        .send(bytes);
+      expect(uploaded.status).toBe(204);
+      await expect(storage.verifyObject(key)).resolves.toMatchObject({
+        mimeType: 'image/jpeg',
+        fileSize: bytes.length,
+      });
+
+      const viewCapability = await storage.createViewCapability(key, 60);
+      const viewPath = new URL(viewCapability.url).pathname;
+      const viewed = await request(app).get(viewPath);
+      expect(viewed.status).toBe(200);
+      expect(viewed.headers['content-type']).toContain('image/jpeg');
+      expect(viewed.body).toEqual(bytes);
+      expect(viewed.headers['cache-control']).toBe('private, no-store');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
 });
