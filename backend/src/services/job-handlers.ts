@@ -71,7 +71,9 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
            VALUES ($1, $2, $3, 'current', $4, 'pending', 'pending')`,
           [assetId, photoId, derivative.type, derivative.key]);
       }
-      await transaction.query("UPDATE photo_assets SET processing_status = 'processing', updated_at = NOW() WHERE id = $1 AND processing_status IN ('pending', 'failed')", [assetId]);
+      // The database transition graph requires failed -> pending -> processing.
+      await transaction.query("UPDATE photo_assets SET processing_status = 'pending', updated_at = NOW() WHERE id = $1 AND processing_status = 'failed'", [assetId]);
+      await transaction.query("UPDATE photo_assets SET processing_status = 'processing', updated_at = NOW() WHERE id = $1 AND processing_status = 'pending'", [assetId]);
       const generated = derivative.type === 'preview'
         ? await this.processor.createPreview(sourceRow.storage_key, derivative.key)
         : await this.processor.createThumbnail(sourceRow.storage_key, derivative.key);
