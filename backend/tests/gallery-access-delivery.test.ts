@@ -20,7 +20,7 @@ describe('gallery credential delivery failure', () => {
         if (sql.includes('FROM galleries g')) {
           return { rows: [{
             id: 'gallery-1',
-            studio_id: 'studio-1',
+            studio_id: '22222222-2222-4222-8222-222222222222',
             role: 'owner',
             workflow_status: 'reviewing',
             publication_status: 'draft',
