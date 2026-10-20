@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { env } from '../config/env.js';
 import { z } from 'zod';
 import { CLIENT_COOKIE, requireClientAuth, type AuthenticatedRequest } from '../middleware/authentication.js';
 import type { ApplicationServices } from '../services/container.js';
@@ -46,7 +47,8 @@ export function clientRouter(services: ApplicationServices) {
       const { photoId } = parseInput(photoParamSchema, req.params);
       await services.clientSessions.assertGallery(req.client!, galleryId);
       const photo = await services.catalog.getClientPhoto(req.client!, galleryId, photoId);
-      res.json(successEnvelope(photo));
+      const apiBase = env.APP_BASE_URL ?? 'http://localhost:3001';
+      res.json(successEnvelope({ ...photo, preview: { ...photo.preview, url: new URL(photo.preview.url, apiBase).toString() } }));
     } catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/photos/:photoId/representations/:type', auth, async (req: AuthenticatedRequest, res, next) => {
