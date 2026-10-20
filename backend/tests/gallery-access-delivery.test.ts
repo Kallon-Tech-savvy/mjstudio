@@ -161,4 +161,68 @@ describe('gallery credential delivery failure', () => {
     expect(transactionQueries.some((sql) => sql === 'ROLLBACK')).toBe(true);
   });
 
+
+  it('rotates credentials on resend while preserving permission and expiry', async () => {
+    const oldExpiry = new Date('2027-01-15T12:00:00.000Z');
+    const transactionQueries: string[] = [];
+    let insertedGrant: unknown[] | undefined;
+    const transaction = {
+      query: vi.fn(async (sql: string, values?: unknown[]) => {
+        transactionQueries.push(sql);
+        if (sql.includes('SELECT id FROM galleries')) return { rows: [{ id: 'gallery-1' }] };
+        if (sql.includes('SELECT id, expires_at FROM gallery_access')) {
+          return { rows: [{ id: 'old-grant', expires_at: oldExpiry }] };
+        }
+        if (sql.includes('INSERT INTO gallery_access')) insertedGrant = values;
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const database = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM galleries g')) {
+          return { rows: [{
+            id: 'gallery-1',
+            studio_id: '22222222-2222-4222-8222-222222222222',
+            role: 'owner',
+            workflow_status: 'reviewing',
+            publication_status: 'draft',
+            archived_at: null,
+          }] };
+        }
+        if (sql.includes('FROM gallery_access WHERE gallery_id')) {
+          return { rows: [{ id: 'old-grant', permission: 'view_download', expiresAt: oldExpiry }] };
+        }
+        return { rows: [] };
+      }),
+      connect: vi.fn(async () => transaction),
+    } as unknown as Database;
+    const delivery = { deliver: vi.fn().mockResolvedValue(undefined) };
+    const service = new GalleryAccessService(database, delivery, () => 'new-grant');
+    const actor = buildPhotographerContext({
+      userId: '11111111-1111-4111-8111-111111111111',
+      studioId: '22222222-2222-4222-8222-222222222222',
+      role: 'owner',
+    });
+
+    await expect(service.resend(actor, '33333333-3333-4333-8333-333333333333')).resolves.toMatchObject({
+      resent: true,
+      accessId: 'new-grant',
+      permission: 'view_download',
+      expiresAt: oldExpiry,
+    });
+
+    expect(insertedGrant?.[0]).toBe('new-grant');
+    expect(insertedGrant?.[4]).toBe('view_download');
+    expect(insertedGrant?.[5]).toEqual(oldExpiry);
+    expect(delivery.deliver).toHaveBeenCalledTimes(1);
+    expect(delivery.deliver.mock.calls[0]?.[0]).toMatchObject({
+      galleryId: '33333333-3333-4333-8333-333333333333',
+    });
+    expect(delivery.deliver.mock.calls[0]?.[0].secretToken).toEqual(expect.any(String));
+    expect(delivery.deliver.mock.calls[0]?.[0].pin).toMatch(/^\\d{6}$/);
+    expect(transactionQueries.some((sql) => sql.includes('UPDATE gallery_access SET revoked_at = NOW()'))).toBe(true);
+    expect(transactionQueries.some((sql) => sql.includes('UPDATE client_sessions SET revoked_at = NOW()'))).toBe(true);
+  });
+
 });
