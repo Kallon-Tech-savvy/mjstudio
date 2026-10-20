@@ -134,6 +134,31 @@ describe('LocalPhotoStorage', () => {
   });
 
 
+  it('rejects symlinked object files and metadata sidecars', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const outside = await mkdtemp(join(tmpdir(), 'mjstudio-leaf-symlink-'));
+    roots.push(outside);
+    const key = 'studios/studio-1/photo';
+    const objectPath = join(root, key);
+    const sidecarPath = `${objectPath}.metadata.json`;
+    await mkdir(join(root, 'studios', 'studio-1'), { recursive: true });
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const externalObject = join(outside, 'outside.jpg');
+    await writeFile(externalObject, jpeg);
+    await writeFile(sidecarPath, JSON.stringify({ mimeType: 'image/jpeg' }));
+    await symlink(externalObject, objectPath);
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+
+    await rm(objectPath);
+    await writeFile(objectPath, jpeg);
+    const externalMetadata = join(outside, 'outside.metadata.json');
+    await writeFile(externalMetadata, JSON.stringify({ mimeType: 'image/jpeg' }));
+    await rm(sidecarPath);
+    await symlink(externalMetadata, sidecarPath);
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+  });
+
   it('rejects symlinked parent directories instead of reading or writing outside the storage root', async () => {
     const storage = await makeStorage();
     const root = roots[roots.length - 1]!;
