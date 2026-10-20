@@ -213,12 +213,12 @@ export class CatalogService {
       photoId: item.id,
       position: item.position,
       recommended: item.recommended,
-      preview: await this.photoRepresentations.createView({
-        storageKey: item.previewStorageKey,
+      preview: {
+        url: `/api/client/galleries/${galleryId}/photos/${item.id}/representations/preview`,
         width: item.previewWidth,
         height: item.previewHeight,
         mimeType: item.previewMimeType,
-      }, 600),
+      },
     };
   }
 
@@ -280,12 +280,12 @@ export class CatalogService {
       photoId: item.id,
       position: item.position,
       recommended: item.recommended,
-      thumbnail: await this.photoRepresentations!.createView({
-        storageKey: item.thumbnailStorageKey,
+      thumbnail: {
+        url: `/api/client/galleries/${galleryId}/photos/${item.id}/representations/thumbnail`,
         width: item.thumbnailWidth,
         height: item.thumbnailHeight,
         mimeType: item.thumbnailMimeType,
-      }, 1800),
+      },
     })));
     return { items: resolvedItems, total: Number(count.rows[0]?.count ?? 0) };
   }
