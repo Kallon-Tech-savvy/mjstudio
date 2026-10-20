@@ -282,7 +282,8 @@ export class LocalPhotoStorage implements PhotoStorage {
           throw new Error('Photo storage parent path must contain only real directories.');
         }
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !create) throw error;
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        if (!create) return;
         try {
           await mkdir(current, { mode: 0o700 });
         } catch (mkdirError) {
