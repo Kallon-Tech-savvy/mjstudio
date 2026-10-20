@@ -275,6 +275,54 @@ describe('gallery credential delivery failure', () => {
   });
 
 
+  it('does not resend a grant that expires between lookup and the locked transaction', async () => {
+    const queries: string[] = [];
+    const transaction = {
+      query: vi.fn(async (sql: string) => {
+        queries.push(sql);
+        if (sql.includes('SELECT id FROM galleries')) return { rows: [{ id: 'gallery-1' }] };
+        if (sql.includes('SELECT id, expires_at FROM gallery_access')) {
+          return { rows: [{ id: 'old-grant', expires_at: new Date('2025-01-01T00:00:00.000Z') }] };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const database = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM galleries g')) {
+          return { rows: [{
+            id: 'gallery-1',
+            studio_id: '22222222-2222-4222-8222-222222222222',
+            role: 'owner',
+            workflow_status: 'reviewing',
+            publication_status: 'draft',
+            archived_at: null,
+          }] };
+        }
+        if (sql.includes('FROM gallery_access WHERE gallery_id')) {
+          // Initial lookup sees a still-valid grant, then the transaction sees expiry.
+          return { rows: [{ id: 'old-grant', permission: 'view', expiresAt: new Date(Date.now() + 60_000) }] };
+        }
+        return { rows: [] };
+      }),
+      connect: vi.fn(async () => transaction),
+    } as unknown as Database;
+    const delivery = { deliver: vi.fn().mockResolvedValue(undefined) };
+    const service = new GalleryAccessService(database, delivery);
+    const actor = buildPhotographerContext({
+      userId: '11111111-1111-4111-8111-111111111111',
+      studioId: '22222222-2222-4222-8222-222222222222',
+      role: 'owner',
+    });
+
+    await expect(service.resend(actor, '33333333-3333-4333-8333-333333333333'))
+      .rejects.toThrow('Gallery access expired during resend. Reset access and try again.');
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(queries.some((sql) => sql.includes('INSERT INTO gallery_access'))).toBe(false);
+    expect(queries.some((sql) => sql.includes('UPDATE gallery_access SET revoked_at = NOW()'))).toBe(false);
+  });
+
   it('does not rotate a different grant if access changes during resend', async () => {
     const queries: string[] = [];
     const transaction = {
