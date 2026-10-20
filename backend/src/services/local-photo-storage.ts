@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ForbiddenError, ValidationError } from '../errors.js';
 import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
 type Capability = { key: string; expiresAt: number; operation: 'upload' | 'view' | 'download' };
@@ -258,16 +258,29 @@ export class LocalPhotoStorage implements PhotoStorage {
    * adapter is development-only and is not a race-proof hostile multi-user store.
    */
   private async assertSafeRoot(create = false): Promise<void> {
-    let rootStat;
-    try {
-      rootStat = await lstat(this.root);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !create) return;
-      await mkdir(this.root, { recursive: true, mode: 0o700 });
-      rootStat = await lstat(this.root);
-    }
-    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
-      throw new Error('Photo storage root must be a real directory, not a symlink.');
+    // Check every path component, not just the final root entry: lstat(root)
+    // still follows symlinks in its ancestors.
+    const parsedRoot = parse(this.root);
+    const relativeRoot = relative(parsedRoot.root, this.root);
+    let current = parsedRoot.root;
+    for (const part of relativeRoot.split(sep).filter(Boolean)) {
+      current = resolve(current, part);
+      let info;
+      try {
+        info = await lstat(current);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        if (!create) return;
+        try {
+          await mkdir(current, { mode: 0o700 });
+        } catch (mkdirError) {
+          if ((mkdirError as NodeJS.ErrnoException).code !== 'EEXIST') throw mkdirError;
+        }
+        info = await lstat(current);
+      }
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        throw new Error('Photo storage root and its ancestors must be real directories, not symlinks.');
+      }
     }
   }
 
