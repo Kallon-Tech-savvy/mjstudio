@@ -79,11 +79,11 @@ export class GalleryAccessService {
     // Credential hashes are intentionally irreversible. Rotate instead of asking
     // a delivery provider to recover secrets it should never be able to read.
     const expiresAt = active.expiresAt == null ? null : new Date(active.expiresAt);
-    const replacement = await this.issue(actor, galleryId, active.permission, expiresAt, true);
+    const replacement = await this.issue(actor, galleryId, active.permission, expiresAt, true, active.id);
     return { resent: true, accessId: replacement.id, permission: replacement.permission, expiresAt: replacement.expiresAt };
   }
 
-  private async issue(actor: PhotographerContext, galleryId: string, permission: 'view' | 'view_download', expiresAt: Date | null, replace: boolean) {
+  private async issue(actor: PhotographerContext, galleryId: string, permission: 'view' | 'view_download', expiresAt: Date | null, replace: boolean, expectedCurrentGrantId?: string) {
     if (expiresAt && expiresAt <= new Date()) throw new ValidationError('INVALID_GALLERY_ACCESS', 'Access expiration must be in the future.');
     const secretToken = randomBytes(32).toString('base64url');
     const pin = randomInt(0, 1_000_000).toString().padStart(6, '0');
@@ -95,6 +95,9 @@ export class GalleryAccessService {
       const current = await transaction.query<{ id: string; expires_at: Date | null }>(
         'SELECT id, expires_at FROM gallery_access WHERE gallery_id = $1 AND revoked_at IS NULL FOR UPDATE', [galleryId]);
       let hasCurrentGrant = Boolean(current.rows[0]);
+      if (expectedCurrentGrantId && current.rows[0]?.id !== expectedCurrentGrantId) {
+        throw new ConflictError('INVALID_GALLERY_ACCESS', 'Gallery access changed during resend. Retry the request.');
+      }
       if (current.rows[0]?.expires_at && new Date(current.rows[0].expires_at) <= new Date()) {
         await transaction.query('UPDATE gallery_access SET revoked_at = NOW(), updated_at = NOW() WHERE id = $1', [current.rows[0].id]);
         await transaction.query('UPDATE client_sessions SET revoked_at = NOW(), updated_at = NOW() WHERE gallery_access_id = $1 AND revoked_at IS NULL', [current.rows[0].id]);
