@@ -26,6 +26,7 @@ export type ApplicationServices = {
   proofing: ProofingService;
   delivery: DeliveryService;
   catalog: CatalogService;
+  photoStorage: PhotoStorage;
   rateLimits: RateLimitProvider;
   jobs: JobService;
 };
@@ -60,6 +61,7 @@ export function createApplicationServices(providers: ServiceProviders): Applicat
       providers.database,
       new PhotoRepresentationService(providers.photoStorage),
     ),
+    photoStorage: providers.photoStorage,
     rateLimits: providers.rateLimits,
     jobs: new JobService(providers.database),
   };
@@ -79,7 +81,8 @@ export function unavailableServices(): ApplicationServices {
     feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable, listForStudio: unavailable } as unknown as FeedbackService,
     proofing: { setReview: unavailable, list: unavailable } as unknown as ProofingService,
     delivery: { getDelivery: unavailable, prepareDelivery: unavailable, releaseDelivery: unavailable } as unknown as DeliveryService,
-    catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
+    catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, getClientRepresentation: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
+    photoStorage: { createUploadCapability: unavailable, verifyObject: unavailable, createViewCapability: unavailable, createDownloadCapability: unavailable, readObjectBytes: unavailable },
     rateLimits: { assertAllowed: unavailable },
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,
   };
