@@ -104,7 +104,31 @@ export class GalleryAccessService {
         [grantId, galleryId, hashCredential(secretToken), pinHash, permission, expiresAt],
       );
     });
-    await this.delivery.deliver({ galleryId, secretToken, pin });
+    try {
+      await this.delivery.deliver({ galleryId, secretToken, pin });
+    } catch (deliveryError) {
+      // The credential material exists only in this call. If delivery fails,
+      // invalidate the grant so clients are not left with an inaccessible,
+      // apparently active credential.
+      try {
+        await inTransaction(this.database, async (transaction) => {
+          await transaction.query(
+            'UPDATE gallery_access SET revoked_at = NOW(), updated_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+            [grantId],
+          );
+          await transaction.query(
+            'UPDATE client_sessions SET revoked_at = NOW(), updated_at = NOW() WHERE gallery_access_id = $1 AND revoked_at IS NULL',
+            [grantId],
+          );
+        });
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [deliveryError, cleanupError],
+          'Gallery credentials could not be delivered and the access grant could not be safely revoked.',
+        );
+      }
+      throw deliveryError;
+    }
     return { id: grantId, permission, expiresAt };
   }
 }
