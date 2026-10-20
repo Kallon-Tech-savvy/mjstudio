@@ -12,6 +12,7 @@ describe('PhotoRepresentationService', () => {
       verifyObject: vi.fn(),
       createViewCapability,
       createDownloadCapability: vi.fn(),
+      readObjectBytes: vi.fn(),
     });
 
     const result = await service.createView({
@@ -42,6 +43,7 @@ describe('PhotoRepresentationService', () => {
       verifyObject: vi.fn(),
       createViewCapability,
       createDownloadCapability: vi.fn(),
+      readObjectBytes: vi.fn(),
     });
 
     await expect(service.createView({
@@ -61,6 +63,7 @@ describe('PhotoRepresentationService', () => {
       verifyObject: vi.fn(),
       createViewCapability,
       createDownloadCapability: vi.fn(),
+      readObjectBytes: vi.fn(),
     });
 
     await expect(service.createView({
