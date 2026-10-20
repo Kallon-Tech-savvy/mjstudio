@@ -50,9 +50,12 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
         }
       }
       if (readyExisting && existing.rows[0]) {
-        // Keep the row ready while regenerating its missing/corrupt object. The
-        // database guards intentionally reject ready -> failed; the final update
-        // refreshes the metadata after the replacement object is verified.
+        // The object is missing/corrupt despite a ready row. Record that discrepancy
+        // before transitioning through failed -> processing for a valid retry path.
+        await transaction.query(
+          "UPDATE photo_assets SET processing_status = 'failed', updated_at = NOW() WHERE id = $1",
+          [existing.rows[0].id],
+        );
       } else if (existing.rows[0]) {
         // A non-ready current row can be superseded and replaced as before.
         await transaction.query(
