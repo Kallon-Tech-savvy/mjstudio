@@ -190,41 +190,49 @@ export class RecommendationService {
 export class DownloadService {
   constructor(private readonly database: Database, private readonly storage: PhotoStorage, private readonly createId: () => string = randomUUID) {}
 
+  async getDownloadAsset(client: ClientContext, galleryId: string, photoId: string) {
+    canReadClientGallery(client, galleryId);
+    canDownloadFromGallery(client, galleryId);
+    if (client.galleryId !== galleryId) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
+    const result = await this.database.query<{ storageKey: string; mimeType: string; filename: string }>(
+      `SELECT pa.storage_key AS "storageKey", pa.mime_type AS "mimeType", p.filename
+         FROM photos p
+         JOIN photo_assets pa ON pa.photo_id = p.id
+         JOIN galleries g ON g.id = p.gallery_id
+         JOIN client_sessions cs ON cs.id = $3
+         JOIN gallery_access ga ON ga.id = cs.gallery_access_id
+        WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL AND p.status = 'active'
+          AND pa.type = 'original' AND pa.state = 'current' AND pa.upload_status = 'uploaded'
+          AND EXISTS (SELECT 1 FROM photo_assets pv WHERE pv.photo_id = p.id AND pv.type = 'preview' AND pv.state = 'current' AND pv.upload_status = 'uploaded' AND pv.processing_status = 'ready')
+          AND EXISTS (SELECT 1 FROM photo_assets pt WHERE pt.photo_id = p.id AND pt.type = 'thumbnail' AND pt.state = 'current' AND pt.upload_status = 'uploaded' AND pt.processing_status = 'ready')
+          AND g.publication_status = 'published' AND g.archived_at IS NULL
+          AND (g.expires_at IS NULL OR g.expires_at > NOW())
+          AND ga.id = $4 AND ga.gallery_id = p.gallery_id AND ga.permission = 'view_download'
+          AND cs.gallery_access_id = ga.id AND ga.revoked_at IS NULL AND cs.revoked_at IS NULL
+          AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
+          AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+          AND EXISTS (
+            SELECT 1 FROM gallery_deliveries gd
+            JOIN gallery_delivery_items gdi ON gdi.delivery_id = gd.id
+            WHERE gd.gallery_id = p.gallery_id AND gd.client_id = g.client_id
+              AND gd.released_at IS NOT NULL AND gd.status IN ('ready', 'completed')
+              AND gdi.photo_id = p.id AND gdi.status = 'ready'
+          )
+        LIMIT 1`,
+      [photoId, galleryId, client.clientSessionId, client.galleryAccessId],
+    );
+    const asset = result.rows[0];
+    if (!asset) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
+    return asset;
+  }
+
   async create(client: ClientContext, photoId: string) {
-    canReadClientGallery(client, client.galleryId);
-    canDownloadFromGallery(client, client.galleryId);
-    const result = await this.database.query<{ storage_key: string; photo_id: string }>(
-      `SELECT pa.storage_key, p.id AS photo_id FROM photos p JOIN photo_assets pa ON pa.photo_id = p.id
-        JOIN galleries g ON g.id = p.gallery_id
-        JOIN client_sessions cs ON cs.id = $3 JOIN gallery_access ga ON ga.id = cs.gallery_access_id
-       WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL AND p.status = 'active'
-         AND pa.type = 'original' AND pa.state = 'current' AND pa.upload_status = 'uploaded'
-         AND EXISTS (SELECT 1 FROM photo_assets pv WHERE pv.photo_id = p.id AND pv.type = 'preview' AND pv.state = 'current' AND pv.upload_status = 'uploaded' AND pv.processing_status = 'ready')
-         AND EXISTS (SELECT 1 FROM photo_assets pt WHERE pt.photo_id = p.id AND pt.type = 'thumbnail' AND pt.state = 'current' AND pt.upload_status = 'uploaded' AND pt.processing_status = 'ready')
-         AND g.publication_status = 'published' AND g.archived_at IS NULL
-         AND (g.expires_at IS NULL OR g.expires_at > NOW())
-         AND ga.id = $4 AND ga.gallery_id = p.gallery_id AND ga.permission = 'view_download'
-         AND cs.gallery_access_id = ga.id
-         AND ga.revoked_at IS NULL AND cs.revoked_at IS NULL
-         AND (g.expires_at IS NULL OR g.expires_at > NOW())
-         AND EXISTS (
-           SELECT 1
-             FROM gallery_deliveries gd
-             JOIN gallery_delivery_items gdi ON gdi.delivery_id = gd.id
-            WHERE gd.gallery_id = p.gallery_id
-              AND gd.client_id = g.client_id
-              AND gd.released_at IS NOT NULL
-              AND gd.status IN ('ready', 'completed')
-              AND gdi.photo_id = p.id
-              AND gdi.status = 'ready'
-         )
-         AND (ga.expires_at IS NULL OR ga.expires_at > NOW()) AND (cs.expires_at IS NULL OR cs.expires_at > NOW())`,
-      [photoId, client.galleryId, client.clientSessionId, client.galleryAccessId]);
-    const photo = result.rows[0];
-    if (!photo) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
-    await this.database.query('INSERT INTO photo_downloads (id, gallery_access_id, client_session_id, photo_id) VALUES ($1, $2, $3, $4)', [this.createId(), client.galleryAccessId, client.clientSessionId, photoId]);
-    const capability = await this.storage.createDownloadCapability(photo.storage_key, 120);
-    return capability;
+    const asset = await this.getDownloadAsset(client, client.galleryId, photoId);
+    await this.database.query(
+      'INSERT INTO photo_downloads (id, gallery_access_id, client_session_id, photo_id) VALUES ($1, $2, $3, $4)',
+      [this.createId(), client.galleryAccessId, client.clientSessionId, photoId],
+    );
+    return { photoId };
   }
 }
 
