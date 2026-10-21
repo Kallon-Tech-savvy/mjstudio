@@ -69,6 +69,7 @@ describe('LocalPhotoStorage', () => {
     // Simulate a crash/interrupted replacement between object and sidecar renames.
     await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
     await expect(storage.verifyObject(key)).resolves.toBeNull();
+    await expect(storage.readObjectBytes(key)).rejects.toThrow(/failed verification/i);
   });
 
   it('cleans only stale UUID temporary files and preserves recent or unrelated files', async () => {
