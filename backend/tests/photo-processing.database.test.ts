@@ -282,7 +282,7 @@ suite('photo processing against PostgreSQL', () => {
       await request(app)
         .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
         .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
-        .expect(404);
+        .expect(403);
       await database.query("UPDATE gallery_access SET permission = 'view_download' WHERE id = $1", [accessId]);
 
       // The same image URL must stop working as soon as its session is revoked.
