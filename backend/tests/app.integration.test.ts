@@ -259,13 +259,10 @@ describe('API foundation', () => {
         fileSize: bytes.length,
       });
 
+      // Legacy bearer read URLs must not bypass session/grant revalidation.
       const viewCapability = await storage.createViewCapability(key, 60);
       const viewPath = new URL(viewCapability.url).pathname;
-      const viewed = await request(app).get(viewPath);
-      expect(viewed.status).toBe(200);
-      expect(viewed.headers['content-type']).toContain('image/jpeg');
-      expect(viewed.body).toEqual(bytes);
-      expect(viewed.headers['cache-control']).toBe('private, no-store');
+      await request(app).get(viewPath).expect(404);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
