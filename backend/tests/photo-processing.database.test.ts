@@ -263,6 +263,13 @@ suite('photo processing against PostgreSQL', () => {
       expect(studioPreview.headers['cache-control']).toBe('private, no-store');
       expect(Buffer.from(studioPreview.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
 
+      // Studio membership is revalidated for each request, not only when the session is resolved.
+      await database.query('DELETE FROM gallery_members WHERE gallery_id = $1 AND user_id = $2', [galleryId, userId]);
+      await request(app)
+        .get(`/api/galleries/${galleryId}/photos/${photoId}/representations/preview`)
+        .set('Cookie', `__Host-mj_session=${studioSessionToken}`)
+        .expect(404);
+
       // The route must not permit callers to request the original asset as a representation.
       await request(app)
         .get(`/api/client/galleries/${galleryId}/photos/${photoId}/representations/original`)
