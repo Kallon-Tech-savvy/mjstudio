@@ -269,6 +269,22 @@ suite('photo processing against PostgreSQL', () => {
         .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
         .expect(422);
 
+      // Previously issued representation URLs must stop working when a gallery is archived.
+      await database.query('UPDATE galleries SET archived_at = NOW() WHERE id = $1', [galleryId]);
+      await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+      await database.query('UPDATE galleries SET archived_at = NULL WHERE id = $1', [galleryId]);
+
+      // Revoking the gallery grant must also invalidate an existing representation URL.
+      await database.query('UPDATE gallery_access SET revoked_at = NOW() WHERE id = $1', [accessId]);
+      await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+      await database.query('UPDATE gallery_access SET revoked_at = NULL WHERE id = $1', [accessId]);
+
       // Download authorization is checked again at fetch time, including permission changes.
       await database.query("UPDATE gallery_access SET permission = 'view' WHERE id = $1", [accessId]);
       await request(app)
