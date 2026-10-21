@@ -120,8 +120,6 @@ export class CatalogService {
   }
 
   async listSelectedPhotos(actor: PhotographerContext, galleryId: string) {
-    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
-
     const membership = await this.database.query(
       `SELECT 1 FROM galleries g
          JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
@@ -201,7 +199,6 @@ export class CatalogService {
 
   async getClientPhoto(client: ClientContext, galleryId: string, photoId: string) {
     if (client.galleryId !== galleryId) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
-    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
 
     const result = await this.database.query(
       `SELECT p.id, p.position, r.photo_id IS NOT NULL AS recommended,
