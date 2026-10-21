@@ -55,7 +55,7 @@ export function clientRouter(services: ApplicationServices) {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
       const { photoId } = parseInput(photoParamSchema, req.params);
-      const type = z.enum(['thumbnail', 'preview']).parse(req.params.type);
+      const type = parseInput(z.enum(['thumbnail', 'preview']), req.params.type, 'INVALID_REQUEST');
       await services.clientSessions.assertGallery(req.client!, galleryId);
       const asset = await services.catalog.getClientRepresentation(req.client!, galleryId, photoId, type);
       const verified = await services.photoStorage.verifyObject(asset.storageKey);
