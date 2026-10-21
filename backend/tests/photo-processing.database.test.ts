@@ -222,6 +222,7 @@ suite('photo processing against PostgreSQL', () => {
       clientSessions, selections: {}, recommendations: {}, downloads: {}, feedback: {},
       proofing: {}, delivery: {},
       catalog: new CatalogService(database, new PhotoRepresentationService(photoStorage)),
+      photoStorage,
       rateLimits: { assertAllowed: async () => undefined },
       jobs: new JobService(database),
     } as unknown as import('../src/services/container.js').ApplicationServices;
