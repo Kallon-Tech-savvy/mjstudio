@@ -26,6 +26,31 @@ export class LocalPhotoStorage implements PhotoStorage {
   }
 
   async verifyObject(storageKey: string): Promise<VerifiedStoredObject | null> {
+    const verified = await this.readVerifiedObject(storageKey);
+    if (!verified) return null;
+    return {
+      storageKey,
+      mimeType: verified.mimeType,
+      fileSize: verified.bytes.length,
+      ...(verified.width !== undefined && verified.height !== undefined
+        ? { width: verified.width, height: verified.height }
+        : {}),
+    };
+  }
+
+  async readObjectBytes(storageKey: string): Promise<Buffer> {
+    const verified = await this.readVerifiedObject(storageKey);
+    if (!verified) throw new UnverifiedStorageObjectError('Source image object is missing or failed verification.');
+    return verified.bytes;
+  }
+
+  /** Read and verify the same byte snapshot so a second path read cannot return different content. */
+  private async readVerifiedObject(storageKey: string): Promise<{
+    bytes: Buffer;
+    mimeType: string;
+    width?: number;
+    height?: number;
+  } | null> {
     const objectPath = this.resolveObjectPath(storageKey);
     await this.assertSafeParentDirectories(objectPath);
     try {
@@ -34,13 +59,10 @@ export class LocalPhotoStorage implements PhotoStorage {
         lstat(objectPath),
         lstat(sidecarPath),
       ]);
-      // lstat is intentional: stat/readFile alone follow a symlink at the leaf,
-      // even when every parent directory is safe.
       if (!objectEntry.isFile() || objectEntry.isSymbolicLink()
         || !sidecarEntry.isFile() || sidecarEntry.isSymbolicLink()) return null;
-      const [file, fileStat, metadataText] = await Promise.all([
+      const [bytes, metadataText] = await Promise.all([
         readFile(objectPath),
-        stat(objectPath),
         readFile(sidecarPath, 'utf8'),
       ]);
       const metadata = JSON.parse(metadataText) as {
@@ -50,24 +72,22 @@ export class LocalPhotoStorage implements PhotoStorage {
         fileSize?: number;
         sha256?: string;
       };
-      const mimeType = this.detectImageMimeType(file);
-      if (!mimeType || metadata.mimeType !== mimeType || fileStat.size < 1) return null;
-      // Derivative object and sidecar are separate filesystem entries. A crash between
-      // their renames must leave a detectable mismatch rather than trusted stale metadata.
-      if (metadata.fileSize !== undefined && metadata.fileSize !== fileStat.size) return null;
+      const mimeType = this.detectImageMimeType(bytes);
+      if (!mimeType || metadata.mimeType !== mimeType || bytes.length < 1) return null;
+      if (metadata.fileSize !== undefined && metadata.fileSize !== bytes.length) return null;
       if (metadata.sha256 !== undefined
-        && metadata.sha256 !== createHash('sha256').update(file).digest('hex')) return null;
-      return { storageKey, mimeType, fileSize: fileStat.size, ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height) ? { width: metadata.width, height: metadata.height } : {}) };
+        && metadata.sha256 !== createHash('sha256').update(bytes).digest('hex')) return null;
+      return {
+        bytes,
+        mimeType,
+        ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height)
+          ? { width: metadata.width, height: metadata.height }
+          : {}),
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
-  }
-
-  async readObjectBytes(storageKey: string): Promise<Buffer> {
-    const verified = await this.verifyObject(storageKey);
-    if (!verified) throw new UnverifiedStorageObjectError('Source image object is missing or failed verification.');
-    return readFile(this.resolveObjectPath(storageKey));
   }
 
   async writeDerivative(
