@@ -253,6 +253,19 @@ suite('photo processing against PostgreSQL', () => {
       expect(imageResponse.headers['content-type']).toContain('image/webp');
       expect(imageResponse.headers['cache-control']).toBe('private, no-store');
       expect(Buffer.from(imageResponse.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
+
+      // The same image URL must stop working as soon as its session is revoked.
+      await database.query('UPDATE client_sessions SET revoked_at = NOW() WHERE id = $1', [sessionId]);
+      await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+
+      // The route must not permit callers to request the original asset as a representation.
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/representations/original`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
     } finally {
       await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
       await database.query('DELETE FROM client_sessions WHERE id = $1', [sessionId]);
