@@ -186,18 +186,6 @@ export class LocalPhotoStorage implements PhotoStorage {
     }
   }
 
-  async readCapability(token: string): Promise<{ bytes: Buffer; mimeType: string; download: boolean } | null> {
-    const capability = this.verifyCapability(token);
-    if (!capability || (capability.operation !== 'view' && capability.operation !== 'download')) return null;
-    const verified = await this.verifyObject(capability.key);
-    if (!verified) return null;
-    return {
-      bytes: await readFile(this.resolveObjectPath(capability.key)),
-      mimeType: verified.mimeType,
-      download: capability.operation === 'download',
-    };
-  }
-
   private async createCapability(key: string, expiresInSeconds: number, operation: Capability['operation'], route: string) {
     if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 3600) {
       throw new Error('Capability expiry must be between 1 and 3600 seconds.');
