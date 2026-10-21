@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { NotFoundError } from '../errors.js';
 import { z } from 'zod';
 import { requirePhotographerAuth, type AuthenticatedRequest } from '../middleware/authentication.js';
 import type { ApplicationServices } from '../services/container.js';
@@ -20,14 +21,10 @@ export function photosRouter(services: ApplicationServices) {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
       const { photoId } = parseInput(photoParamSchema, req.params);
-      const type = parseInput(z.enum(['preview']), req.params.type, 'INVALID_REQUEST');
-      if (type !== 'preview') throw new Error('Unsupported representation type.');
+      parseInput(z.enum(['preview']), req.params.type, 'INVALID_REQUEST');
       const asset = await services.catalog.getStudioRepresentation(req.user!, galleryId, photoId);
       const verified = await services.photoStorage.verifyObject(asset.storageKey);
-      if (!verified) {
-        const { NotFoundError } = await import('../errors.js');
-        throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
-      }
+      if (!verified) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
       const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
       res.set('Content-Type', verified.mimeType)
         .set('Cache-Control', 'private, no-store')
