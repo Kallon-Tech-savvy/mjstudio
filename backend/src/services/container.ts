@@ -78,7 +78,7 @@ export function unavailableServices(): ApplicationServices {
     proofing: { setReview: unavailable, list: unavailable } as unknown as ProofingService,
     delivery: { getDelivery: unavailable, prepareDelivery: unavailable, releaseDelivery: unavailable } as unknown as DeliveryService,
     catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, getClientRepresentation: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
-    photoStorage: { createUploadCapability: unavailable, verifyObject: unavailable, createViewCapability: unavailable, createDownloadCapability: unavailable, readObjectBytes: unavailable },
+    photoStorage: { createUploadCapability: unavailable, verifyObject: unavailable, readObjectBytes: unavailable },
     rateLimits: { assertAllowed: unavailable },
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,
   };
@@ -93,8 +93,6 @@ export function unavailableProviders(database: Pool): ServiceProviders {
     photoStorage: {
       createUploadCapability: unavailable,
       verifyObject: unavailable,
-      createViewCapability: unavailable,
-      createDownloadCapability: unavailable,
       readObjectBytes: unavailable,
     },
     accessDelivery: { deliver: unavailable },
