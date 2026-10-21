@@ -112,7 +112,7 @@ export function clientRouter(services: ApplicationServices) {
       if (!verified) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
       const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
       const filename = asset.filename.replace(/[\\r\\n"\\\\]/g, '_').replace(/[^\\x20-\\x7E]/g, '_') || 'photograph';
-      res.set('Content-Type', asset.mimeType || verified.mimeType)
+      res.set('Content-Type', verified.mimeType)
         .set('Content-Disposition', `attachment; filename="${filename}"`)
         .set('Cache-Control', 'private, no-store')
         .set('X-Content-Type-Options', 'nosniff')
