@@ -188,7 +188,7 @@ export class RecommendationService {
 }
 
 export class DownloadService {
-  constructor(private readonly database: Database, private readonly storage: PhotoStorage, private readonly createId: () => string = randomUUID) {}
+  constructor(private readonly database: Database, _storage: PhotoStorage, private readonly createId: () => string = randomUUID) {}
 
   async getDownloadAsset(client: ClientContext, galleryId: string, photoId: string) {
     canReadClientGallery(client, galleryId);
