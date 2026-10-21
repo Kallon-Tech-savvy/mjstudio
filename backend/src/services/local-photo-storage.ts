@@ -4,7 +4,7 @@ import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'no
 import { dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
-type Capability = { key: string; expiresAt: number; operation: 'upload' | 'view' | 'download' };
+type Capability = { key: string; expiresAt: number; operation: 'upload' };
 
 export class UnverifiedStorageObjectError extends Error {}
 
@@ -23,14 +23,6 @@ export class LocalPhotoStorage implements PhotoStorage {
 
   async createUploadCapability(storageKey: string, expiresInSeconds: number) {
     return this.createCapability(storageKey, expiresInSeconds, 'upload', 'local-photo-uploads');
-  }
-
-  async createViewCapability(storageKey: string, expiresInSeconds: number) {
-    return this.createCapability(storageKey, expiresInSeconds, 'view', 'local-photo-objects');
-  }
-
-  async createDownloadCapability(storageKey: string, expiresInSeconds: number) {
-    return this.createCapability(storageKey, expiresInSeconds, 'download', 'local-photo-objects');
   }
 
   async verifyObject(storageKey: string): Promise<VerifiedStoredObject | null> {
@@ -213,7 +205,7 @@ export class LocalPhotoStorage implements PhotoStorage {
     try {
       const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Capability;
       if (typeof payload.key !== 'string' || !Number.isSafeInteger(payload.expiresAt) || payload.expiresAt <= Date.now()) return null;
-      if (!['upload', 'view', 'download'].includes(payload.operation)) return null;
+      if (payload.operation !== 'upload') return null;
       if (expectedOperation && payload.operation !== expectedOperation) return null;
       this.resolveObjectPath(payload.key);
       return payload;
