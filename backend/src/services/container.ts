@@ -10,7 +10,6 @@ import { ServiceUnavailableError } from '../errors.js';
 import { CatalogService } from './catalog-service.js';
 import { PostgresRateLimitService } from './rate-limit-service.js';
 import { JobService } from './job-service.js';
-import { PhotoRepresentationService } from './photo-representation-service.js';
 import { ProofingService } from './proofing-service.js';
 
 export type ApplicationServices = {
@@ -57,10 +56,7 @@ export function createApplicationServices(providers: ServiceProviders): Applicat
     feedback: new FeedbackService(providers.database),
     proofing: new ProofingService(providers.database),
     delivery: new DeliveryService(providers.database),
-    catalog: new CatalogService(
-      providers.database,
-      new PhotoRepresentationService(providers.photoStorage),
-    ),
+    catalog: new CatalogService(providers.database),
     photoStorage: providers.photoStorage,
     rateLimits: providers.rateLimits,
     jobs: new JobService(providers.database),
