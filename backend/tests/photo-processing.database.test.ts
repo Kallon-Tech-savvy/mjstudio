@@ -282,6 +282,15 @@ suite('photo processing against PostgreSQL', () => {
         .get(thumbnailPath)
         .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
         .expect(401);
+
+      // Download URLs are authenticated routes, not bearer capabilities; revocation must invalidate them immediately.
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
+        .expect(401);
     } finally {
       await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
       await database.query('DELETE FROM client_sessions WHERE id = $1', [sessionId]);
