@@ -157,13 +157,33 @@ export class CatalogService {
       reviewStatus: item.reviewStatus,
       reviewNote: item.reviewNote,
       reviewedAt: item.reviewedAt,
-      preview: await this.photoRepresentations!.createView({
-        storageKey: item.previewStorageKey,
+      preview: {
+        url: new URL(`/api/galleries/${galleryId}/photos/${item.photoId}/representations/preview`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
+        expiresAt: new Date(Date.now() + 600 * 1000).toISOString(),
         width: item.previewWidth,
         height: item.previewHeight,
         mimeType: item.previewMimeType,
-      }, 600),
+      },
     })));
+  }
+
+  async getStudioRepresentation(actor: PhotographerContext, galleryId: string, photoId: string) {
+    const result = await this.database.query<{ storageKey: string; mimeType: string }>(
+      `SELECT pa.storage_key AS "storageKey", pa.mime_type AS "mimeType"
+         FROM galleries g
+         JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
+         JOIN studio_members sm ON sm.studio_id = g.studio_id AND sm.user_id = $1
+         JOIN photos p ON p.gallery_id = g.id AND p.id = $3
+           AND p.deleted_at IS NULL AND p.status = 'active'
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'preview'
+           AND pa.state = 'current' AND pa.upload_status = 'uploaded'
+           AND pa.processing_status = 'ready'
+        WHERE g.id = $2 AND g.studio_id = $4 AND g.archived_at IS NULL
+        LIMIT 1`,
+      [actor.userId, galleryId, photoId, actor.studioId],
+    );
+    if (!result.rows[0]) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    return result.rows[0];
   }
 
   async getClientGallery(client: ClientContext, galleryId: string) {
