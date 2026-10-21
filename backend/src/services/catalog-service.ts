@@ -159,7 +159,6 @@ export class CatalogService {
       reviewedAt: item.reviewedAt,
       preview: {
         url: new URL(`/api/galleries/${galleryId}/photos/${item.photoId}/representations/preview`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
-        expiresAt: new Date(Date.now() + 600 * 1000).toISOString(),
         width: item.previewWidth,
         height: item.previewHeight,
         mimeType: item.previewMimeType,
