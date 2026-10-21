@@ -21,14 +21,6 @@ export interface ObjectStorage {
     objectKey: string;
     expectedContentType?: string;
   }): Promise<ObjectVerification>;
-  createViewCapability(input: {
-    objectKey: string;
-    ttlSeconds?: number;
-  }): Promise<UploadCapability>;
-  createDownloadCapability?(input: {
-    objectKey: string;
-    ttlSeconds?: number;
-  }): Promise<UploadCapability>;
   deleteObject?(input: { objectKey: string }): Promise<void>;
 }
 
