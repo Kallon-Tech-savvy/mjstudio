@@ -258,7 +258,7 @@ suite('photo processing against PostgreSQL', () => {
       await request(app)
         .get(`/api/client/galleries/${galleryId}/photos/${photoId}/representations/original`)
         .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
-        .expect(400);
+        .expect(422);
 
       // The same image URL must stop working as soon as its session is revoked.
       await database.query('UPDATE client_sessions SET revoked_at = NOW() WHERE id = $1', [sessionId]);
