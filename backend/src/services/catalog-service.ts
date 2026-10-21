@@ -265,7 +265,6 @@ export class CatalogService {
   async listClientPhotos(client: ClientContext, galleryId: string, page: number, limit: number) {
     validatePage(page, limit);
     if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
-    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
     const offset = (page - 1) * limit;
     const [items, count] = await Promise.all([
       this.database.query(
