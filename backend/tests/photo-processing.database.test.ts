@@ -222,7 +222,7 @@ suite('photo processing against PostgreSQL', () => {
       }) }, galleries: {}, photos: {}, galleryAccess: {},
       clientSessions, selections: {}, recommendations: {}, downloads: new DownloadService(database, photoStorage), feedback: {},
       proofing: {}, delivery: {},
-      catalog: new CatalogService(database, new PhotoRepresentationService(photoStorage)),
+      catalog: new CatalogService(database),
       photoStorage,
       rateLimits: { assertAllowed: async () => undefined },
       jobs: new JobService(database),
