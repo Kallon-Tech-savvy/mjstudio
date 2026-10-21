@@ -245,7 +245,9 @@ suite('photo processing against PostgreSQL', () => {
       });
 
       const thumbnailPath = new URL(response.body.data[0].thumbnail.url).pathname;
-      const imageResponse = await request(app).get(thumbnailPath);
+      const imageResponse = await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`);
       expect(imageResponse.status).toBe(200);
       expect(imageResponse.headers['content-type']).toContain('image/webp');
       expect(imageResponse.headers['cache-control']).toBe('private, no-store');
