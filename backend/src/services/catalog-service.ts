@@ -2,7 +2,6 @@ import type { PhotographerContext, ClientContext } from '../auth/context.js';
 import { env } from '../config/env.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import type { Database } from './service-common.js';
-import { PhotoRepresentationService } from './photo-representation-service.js';
 import type { PhotoStorage } from './photo-service.js';
 
 export const MAX_PAGE_SIZE = 100;
@@ -13,10 +12,7 @@ export function validatePage(page: number, limit: number) {
 }
 
 export class CatalogService {
-  constructor(
-    private readonly database: Database,
-    private readonly photoRepresentations?: PhotoRepresentationService,
-  ) {}
+  constructor(private readonly database: Database) {}
 
   async listClients(actor: PhotographerContext, page: number, limit: number) {
     validatePage(page, limit);
