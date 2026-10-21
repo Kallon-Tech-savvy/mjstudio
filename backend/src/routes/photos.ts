@@ -16,6 +16,26 @@ export function photosRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body); const input = parseInput(createSchema, req.body, 'INVALID_PHOTO_DATA'); res.status(201).json(successEnvelope(await services.photos.create(req.user!, galleryId, input))); }
     catch (error) { next(error); }
   });
+  router.get('/galleries/:galleryId/photos/:photoId/representations/:type', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const { photoId } = parseInput(photoParamSchema, req.params);
+      const type = parseInput(z.enum(['preview']), req.params.type, 'INVALID_REQUEST');
+      if (type !== 'preview') throw new Error('Unsupported representation type.');
+      const asset = await services.catalog.getStudioRepresentation(req.user!, galleryId, photoId);
+      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      if (!verified) {
+        const { NotFoundError } = await import('../errors.js');
+        throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+      }
+      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      res.set('Content-Type', verified.mimeType)
+        .set('Cache-Control', 'private, no-store')
+        .set('X-Content-Type-Options', 'nosniff')
+        .set('Content-Length', String(bytes.length))
+        .send(bytes);
+    } catch (error) { next(error); }
+  });
   router.get('/galleries/:galleryId/selected-photos', auth, async (req: AuthenticatedRequest, res, next) => {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
