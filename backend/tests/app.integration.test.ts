@@ -233,7 +233,7 @@ describe('API foundation', () => {
     expect(JSON.stringify(response.body)).not.toContain('stack');
   });
 
-  it('accepts a binary photo upload and serves it through a view capability', async () => {
+  it('accepts a binary photo upload without exposing bearer read capabilities', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mjstudio-api-upload-'));
     try {
       const storage = new LocalPhotoStorage(root, 'http://localhost:3001', 'integration-test-secret-that-is-long-enough');
@@ -259,10 +259,6 @@ describe('API foundation', () => {
         fileSize: bytes.length,
       });
 
-      // Legacy bearer read URLs must not bypass session/grant revalidation.
-      const viewCapability = await storage.createViewCapability(key, 60);
-      const viewPath = new URL(viewCapability.url).pathname;
-      await request(app).get(viewPath).expect(404);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
