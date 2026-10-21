@@ -14,6 +14,7 @@ import { PhotoRepresentationService } from '../src/services/photo-representation
 import { createApp } from '../src/app.js';
 import { CatalogService } from '../src/services/catalog-service.js';
 import { ClientSessionService } from '../src/services/client-access-service.js';
+import { DownloadService } from '../src/services/client-workflow-services.js';
 import request from 'supertest';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -227,7 +228,7 @@ suite('photo processing against PostgreSQL', () => {
         membershipId: randomUUID(),
         role: 'owner' as const,
       }) }, galleries: {}, photos: {}, galleryAccess: {},
-      clientSessions, selections: {}, recommendations: {}, downloads: {}, feedback: {},
+      clientSessions, selections: {}, recommendations: {}, downloads: new DownloadService(database, photoStorage), feedback: {},
       proofing: {}, delivery: {},
       catalog: new CatalogService(database, new PhotoRepresentationService(photoStorage)),
       photoStorage,
@@ -275,6 +276,14 @@ suite('photo processing against PostgreSQL', () => {
         .get(`/api/client/galleries/${galleryId}/photos/${photoId}/representations/original`)
         .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
         .expect(422);
+
+      // Download authorization is checked again at fetch time, including permission changes.
+      await database.query("UPDATE gallery_access SET permission = 'view' WHERE id = $1", [accessId]);
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(404);
+      await database.query("UPDATE gallery_access SET permission = 'view_download' WHERE id = $1", [accessId]);
 
       // The same image URL must stop working as soon as its session is revoked.
       await database.query('UPDATE client_sessions SET revoked_at = NOW() WHERE id = $1', [sessionId]);
