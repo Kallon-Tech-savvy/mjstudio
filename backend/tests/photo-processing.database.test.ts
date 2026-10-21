@@ -217,8 +217,16 @@ suite('photo processing against PostgreSQL', () => {
     );
 
     const clientSessions = new ClientSessionService(database, { assertAllowed: async () => undefined });
+    const studioSessionToken = randomUUID() + randomUUID();
     const services = {
-      auth: {}, galleries: {}, photos: {}, galleryAccess: {},
+      auth: { resolve: async () => ({
+        userId,
+        email: `${userId}@integration.test`,
+        displayName: 'Integration Photographer',
+        studioId: gallery.rows[0].studio_id,
+        membershipId: randomUUID(),
+        role: 'owner' as const,
+      }) }, galleries: {}, photos: {}, galleryAccess: {},
       clientSessions, selections: {}, recommendations: {}, downloads: {}, feedback: {},
       proofing: {}, delivery: {},
       catalog: new CatalogService(database, new PhotoRepresentationService(photoStorage)),
@@ -253,6 +261,14 @@ suite('photo processing against PostgreSQL', () => {
       expect(imageResponse.headers['content-type']).toContain('image/webp');
       expect(imageResponse.headers['cache-control']).toBe('private, no-store');
       expect(Buffer.from(imageResponse.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
+
+      // Studio previews are session-authorized too; previously issued URLs must not be bearer capabilities.
+      const studioPreview = await request(app)
+        .get(`/api/galleries/${galleryId}/photos/${photoId}/representations/preview`)
+        .set('Cookie', `__Host-mj_session=${studioSessionToken}`);
+      expect(studioPreview.status).toBe(200);
+      expect(studioPreview.headers['cache-control']).toBe('private, no-store');
+      expect(Buffer.from(studioPreview.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
 
       // The route must not permit callers to request the original asset as a representation.
       await request(app)
