@@ -34,6 +34,20 @@ describe('LocalPhotoStorage', () => {
     });
   });
 
+  it('reads a verified object by server-selected storage key', async () => {
+    const storage = await makeStorage();
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/preview';
+    const bytes = Buffer.from('RIFF0000WEBPvalid-preview');
+    await storage.writeDerivative(key, bytes, {
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+    });
+
+    await expect(storage.readObjectBytes(key)).resolves.toEqual(bytes);
+  });
+
   it('rejects a derivative when its object bytes no longer match the metadata sidecar', async () => {
     const storage = await makeStorage();
     const root = roots[roots.length - 1]!;
@@ -55,6 +69,7 @@ describe('LocalPhotoStorage', () => {
     // Simulate a crash/interrupted replacement between object and sidecar renames.
     await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
     await expect(storage.verifyObject(key)).resolves.toBeNull();
+    await expect(storage.readObjectBytes(key)).rejects.toThrow(/failed verification/i);
   });
 
   it('cleans only stale UUID temporary files and preserves recent or unrelated files', async () => {

@@ -6,7 +6,6 @@ import sharp from 'sharp';
 import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 import { SharpImageProcessor } from '../src/services/sharp-image-processor.js';
 import { ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
-import { PhotoRepresentationService } from '../src/services/photo-representation-service.js';
 
 const roots: string[] = [];
 const makeStorage = async () => {
@@ -128,17 +127,10 @@ describe('SharpImageProcessor', () => {
     expect(previewAsset).toMatchObject({ mimeType: 'image/webp', width: 1000, height: 700 });
     expect(thumbnailAsset).toMatchObject({ mimeType: 'image/webp', width: 600, height: 420 });
 
-    const representation = await new PhotoRepresentationService(storage).createView({
-      storageKey: previewKey,
-      width: previewAsset!.width!,
-      height: previewAsset!.height!,
-      mimeType: previewAsset!.mimeType,
-    }, 600);
-    const token = new URL(representation.url).pathname.split('/').at(-1)!;
-    const servedPreview = await storage.readCapability(token);
-    expect(representation).toMatchObject({ width: 1000, height: 700, mimeType: 'image/webp' });
-    expect(servedPreview).toMatchObject({ mimeType: 'image/webp', download: false });
-    expect(await sharp(servedPreview!.bytes).metadata()).toMatchObject({ format: 'webp', width: 1000, height: 700 });
+    const verifiedPreview = await storage.verifyObject(previewKey);
+    expect(verifiedPreview).toMatchObject({ width: 1000, height: 700, mimeType: 'image/webp' });
+    const previewBytes = await storage.readObjectBytes(previewKey);
+    expect(await sharp(previewBytes).metadata()).toMatchObject({ format: 'webp', width: 1000, height: 700 });
   });
 
 });

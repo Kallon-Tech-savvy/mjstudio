@@ -46,7 +46,7 @@ export type ClientRecord = {
 
 export type PhotoRepresentation = {
   url: string;
-  expiresAt: string;
+  expiresAt?: string;
   width: number;
   height: number;
   mimeType: string;

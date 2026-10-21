@@ -4,7 +4,7 @@ import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'no
 import { dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
 
-type Capability = { key: string; expiresAt: number; operation: 'upload' | 'view' | 'download' };
+type Capability = { key: string; expiresAt: number; operation: 'upload' };
 
 export class UnverifiedStorageObjectError extends Error {}
 
@@ -25,15 +25,32 @@ export class LocalPhotoStorage implements PhotoStorage {
     return this.createCapability(storageKey, expiresInSeconds, 'upload', 'local-photo-uploads');
   }
 
-  async createViewCapability(storageKey: string, expiresInSeconds: number) {
-    return this.createCapability(storageKey, expiresInSeconds, 'view', 'local-photo-objects');
-  }
-
-  async createDownloadCapability(storageKey: string, expiresInSeconds: number) {
-    return this.createCapability(storageKey, expiresInSeconds, 'download', 'local-photo-objects');
-  }
-
   async verifyObject(storageKey: string): Promise<VerifiedStoredObject | null> {
+    const verified = await this.readVerifiedObject(storageKey);
+    if (!verified) return null;
+    return {
+      storageKey,
+      mimeType: verified.mimeType,
+      fileSize: verified.bytes.length,
+      ...(verified.width !== undefined && verified.height !== undefined
+        ? { width: verified.width, height: verified.height }
+        : {}),
+    };
+  }
+
+  async readObjectBytes(storageKey: string): Promise<Buffer> {
+    const verified = await this.readVerifiedObject(storageKey);
+    if (!verified) throw new UnverifiedStorageObjectError('Source image object is missing or failed verification.');
+    return verified.bytes;
+  }
+
+  /** Read and verify the same byte snapshot so a second path read cannot return different content. */
+  private async readVerifiedObject(storageKey: string): Promise<{
+    bytes: Buffer;
+    mimeType: string;
+    width?: number;
+    height?: number;
+  } | null> {
     const objectPath = this.resolveObjectPath(storageKey);
     await this.assertSafeParentDirectories(objectPath);
     try {
@@ -42,13 +59,10 @@ export class LocalPhotoStorage implements PhotoStorage {
         lstat(objectPath),
         lstat(sidecarPath),
       ]);
-      // lstat is intentional: stat/readFile alone follow a symlink at the leaf,
-      // even when every parent directory is safe.
       if (!objectEntry.isFile() || objectEntry.isSymbolicLink()
         || !sidecarEntry.isFile() || sidecarEntry.isSymbolicLink()) return null;
-      const [file, fileStat, metadataText] = await Promise.all([
+      const [bytes, metadataText] = await Promise.all([
         readFile(objectPath),
-        stat(objectPath),
         readFile(sidecarPath, 'utf8'),
       ]);
       const metadata = JSON.parse(metadataText) as {
@@ -58,24 +72,22 @@ export class LocalPhotoStorage implements PhotoStorage {
         fileSize?: number;
         sha256?: string;
       };
-      const mimeType = this.detectImageMimeType(file);
-      if (!mimeType || metadata.mimeType !== mimeType || fileStat.size < 1) return null;
-      // Derivative object and sidecar are separate filesystem entries. A crash between
-      // their renames must leave a detectable mismatch rather than trusted stale metadata.
-      if (metadata.fileSize !== undefined && metadata.fileSize !== fileStat.size) return null;
+      const mimeType = this.detectImageMimeType(bytes);
+      if (!mimeType || metadata.mimeType !== mimeType || bytes.length < 1) return null;
+      if (metadata.fileSize !== undefined && metadata.fileSize !== bytes.length) return null;
       if (metadata.sha256 !== undefined
-        && metadata.sha256 !== createHash('sha256').update(file).digest('hex')) return null;
-      return { storageKey, mimeType, fileSize: fileStat.size, ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height) ? { width: metadata.width, height: metadata.height } : {}) };
+        && metadata.sha256 !== createHash('sha256').update(bytes).digest('hex')) return null;
+      return {
+        bytes,
+        mimeType,
+        ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height)
+          ? { width: metadata.width, height: metadata.height }
+          : {}),
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
-  }
-
-  async readObjectBytes(storageKey: string): Promise<Buffer> {
-    const verified = await this.verifyObject(storageKey);
-    if (!verified) throw new UnverifiedStorageObjectError('Source image object is missing or failed verification.');
-    return readFile(this.resolveObjectPath(storageKey));
   }
 
   async writeDerivative(
@@ -186,18 +198,6 @@ export class LocalPhotoStorage implements PhotoStorage {
     }
   }
 
-  async readCapability(token: string): Promise<{ bytes: Buffer; mimeType: string; download: boolean } | null> {
-    const capability = this.verifyCapability(token);
-    if (!capability || (capability.operation !== 'view' && capability.operation !== 'download')) return null;
-    const verified = await this.verifyObject(capability.key);
-    if (!verified) return null;
-    return {
-      bytes: await readFile(this.resolveObjectPath(capability.key)),
-      mimeType: verified.mimeType,
-      download: capability.operation === 'download',
-    };
-  }
-
   private async createCapability(key: string, expiresInSeconds: number, operation: Capability['operation'], route: string) {
     if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 3600) {
       throw new Error('Capability expiry must be between 1 and 3600 seconds.');
@@ -225,7 +225,7 @@ export class LocalPhotoStorage implements PhotoStorage {
     try {
       const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Capability;
       if (typeof payload.key !== 'string' || !Number.isSafeInteger(payload.expiresAt) || payload.expiresAt <= Date.now()) return null;
-      if (!['upload', 'view', 'download'].includes(payload.operation)) return null;
+      if (payload.operation !== 'upload') return null;
       if (expectedOperation && payload.operation !== expectedOperation) return null;
       this.resolveObjectPath(payload.key);
       return payload;

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { env } from '../config/env.js';
 import { z } from 'zod';
 import { CLIENT_COOKIE, requireClientAuth, type AuthenticatedRequest } from '../middleware/authentication.js';
 import type { ApplicationServices } from '../services/container.js';
@@ -46,7 +47,25 @@ export function clientRouter(services: ApplicationServices) {
       const { photoId } = parseInput(photoParamSchema, req.params);
       await services.clientSessions.assertGallery(req.client!, galleryId);
       const photo = await services.catalog.getClientPhoto(req.client!, galleryId, photoId);
-      res.json(successEnvelope(photo));
+      const apiBase = env.APP_BASE_URL ?? 'http://localhost:3001';
+      res.json(successEnvelope({ ...photo, preview: { ...photo.preview, url: new URL(photo.preview.url, apiBase).toString() } }));
+    } catch (error) { next(error); }
+  });
+  router.get('/galleries/:galleryId/photos/:photoId/representations/:type', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const { photoId } = parseInput(photoParamSchema, req.params);
+      const type = parseInput(z.enum(['thumbnail', 'preview']), req.params.type, 'INVALID_REQUEST');
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      const asset = await services.catalog.getClientRepresentation(req.client!, galleryId, photoId, type);
+      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      if (!verified) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      res.set('Content-Type', verified.mimeType)
+        .set('Cache-Control', 'private, no-store')
+        .set('X-Content-Type-Options', 'nosniff')
+        .set('Content-Length', String(bytes.length))
+        .send(bytes);
     } catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
@@ -70,8 +89,36 @@ export function clientRouter(services: ApplicationServices) {
   });
 
   router.post('/galleries/:galleryId/photos/:photoId/download', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download'); await services.clientSessions.assertGallery(req.client!, galleryId); const capability = await services.downloads.create(req.client!, photoId); res.json(successEnvelope({ download_url: capability.url, expires_at: capability.expiresAt })); }
-    catch (error) { next(error); }
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const { photoId } = parseInput(photoParamSchema, req.params);
+      await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download');
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      await services.downloads.create(req.client!, photoId);
+      const apiBase = env.APP_BASE_URL ?? 'http://localhost:3001';
+      const downloadUrl = new URL(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`, apiBase).toString();
+      res.json(successEnvelope({ download_url: downloadUrl }));
+    } catch (error) { next(error); }
+  });
+
+  router.get('/galleries/:galleryId/photos/:photoId/download-file', auth, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      const { photoId } = parseInput(photoParamSchema, req.params);
+      await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download');
+      await services.clientSessions.assertGallery(req.client!, galleryId);
+      const asset = await services.downloads.getDownloadAsset(req.client!, galleryId, photoId);
+      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      if (!verified) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
+      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      const filename = asset.filename.replace(/[\\r\\n"\\\\]/g, '_').replace(/[^\\x20-\\x7E]/g, '_') || 'photograph';
+      res.set('Content-Type', verified.mimeType)
+        .set('Content-Disposition', `attachment; filename="${filename}"`)
+        .set('Cache-Control', 'private, no-store')
+        .set('X-Content-Type-Options', 'nosniff')
+        .set('Content-Length', String(bytes.length))
+        .send(bytes);
+    } catch (error) { next(error); }
   });
   router.post('/galleries/:galleryId/feedback', auth, async (req: AuthenticatedRequest, res, next) => {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body); const { message } = parseInput(feedbackSchema, req.body, 'INVALID_FEEDBACK'); await services.rateLimits.assertAllowed(`feedback:${req.client!.clientSessionId}:${req.ip}`, 'feedback'); await services.clientSessions.assertGallery(req.client!, galleryId); res.status(201).json(successEnvelope(await services.feedback.createGalleryFeedback(req.client!, message))); }
