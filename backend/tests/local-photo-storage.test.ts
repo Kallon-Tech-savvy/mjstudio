@@ -62,6 +62,14 @@ describe('LocalPhotoStorage', () => {
     });
 
     await expect(storage.readObjectBytes(key)).resolves.toEqual(bytes);
+    await expect(storage.readVerifiedObject(key)).resolves.toMatchObject({
+      storageKey: key,
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+      bytes,
+    });
   });
 
   it('rejects a derivative when its object bytes no longer match the metadata sidecar', async () => {
