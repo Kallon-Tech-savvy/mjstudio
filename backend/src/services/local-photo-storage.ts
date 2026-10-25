@@ -2,7 +2,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import { ForbiddenError, ValidationError } from '../errors.js';
 import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
-import type { PhotoStorage, VerifiedStoredObject } from './photo-service.js';
+import type { PhotoStorage, ReadVerifiedStoredObject, VerifiedStoredObject } from './photo-service.js';
 
 type Capability = { key: string; expiresAt: number; operation: 'upload' };
 
@@ -45,12 +45,7 @@ export class LocalPhotoStorage implements PhotoStorage {
   }
 
   /** Read and verify the same byte snapshot so a second path read cannot return different content. */
-  private async readVerifiedObject(storageKey: string): Promise<{
-    bytes: Buffer;
-    mimeType: string;
-    width?: number;
-    height?: number;
-  } | null> {
+  async readVerifiedObject(storageKey: string): Promise<ReadVerifiedStoredObject | null> {
     const objectPath = this.resolveObjectPath(storageKey);
     await this.assertSafeParentDirectories(objectPath);
     try {
@@ -78,8 +73,10 @@ export class LocalPhotoStorage implements PhotoStorage {
       if (metadata.sha256 !== undefined
         && metadata.sha256 !== createHash('sha256').update(bytes).digest('hex')) return null;
       return {
+        storageKey,
         bytes,
         mimeType,
+        fileSize: bytes.length,
         ...(Number.isSafeInteger(metadata.width) && Number.isSafeInteger(metadata.height)
           ? { width: metadata.width, height: metadata.height }
           : {}),
