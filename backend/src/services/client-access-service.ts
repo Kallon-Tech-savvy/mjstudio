@@ -13,11 +13,15 @@ const hashPin = async (pin: string, salt = randomBytes(16).toString('hex')) => {
   return `${salt}:${derived.toString('hex')}`;
 };
 const verifyPin = async (pin: string, storedHash: string) => {
-  const [salt, expectedHex] = storedHash.split(':');
-  if (!salt || !expectedHex) return false;
+  const [salt, expectedHex, ...extra] = storedHash.split(':');
+  // PIN hashes are generated with a 16-byte hex salt and a 64-byte digest.
+  // Validate before scrypt so corrupt database values cannot trigger an
+  // unbounded KDF length or turn malformed hex into a zero-length digest.
+  if (extra.length > 0 || !salt || !/^[a-f0-9]{32}$/i.test(salt)
+    || !expectedHex || !/^[a-f0-9]{128}$/i.test(expectedHex)) return false;
   const expected = Buffer.from(expectedHex, 'hex');
-  const actual = await scrypt(pin, salt, expected.length) as Buffer;
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  const actual = await scrypt(pin, salt, 64) as Buffer;
+  return timingSafeEqual(actual, expected);
 };
 
 export type AccessCredentialDelivery = {
