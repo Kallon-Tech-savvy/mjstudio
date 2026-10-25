@@ -8,6 +8,7 @@
   --brand: #c0392b;
   --brand-dark: #8e1c14;
   --accent: #e74c3c;
+  --accent-on-dark: #ff8b80;
   --tomato: #d9534f;
   --maroon: #800020;
   --obsidian-dark: #070d19;
@@ -52,6 +53,16 @@ textarea {
   font: inherit;
 }
 
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent-on-dark);
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .page-shell {
   width: min(1200px, calc(100vw - 32px));
   margin: 0 auto;
@@ -92,7 +103,7 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--brand-dark);
+  color: var(--accent-on-dark);
 }
 
 h1,
@@ -358,7 +369,7 @@ h2 {
 .tiny-link {
   font-size: 0.9rem;
   font-weight: 700;
-  color: var(--brand-dark);
+  color: var(--accent-on-dark);
 }
 
 .empty-state {
