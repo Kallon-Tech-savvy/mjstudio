@@ -4,11 +4,17 @@ import { buildClientContext, buildPhotographerContext } from '../src/auth/contex
 import { canAccessGalleryBySession, canDownloadFromGallery } from '../src/application/policies/client-gallery.policy.js';
 import { ensureUserCanAccessGallery } from '../src/application/policies/gallery.policy.js';
 import { parseInput } from '../src/http/validation.js';
-import { sanitizeForLogging, recordAuditEvent } from '../src/logging/audit.js';
+import { sanitizeForLogging, sanitizeRequestPath, recordAuditEvent } from '../src/logging/audit.js';
 import { ProcessPhotoAssetsHandler } from '../src/services/job-handlers.js';
 import { z } from 'zod';
 
 describe('security hardening and adversarial invariants', () => {
+  it('redacts upload capabilities and query strings from logged request paths', () => {
+    expect(sanitizeRequestPath('/api/local-photo-uploads/eyJrZXkiOiJzZWNyZXQifQ.signature?debug=1')).toBe('/api/local-photo-uploads/[REDACTED]');
+    expect(sanitizeRequestPath('/api/client/galleries/gallery-1?token=private')).toBe('/api/client/galleries/gallery-1');
+    expect(sanitizeRequestPath('/api/local-photo-uploads/')).toBe('/api/local-photo-uploads/');
+  });
+
   it('denies cross-studio access even when the request carries a valid-looking actor identity', () => {
     const user = buildPhotographerContext({ studioId: '22222222-2222-4222-8222-222222222222' });
 
