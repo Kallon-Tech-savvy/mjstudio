@@ -29,9 +29,9 @@ describe('API foundation', () => {
   it('serves client previews through a session-authorized, no-store route', async () => {
     const client = buildClientContext();
     const bytes = Buffer.from('verified-preview-bytes');
-    const readObjectBytes = vi.fn(async (key: string) => {
+    const readVerifiedObject = vi.fn(async (key: string) => {
       expect(key).toBe('studios/studio-1/galleries/gallery-1/photos/photo-1/preview');
-      return bytes;
+      return { storageKey: key, mimeType: 'image/webp', fileSize: bytes.length, bytes };
     });
     const services = {
       ...baseServices(),
@@ -45,7 +45,7 @@ describe('API foundation', () => {
           mimeType: 'image/webp',
         }),
       },
-      photoStorage: { verifyObject: async () => ({ storageKey: 'studios/studio-1/galleries/gallery-1/photos/photo-1/preview', mimeType: 'image/webp', fileSize: bytes.length }), readObjectBytes },
+      photoStorage: { readVerifiedObject },
     } as unknown as ApplicationServices;
 
     const response = await request(createApp(services, { allowedOrigins: ['http://localhost:3000'] }))
@@ -57,7 +57,7 @@ describe('API foundation', () => {
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.headers['x-content-type-options']).toBe('nosniff');
     expect(Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.text ?? '')).toEqual(bytes);
-    expect(readObjectBytes).toHaveBeenCalledTimes(1);
+    expect(readVerifiedObject).toHaveBeenCalledTimes(1);
   });
 
   it('does not expose originals through the client representation route', async () => {
