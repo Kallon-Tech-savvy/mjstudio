@@ -3,7 +3,7 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
-import { sanitizeForLogging } from './logging/audit.js';
+import { sanitizeForLogging, sanitizeRequestPath } from './logging/audit.js';
 import { logger } from './logging/logger.js';
 import { requireTrustedOrigin } from './middleware/authentication.js';
 import { UnsupportedMediaTypeError } from './errors.js';
@@ -35,7 +35,7 @@ export function createApp(
       logger.info({
         requestId: String(req.id ?? 'unknown'),
         method: req.method,
-        path: sanitizeForLogging(req.path),
+        path: sanitizeRequestPath(req.path),
         statusCode: res.statusCode,
         durationMs: Date.now() - startedAt,
       }, 'request completed');
