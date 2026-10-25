@@ -23,9 +23,9 @@ export function photosRouter(services: ApplicationServices) {
       const { photoId } = parseInput(photoParamSchema, req.params);
       parseInput(z.enum(['preview']), req.params.type, 'INVALID_REQUEST');
       const asset = await services.catalog.getStudioRepresentation(req.user!, galleryId, photoId);
-      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      const verified = await services.photoStorage.readVerifiedObject(asset.storageKey);
       if (!verified) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
-      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      const bytes = verified.bytes;
       res.set('Content-Type', verified.mimeType)
         .set('Cache-Control', 'private, no-store')
         .set('X-Content-Type-Options', 'nosniff')
