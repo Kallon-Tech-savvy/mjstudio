@@ -4,7 +4,7 @@ import { db } from './client.js';
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const STUDIO_ID = '22222222-2222-4222-8222-222222222222';
 const OWNER_EMAIL = process.env.SEED_EMAIL ?? 'owner@example.com';
-const OWNER_PASSWORD = process.env.SEED_PASSWORD ?? 'demo-password-123';
+const OWNER_PASSWORD = process.env.SEED_PASSWORD;
 
 // Same format the login verifier reads: scrypt$<salt>$<hex digest>, 32-byte digest.
 function hashPassword(password: string): string {
@@ -13,6 +13,12 @@ function hashPassword(password: string): string {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed demo data in production.');
+  }
+  if (!OWNER_PASSWORD || OWNER_PASSWORD.length < 12) {
+    throw new Error('Set SEED_PASSWORD to a unique password of at least 12 characters before running the seed script.');
+  }
   // A password that is already a real scrypt hash is never overwritten.
   await db.query(
     `INSERT INTO users (id, email, password_hash, display_name)
@@ -73,7 +79,7 @@ async function main() {
 
   // Client access links (token + PIN) are created through the app so that you receive them once.
   console.log('Seed data inserted.');
-  console.log(`Demo login  ->  ${OWNER_EMAIL}  /  ${OWNER_PASSWORD}   (set SEED_EMAIL / SEED_PASSWORD to change)`);
+  console.log(`Seed owner email: ${OWNER_EMAIL}. Password was supplied through SEED_PASSWORD and is not printed.`);
 }
 
 main().finally(() => {
