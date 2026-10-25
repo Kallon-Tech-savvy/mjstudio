@@ -88,7 +88,7 @@ describe('PostgresScryptPasswordVerifier', () => {
     const salt = 'test-salt';
     const digest = scryptSync('correct-password', salt, 32).toString('hex');
     const database = {
-      query: async () => ({ rows: [{ id: 'user-1', password_hash: `scrypt${salt}${digest}` }] }),
+      query: async () => ({ rows: [{ id: 'user-1', password_hash: `scrypt$${salt}$${digest}` }] }),
     };
     const verifier = new PostgresScryptPasswordVerifier(database as never);
 
