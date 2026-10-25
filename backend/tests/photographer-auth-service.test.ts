@@ -1,3 +1,4 @@
+import { scryptSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { UnauthorizedError } from '../src/errors.js';
 import { PhotographerAuthService, PostgresScryptPasswordVerifier } from '../src/services/photographer-auth-service.js';
@@ -81,6 +82,18 @@ describe('PostgresScryptPasswordVerifier', () => {
     const verifier = new PostgresScryptPasswordVerifier(database as never);
 
     await expect(verifier.verify('missing@example.com', 'some-password')).resolves.toBeNull();
+  });
+
+  it('verifies the scrypt$<salt>$<32-byte hex digest> format produced by the seed script', async () => {
+    const salt = 'test-salt';
+    const digest = scryptSync('correct-password', salt, 32).toString('hex');
+    const database = {
+      query: async () => ({ rows: [{ id: 'user-1', password_hash: `scrypt${salt}${digest}` }] }),
+    };
+    const verifier = new PostgresScryptPasswordVerifier(database as never);
+
+    await expect(verifier.verify('studio@example.com', 'correct-password')).resolves.toEqual({ userId: 'user-1' });
+    await expect(verifier.verify('studio@example.com', 'wrong-password')).resolves.toBeNull();
   });
 
   it('rejects malformed stored password hashes without throwing', async () => {
