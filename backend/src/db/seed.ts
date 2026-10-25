@@ -3,7 +3,7 @@ import { db } from './client.js';
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const STUDIO_ID = '22222222-2222-4222-8222-222222222222';
-const OWNER_EMAIL = process.env.SEED_EMAIL ?? 'owner@example.com';
+const OWNER_EMAIL = process.env.SEED_EMAIL;
 const OWNER_PASSWORD = process.env.SEED_PASSWORD;
 
 // Same format the login verifier reads: scrypt$<salt>$<hex digest>, 32-byte digest.
@@ -16,15 +16,14 @@ async function main() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed demo data in production.');
   }
-  if (!OWNER_PASSWORD || OWNER_PASSWORD.length < 12) {
-    throw new Error('Set SEED_PASSWORD to a unique password of at least 12 characters before running the seed script.');
+  if (!OWNER_EMAIL || !OWNER_PASSWORD || OWNER_PASSWORD.length < 12) {
+    throw new Error('Set SEED_EMAIL and SEED_PASSWORD (at least 12 characters) before running the seed script.');
   }
-  // A password that is already a real scrypt hash is never overwritten.
+  // Running the seed script in a non-production environment intentionally resets the seed owner's password.
   await db.query(
     `INSERT INTO users (id, email, password_hash, display_name)
      VALUES ($1, $2, $3, 'Owner User')
-     ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash
-       WHERE users.password_hash IS NULL OR users.password_hash NOT LIKE 'scrypt$%'`,
+     ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash`,
     [OWNER_ID, OWNER_EMAIL, hashPassword(OWNER_PASSWORD)],
   );
 
