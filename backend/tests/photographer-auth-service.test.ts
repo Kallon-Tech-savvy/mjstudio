@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { UnauthorizedError } from '../src/errors.js';
-import { PhotographerAuthService } from '../src/services/photographer-auth-service.js';
+import { PhotographerAuthService, PostgresScryptPasswordVerifier } from '../src/services/photographer-auth-service.js';
 
 describe('PhotographerAuthService.login', () => {
   it('creates a session and returns its authorized context with one post-verification query', async () => {
@@ -72,5 +72,23 @@ describe('PhotographerAuthService.login', () => {
 
     await expect(service.login('studio@example.com', 'wrong-password')).rejects.toBeInstanceOf(UnauthorizedError);
     expect(queryCount).toBe(0);
+  });
+});
+
+describe('PostgresScryptPasswordVerifier', () => {
+  it('performs the invalid-account verification path and rejects an unknown email', async () => {
+    const database = { query: async () => ({ rows: [] }) };
+    const verifier = new PostgresScryptPasswordVerifier(database as never);
+
+    await expect(verifier.verify('missing@example.com', 'some-password')).resolves.toBeNull();
+  });
+
+  it('rejects malformed stored password hashes without throwing', async () => {
+    const database = {
+      query: async () => ({ rows: [{ id: 'user-1', password_hash: 'scrypt$salt$not-a-valid-digest' }] }),
+    };
+    const verifier = new PostgresScryptPasswordVerifier(database as never);
+
+    await expect(verifier.verify('studio@example.com', 'some-password')).resolves.toBeNull();
   });
 });
