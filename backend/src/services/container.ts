@@ -44,10 +44,11 @@ export type ServiceProviders = {
 };
 
 export function createApplicationServices(providers: ServiceProviders): ApplicationServices {
+  const jobs = new JobService(providers.database);
   return {
     auth: new AuthService(providers.database, providers.passwords),
     galleries: new GalleryService(providers.database),
-    photos: new PhotoService(providers.database, providers.photoStorage, new JobService(providers.database)),
+    photos: new PhotoService(providers.database, providers.photoStorage, jobs),
     galleryAccess: new GalleryAccessService(providers.database, providers.accessDelivery),
     clientSessions: new ClientSessionService(providers.database, providers.pinAttemptLimiter),
     selections: new SelectionService(providers.database),
@@ -59,7 +60,7 @@ export function createApplicationServices(providers: ServiceProviders): Applicat
     catalog: new CatalogService(providers.database),
     photoStorage: providers.photoStorage,
     rateLimits: providers.rateLimits,
-    jobs: new JobService(providers.database),
+    jobs,
   };
 }
 
