@@ -28,12 +28,24 @@ describe('authentication foundation', () => {
   });
 
 
+  it('fails closed on malformed stored gallery PIN hashes', async () => {
+    for (const pinHash of ['broken', ':abcd', `00000000000000000000000000000000:00`, `gggggggggggggggggggggggggggggggg:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, `00000000000000000000000000000000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:extra`]) {
+      const database = {
+        query: async (sql: string) => sql.includes('FROM gallery_access ga JOIN galleries g')
+          ? { rows: [{ id: 'access-1', pin_hash: pinHash, gallery_id: 'gallery-1' }] }
+          : { rows: [] },
+      };
+      const service = new ClientSessionService(database as never, { assertAllowed: async () => undefined });
+      await expect(service.create('secret-token', '123456', 'client-ip')).rejects.toThrow();
+    }
+  });
+
   it('rejects client sessions when the gallery itself has expired', async () => {
     const statements: string[] = [];
     const database = {
       query: async (sql: string) => {
         statements.push(sql);
-        if (sql.includes('FROM client_sessions cs')) {
+        if (sql.includes('UPDATE client_sessions AS cs')) {
           // Model the row a database would return if the query omitted the gallery-expiry predicate.
           if (!sql.includes('(g.expires_at IS NULL OR g.expires_at > NOW())')) {
             return { rows: [{
@@ -53,7 +65,39 @@ describe('authentication foundation', () => {
     const service = new ClientSessionService(database as never, { assertAllowed: async () => undefined });
 
     await expect(service.resolve('session-token')).rejects.toBeInstanceOf(UnauthorizedError);
-    expect(statements.some((sql) => sql.includes('UPDATE client_sessions SET last_seen_at'))).toBe(false);
+    expect(statements).toHaveLength(1);
+  });
+
+  it('resolves and touches a valid client session in one database statement', async () => {
+    const statements: string[] = [];
+    const database = {
+      query: async (sql: string) => {
+        statements.push(sql);
+        return {
+          rows: [{
+            session_id: 'session-1',
+            access_id: 'access-1',
+            gallery_id: 'gallery-1',
+            permission: 'view',
+            session_expires_at: new Date(Date.now() + 60_000),
+            access_expires_at: null,
+          }],
+        };
+      },
+    };
+    const service = new ClientSessionService(database as never, { assertAllowed: async () => undefined });
+
+    await expect(service.resolve('session-token')).resolves.toMatchObject({
+      clientSessionId: 'session-1',
+      galleryAccessId: 'access-1',
+      galleryId: 'gallery-1',
+      permission: 'view',
+    });
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toContain('UPDATE client_sessions AS cs');
+    expect(statements[0]).toContain('cs.revoked_at IS NULL');
+    expect(statements[0]).toContain('ga.revoked_at IS NULL');
+    expect(statements[0]).toContain("g.publication_status = 'published'");
   });
 
   it('should allow a photographer to access their own studio only', () => {

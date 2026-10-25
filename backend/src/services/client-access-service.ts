@@ -13,11 +13,15 @@ const hashPin = async (pin: string, salt = randomBytes(16).toString('hex')) => {
   return `${salt}:${derived.toString('hex')}`;
 };
 const verifyPin = async (pin: string, storedHash: string) => {
-  const [salt, expectedHex] = storedHash.split(':');
-  if (!salt || !expectedHex) return false;
+  const [salt, expectedHex, ...extra] = storedHash.split(':');
+  // PIN hashes are generated with a 16-byte hex salt and a 64-byte digest.
+  // Validate before scrypt so corrupt database values cannot trigger an
+  // unbounded KDF length or turn malformed hex into a zero-length digest.
+  if (extra.length > 0 || !salt || !/^[a-f0-9]{32}$/i.test(salt)
+    || !expectedHex || !/^[a-f0-9]{128}$/i.test(expectedHex)) return false;
   const expected = Buffer.from(expectedHex, 'hex');
-  const actual = await scrypt(pin, salt, expected.length) as Buffer;
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  const actual = await scrypt(pin, salt, 64) as Buffer;
+  return timingSafeEqual(actual, expected);
 };
 
 export type AccessCredentialDelivery = {
@@ -192,22 +196,25 @@ export class ClientSessionService {
   }
 
   async resolve(sessionToken: string): Promise<ClientContext> {
+    // Resolve and touch the session in one statement. A separate SELECT followed
+    // by UPDATE could return a context after another request revoked the session.
     const result = await this.database.query<{
       session_id: string; access_id: string; gallery_id: string; permission: 'view' | 'view_download'; session_expires_at: Date | null; access_expires_at: Date | null;
     }>(
-      `SELECT cs.id AS session_id, ga.id AS access_id, ga.gallery_id, ga.permission,
-              cs.expires_at AS session_expires_at, ga.expires_at AS access_expires_at
-         FROM client_sessions cs
-         JOIN gallery_access ga ON ga.id = cs.gallery_access_id
+      `UPDATE client_sessions AS cs
+          SET last_seen_at = NOW()
+         FROM gallery_access ga
          JOIN galleries g ON g.id = ga.gallery_id
-        WHERE cs.session_token_hash = $1 AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
+        WHERE cs.gallery_access_id = ga.id
+          AND cs.session_token_hash = $1 AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
           AND g.archived_at IS NULL AND g.publication_status = 'published'
           AND (g.expires_at IS NULL OR g.expires_at > NOW())
           AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
-          AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`, [hashCredential(sessionToken)]);
+          AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
+        RETURNING cs.id AS session_id, ga.id AS access_id, ga.gallery_id, ga.permission,
+                  cs.expires_at AS session_expires_at, ga.expires_at AS access_expires_at`, [hashCredential(sessionToken)]);
     const row = result.rows[0];
     if (!row) throw new UnauthorizedError('Client session is invalid or expired.');
-    await this.database.query('UPDATE client_sessions SET last_seen_at = NOW() WHERE id = $1', [row.session_id]);
     return {
       sessionId: row.session_id,
       clientSessionId: row.session_id,

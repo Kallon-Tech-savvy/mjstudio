@@ -36,6 +36,16 @@ function isSensitiveKey(key: string): boolean {
   return sensitivePatterns.some((pattern) => normalized.includes(pattern));
 }
 
+/** Remove query strings and redact capability tokens before request paths enter logs. */
+export function sanitizeRequestPath(path: string): string {
+  const pathname = path.split('?', 1)[0] ?? '';
+  const segments = pathname.split('/');
+  if (segments[1]?.toLowerCase() === 'api' && segments[2]?.toLowerCase() === 'local-photo-uploads' && segments[3]) {
+    segments[3] = '[REDACTED]';
+  }
+  return segments.join('/');
+}
+
 export function sanitizeForLogging(value: unknown): unknown {
   if (value === null || value === undefined) return value;
 

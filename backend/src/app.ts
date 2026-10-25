@@ -3,7 +3,7 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
-import { sanitizeForLogging } from './logging/audit.js';
+import { sanitizeForLogging, sanitizeRequestPath } from './logging/audit.js';
 import { logger } from './logging/logger.js';
 import { requireTrustedOrigin } from './middleware/authentication.js';
 import { UnsupportedMediaTypeError } from './errors.js';
@@ -35,7 +35,7 @@ export function createApp(
       logger.info({
         requestId: String(req.id ?? 'unknown'),
         method: req.method,
-        path: sanitizeForLogging(req.path),
+        path: sanitizeRequestPath(req.path),
         statusCode: res.statusCode,
         durationMs: Date.now() - startedAt,
       }, 'request completed');
@@ -80,20 +80,6 @@ export function createApp(
         }
         await options.localPhotoStorage!.acceptUpload(req.params.token, String(req.headers['content-type'] ?? ''), req.body);
         res.status(204).send();
-      } catch (error) {
-        next(error);
-      }
-    });
-    app.get('/api/local-photo-objects/:token', async (req, res, next) => {
-      try {
-        const object = await options.localPhotoStorage!.readCapability(req.params.token);
-        if (!object) {
-          res.status(404).json({ error: { code: 'PHOTO_OBJECT_NOT_FOUND', message: 'Photo object not found or capability expired.' } });
-          return;
-        }
-        res.type(object.mimeType).set('Cache-Control', 'private, no-store');
-        if (object.download) res.set('Content-Disposition', 'attachment');
-        res.send(object.bytes);
       } catch (error) {
         next(error);
       }

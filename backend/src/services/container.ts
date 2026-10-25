@@ -10,7 +10,6 @@ import { ServiceUnavailableError } from '../errors.js';
 import { CatalogService } from './catalog-service.js';
 import { PostgresRateLimitService } from './rate-limit-service.js';
 import { JobService } from './job-service.js';
-import { PhotoRepresentationService } from './photo-representation-service.js';
 import { ProofingService } from './proofing-service.js';
 
 export type ApplicationServices = {
@@ -26,6 +25,7 @@ export type ApplicationServices = {
   proofing: ProofingService;
   delivery: DeliveryService;
   catalog: CatalogService;
+  photoStorage: PhotoStorage;
   rateLimits: RateLimitProvider;
   jobs: JobService;
 };
@@ -44,10 +44,11 @@ export type ServiceProviders = {
 };
 
 export function createApplicationServices(providers: ServiceProviders): ApplicationServices {
+  const jobs = new JobService(providers.database);
   return {
     auth: new AuthService(providers.database, providers.passwords),
     galleries: new GalleryService(providers.database),
-    photos: new PhotoService(providers.database, providers.photoStorage, new JobService(providers.database)),
+    photos: new PhotoService(providers.database, providers.photoStorage, jobs),
     galleryAccess: new GalleryAccessService(providers.database, providers.accessDelivery),
     clientSessions: new ClientSessionService(providers.database, providers.pinAttemptLimiter),
     selections: new SelectionService(providers.database),
@@ -56,12 +57,10 @@ export function createApplicationServices(providers: ServiceProviders): Applicat
     feedback: new FeedbackService(providers.database),
     proofing: new ProofingService(providers.database),
     delivery: new DeliveryService(providers.database),
-    catalog: new CatalogService(
-      providers.database,
-      new PhotoRepresentationService(providers.photoStorage),
-    ),
+    catalog: new CatalogService(providers.database),
+    photoStorage: providers.photoStorage,
     rateLimits: providers.rateLimits,
-    jobs: new JobService(providers.database),
+    jobs,
   };
 }
 
@@ -79,7 +78,8 @@ export function unavailableServices(): ApplicationServices {
     feedback: { createGalleryFeedback: unavailable, createPhotoFeedback: unavailable, listForStudio: unavailable } as unknown as FeedbackService,
     proofing: { setReview: unavailable, list: unavailable } as unknown as ProofingService,
     delivery: { getDelivery: unavailable, prepareDelivery: unavailable, releaseDelivery: unavailable } as unknown as DeliveryService,
-    catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
+    catalog: { listClients: unavailable, getClient: unavailable, createClient: unavailable, updateClient: unavailable, listGalleries: unavailable, listPhotos: unavailable, getClientGallery: unavailable, getClientRepresentation: unavailable, listClientPhotos: unavailable, getStudioSummary: unavailable, listStudioMembers: unavailable } as unknown as CatalogService,
+    photoStorage: { createUploadCapability: unavailable, verifyObject: unavailable, readObjectBytes: unavailable, readVerifiedObject: unavailable },
     rateLimits: { assertAllowed: unavailable },
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,
   };
@@ -94,8 +94,8 @@ export function unavailableProviders(database: Pool): ServiceProviders {
     photoStorage: {
       createUploadCapability: unavailable,
       verifyObject: unavailable,
-      createViewCapability: unavailable,
-      createDownloadCapability: unavailable,
+      readObjectBytes: unavailable,
+      readVerifiedObject: unavailable,
     },
     accessDelivery: { deliver: unavailable },
     pinAttemptLimiter: { assertAllowed: (key) => rateLimits.assertAllowed(key, 'client-access') },

@@ -34,6 +34,44 @@ describe('LocalPhotoStorage', () => {
     });
   });
 
+  it('rejects an uploaded original when its bytes change after the upload', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/original';
+    const capability = await storage.createUploadCapability(key, 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    await storage.acceptUpload(token, 'image/jpeg', jpeg);
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg', fileSize: jpeg.length });
+
+    // Keep the JPEG signature valid so MIME sniffing alone cannot detect the mutation.
+    await writeFile(join(root, key), Buffer.from([0xff, 0xd8, 0xff, 0x01]));
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+    await expect(storage.readObjectBytes(key)).rejects.toThrow(/failed verification/i);
+  });
+
+  it('reads a verified object by server-selected storage key', async () => {
+    const storage = await makeStorage();
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/preview';
+    const bytes = Buffer.from('RIFF0000WEBPvalid-preview');
+    await storage.writeDerivative(key, bytes, {
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+    });
+
+    await expect(storage.readObjectBytes(key)).resolves.toEqual(bytes);
+    await expect(storage.readVerifiedObject(key)).resolves.toMatchObject({
+      storageKey: key,
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+      bytes,
+    });
+  });
+
   it('rejects a derivative when its object bytes no longer match the metadata sidecar', async () => {
     const storage = await makeStorage();
     const root = roots[roots.length - 1]!;
@@ -55,6 +93,7 @@ describe('LocalPhotoStorage', () => {
     // Simulate a crash/interrupted replacement between object and sidecar renames.
     await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
     await expect(storage.verifyObject(key)).resolves.toBeNull();
+    await expect(storage.readObjectBytes(key)).rejects.toThrow(/failed verification/i);
   });
 
   it('cleans only stale UUID temporary files and preserves recent or unrelated files', async () => {

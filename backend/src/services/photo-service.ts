@@ -7,11 +7,14 @@ import { inTransaction, resolveGalleryMembership, type Database } from './servic
 import { JobService } from './job-service.js';
 
 export type VerifiedStoredObject = { storageKey: string; mimeType: string; fileSize: number; width?: number; height?: number };
+export type ReadVerifiedStoredObject = VerifiedStoredObject & { bytes: Buffer };
 export interface PhotoStorage {
   createUploadCapability(storageKey: string, expiresInSeconds: number): Promise<{ url: string; expiresAt: Date }>;
   verifyObject(storageKey: string): Promise<VerifiedStoredObject | null>;
-  createViewCapability(storageKey: string, expiresInSeconds: number): Promise<{ url: string; expiresAt: Date }>;
-  createDownloadCapability(storageKey: string, expiresInSeconds: number): Promise<{ url: string; expiresAt: Date }>;
+  /** Read a server-selected object after the caller has revalidated authorization. */
+  readObjectBytes(storageKey: string): Promise<Buffer>;
+  /** Return verified metadata and the exact byte snapshot that was verified. */
+  readVerifiedObject(storageKey: string): Promise<ReadVerifiedStoredObject | null>;
 }
 export class PhotoService {
   constructor(
