@@ -11,6 +11,10 @@ const accessSchema = z.object({ secret: z.string().min(32).max(256), pin: z.stri
 const selectionSchema = z.object({ selected: z.boolean() }).strict();
 const feedbackSchema = z.object({ message: z.string().trim().min(1).max(5000) }).strict();
 
+function assertRouteGallery(client: NonNullable<AuthenticatedRequest['client']>, galleryId: string) {
+  if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
+}
+
 export function clientRouter(services: ApplicationServices) {
   const router = Router();
   const auth = requireClientAuth(services);
@@ -38,14 +42,14 @@ export function clientRouter(services: ApplicationServices) {
   });
 
   router.get('/galleries/:galleryId', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.catalog.getClientGallery(req.client!, galleryId))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); assertRouteGallery(req.client!, galleryId); res.json(successEnvelope(await services.catalog.getClientGallery(req.client!, galleryId))); }
     catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/photos/:photoId', auth, async (req: AuthenticatedRequest, res, next) => {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
       const { photoId } = parseInput(photoParamSchema, req.params);
-      await services.clientSessions.assertGallery(req.client!, galleryId);
+      assertRouteGallery(req.client!, galleryId);
       const photo = await services.catalog.getClientPhoto(req.client!, galleryId, photoId);
       const apiBase = env.APP_BASE_URL ?? 'http://localhost:3001';
       res.json(successEnvelope({ ...photo, preview: { ...photo.preview, url: new URL(photo.preview.url, apiBase).toString() } }));
@@ -56,7 +60,7 @@ export function clientRouter(services: ApplicationServices) {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
       const { photoId } = parseInput(photoParamSchema, req.params);
       const type = parseInput(z.enum(['thumbnail', 'preview']), req.params.type, 'INVALID_REQUEST');
-      await services.clientSessions.assertGallery(req.client!, galleryId);
+      assertRouteGallery(req.client!, galleryId);
       const asset = await services.catalog.getClientRepresentation(req.client!, galleryId, photoId, type);
       const verified = await services.photoStorage.verifyObject(asset.storageKey);
       if (!verified) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
@@ -69,21 +73,21 @@ export function clientRouter(services: ApplicationServices) {
     } catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.getSelection(req.client!))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); assertRouteGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.getSelection(req.client!))); }
     catch (error) { next(error); }
   });
   router.get('/galleries/:galleryId/photos', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const page = parseInput(paginationSchema, req.query); const currentPage = page.page ?? 1; const limit = page.limit ?? 20; await services.clientSessions.assertGallery(req.client!, galleryId); const result = await services.catalog.listClientPhotos(req.client!, galleryId, currentPage, limit); res.json({ ...collectionEnvelope(result.items), meta: { count: result.items.length, total: result.total, page: currentPage, limit } }); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const page = parseInput(paginationSchema, req.query); const currentPage = page.page ?? 1; const limit = page.limit ?? 20; assertRouteGallery(req.client!, galleryId); const result = await services.catalog.listClientPhotos(req.client!, galleryId, currentPage, limit); res.json({ ...collectionEnvelope(result.items), meta: { count: result.items.length, total: result.total, page: currentPage, limit } }); }
     catch (error) { next(error); }
   });
   router.put('/galleries/:galleryId/photos/:photoId/selection', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { selected } = parseInput(selectionSchema, req.body, 'INVALID_SELECTION'); await services.clientSessions.assertGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.setSelection(req.client!, photoId, selected))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { selected } = parseInput(selectionSchema, req.body, 'INVALID_SELECTION'); assertRouteGallery(req.client!, galleryId); res.json(successEnvelope(await services.selections.setSelection(req.client!, photoId, selected))); }
     catch (error) { next(error); }
   });
   router.post('/galleries/:galleryId/selection/submit', auth, async (req: AuthenticatedRequest, res, next) => {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
-      await services.clientSessions.assertGallery(req.client!, galleryId);
+      assertRouteGallery(req.client!, galleryId);
       res.json(successEnvelope(await services.selections.submitSelection(req.client!)));
     } catch (error) { next(error); }
   });
@@ -93,7 +97,7 @@ export function clientRouter(services: ApplicationServices) {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
       const { photoId } = parseInput(photoParamSchema, req.params);
       await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download');
-      await services.clientSessions.assertGallery(req.client!, galleryId);
+      assertRouteGallery(req.client!, galleryId);
       await services.downloads.create(req.client!, photoId);
       const apiBase = env.APP_BASE_URL ?? 'http://localhost:3001';
       const downloadUrl = new URL(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`, apiBase).toString();
@@ -106,7 +110,7 @@ export function clientRouter(services: ApplicationServices) {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
       const { photoId } = parseInput(photoParamSchema, req.params);
       await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download');
-      await services.clientSessions.assertGallery(req.client!, galleryId);
+      assertRouteGallery(req.client!, galleryId);
       const asset = await services.downloads.getDownloadAsset(req.client!, galleryId, photoId);
       const verified = await services.photoStorage.verifyObject(asset.storageKey);
       if (!verified) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
@@ -121,18 +125,18 @@ export function clientRouter(services: ApplicationServices) {
     } catch (error) { next(error); }
   });
   router.post('/galleries/:galleryId/feedback', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body); const { message } = parseInput(feedbackSchema, req.body, 'INVALID_FEEDBACK'); await services.rateLimits.assertAllowed(`feedback:${req.client!.clientSessionId}:${req.ip}`, 'feedback'); await services.clientSessions.assertGallery(req.client!, galleryId); res.status(201).json(successEnvelope(await services.feedback.createGalleryFeedback(req.client!, message))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body); const { message } = parseInput(feedbackSchema, req.body, 'INVALID_FEEDBACK'); await services.rateLimits.assertAllowed(`feedback:${req.client!.clientSessionId}:${req.ip}`, 'feedback'); assertRouteGallery(req.client!, galleryId); res.status(201).json(successEnvelope(await services.feedback.createGalleryFeedback(req.client!, message))); }
     catch (error) { next(error); }
   });
   router.post('/galleries/:galleryId/photos/:photoId/feedback', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { message } = parseInput(feedbackSchema, req.body, 'INVALID_FEEDBACK'); await services.rateLimits.assertAllowed(`feedback:${req.client!.clientSessionId}:${req.ip}`, 'feedback'); await services.clientSessions.assertGallery(req.client!, galleryId); res.status(201).json(successEnvelope(await services.feedback.createPhotoFeedback(req.client!, photoId, message))); }
+    try { const { galleryId } = parseInput(galleryParamSchema, req.params); const { photoId } = parseInput(photoParamSchema, req.params); requireJsonBody(req.body); const { message } = parseInput(feedbackSchema, req.body, 'INVALID_FEEDBACK'); await services.rateLimits.assertAllowed(`feedback:${req.client!.clientSessionId}:${req.ip}`, 'feedback'); assertRouteGallery(req.client!, galleryId); res.status(201).json(successEnvelope(await services.feedback.createPhotoFeedback(req.client!, photoId, message))); }
     catch (error) { next(error); }
   });
 
   router.get('/galleries/:galleryId/delivery', auth, async (req: AuthenticatedRequest, res, next) => {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params);
-      await services.clientSessions.assertGallery(req.client!, galleryId);
+      assertRouteGallery(req.client!, galleryId);
       res.json(successEnvelope(await services.delivery.getClientDelivery(req.client!, galleryId)));
     } catch (error) { next(error); }
   });
