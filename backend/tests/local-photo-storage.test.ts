@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -34,6 +34,44 @@ describe('LocalPhotoStorage', () => {
     });
   });
 
+  it('rejects an uploaded original when its bytes change after the upload', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/original';
+    const capability = await storage.createUploadCapability(key, 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    await storage.acceptUpload(token, 'image/jpeg', jpeg);
+    await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg', fileSize: jpeg.length });
+
+    // Keep the JPEG signature valid so MIME sniffing alone cannot detect the mutation.
+    await writeFile(join(root, key), Buffer.from([0xff, 0xd8, 0xff, 0x01]));
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+    await expect(storage.readObjectBytes(key)).rejects.toThrow(/failed verification/i);
+  });
+
+  it('reads a verified object by server-selected storage key', async () => {
+    const storage = await makeStorage();
+    const key = 'studios/studio-1/galleries/gallery-1/photos/photo-1/preview';
+    const bytes = Buffer.from('RIFF0000WEBPvalid-preview');
+    await storage.writeDerivative(key, bytes, {
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+    });
+
+    await expect(storage.readObjectBytes(key)).resolves.toEqual(bytes);
+    await expect(storage.readVerifiedObject(key)).resolves.toMatchObject({
+      storageKey: key,
+      mimeType: 'image/webp',
+      fileSize: bytes.length,
+      width: 320,
+      height: 240,
+      bytes,
+    });
+  });
+
   it('rejects a derivative when its object bytes no longer match the metadata sidecar', async () => {
     const storage = await makeStorage();
     const root = roots[roots.length - 1]!;
@@ -55,6 +93,7 @@ describe('LocalPhotoStorage', () => {
     // Simulate a crash/interrupted replacement between object and sidecar renames.
     await writeFile(join(root, key), Buffer.from('RIFF0000WEBPvalid-b'));
     await expect(storage.verifyObject(key)).resolves.toBeNull();
+    await expect(storage.readObjectBytes(key)).rejects.toThrow(/failed verification/i);
   });
 
   it('cleans only stale UUID temporary files and preserves recent or unrelated files', async () => {
@@ -131,6 +170,66 @@ describe('LocalPhotoStorage', () => {
       .expect(204);
 
     await expect(storage.verifyObject(key)).resolves.toMatchObject({ storageKey: key, mimeType: 'image/jpeg' });
+  });
+
+
+  it('rejects symlinked object files and metadata sidecars', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const outside = await mkdtemp(join(tmpdir(), 'mjstudio-leaf-symlink-'));
+    roots.push(outside);
+    const key = 'studios/studio-1/photo';
+    const objectPath = join(root, key);
+    const sidecarPath = `${objectPath}.metadata.json`;
+    await mkdir(join(root, 'studios', 'studio-1'), { recursive: true });
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const externalObject = join(outside, 'outside.jpg');
+    await writeFile(externalObject, jpeg);
+    await writeFile(sidecarPath, JSON.stringify({ mimeType: 'image/jpeg' }));
+    await symlink(externalObject, objectPath);
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+
+    await rm(objectPath);
+    await writeFile(objectPath, jpeg);
+    const externalMetadata = join(outside, 'outside.metadata.json');
+    await writeFile(externalMetadata, JSON.stringify({ mimeType: 'image/jpeg' }));
+    await rm(sidecarPath);
+    await symlink(externalMetadata, sidecarPath);
+    await expect(storage.verifyObject(key)).resolves.toBeNull();
+  });
+
+  it('rejects a storage root whose ancestor is a symlink', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'mjstudio-root-ancestor-'));
+    const alias = join(tmpdir(), `mjstudio-root-alias-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    roots.push(outside, alias);
+    const realRoot = join(outside, 'storage');
+    await mkdir(realRoot);
+    await symlink(outside, alias, 'dir');
+
+    const storage = new LocalPhotoStorage(
+      join(alias, 'storage'),
+      'http://localhost:3001',
+      'test-secret-that-is-at-least-32-characters-long',
+    );
+
+    await expect(storage.verifyObject('studios/studio-1/missing'))
+      .rejects.toThrow(/root and its ancestors/i);
+  });
+
+  it('rejects symlinked parent directories instead of reading or writing outside the storage root', async () => {
+    const storage = await makeStorage();
+    const root = roots[roots.length - 1]!;
+    const outside = await mkdtemp(join(tmpdir(), 'mjstudio-outside-'));
+    roots.push(outside);
+    await writeFile(join(outside, 'secret'), 'outside');
+    await symlink(outside, join(root, 'studios'), 'dir');
+
+    await expect(storage.verifyObject('studios/secret')).rejects.toThrow(/real directories/i);
+    const capability = await storage.createUploadCapability('studios/new-photo/original', 60);
+    const token = new URL(capability.url).pathname.split('/').at(-1)!;
+    await expect(storage.acceptUpload(token, 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9])))
+      .rejects.toThrow(/real directories/i);
+    await expect(rm(join(outside, 'new-photo'), { recursive: true, force: true })).resolves.toBeUndefined();
   });
 
   it('returns null when the stored object is missing', async () => {

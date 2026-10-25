@@ -3,10 +3,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { UnauthorizedError } from '../src/errors.js';
-import { buildPhotographerContext } from '../src/auth/context.js';
+import { buildClientContext, buildPhotographerContext } from '../src/auth/context.js';
 import type { ApplicationServices } from '../src/services/container.js';
 import { LocalPhotoStorage } from '../src/services/local-photo-storage.js';
 
@@ -26,6 +26,98 @@ const baseServices = () => ({
 }) as unknown as ApplicationServices;
 
 describe('API foundation', () => {
+  it('serves client previews through a session-authorized, no-store route', async () => {
+    const client = buildClientContext();
+    const bytes = Buffer.from('verified-preview-bytes');
+    const readVerifiedObject = vi.fn(async (key: string) => {
+      expect(key).toBe('studios/studio-1/galleries/gallery-1/photos/photo-1/preview');
+      return { storageKey: key, mimeType: 'image/webp', fileSize: bytes.length, bytes };
+    });
+    const services = {
+      ...baseServices(),
+      clientSessions: {
+        resolve: async () => client,
+        assertGallery: async () => undefined,
+      },
+      catalog: {
+        getClientRepresentation: async () => ({
+          storageKey: 'studios/studio-1/galleries/gallery-1/photos/photo-1/preview',
+          mimeType: 'image/webp',
+        }),
+      },
+      photoStorage: { readVerifiedObject },
+    } as unknown as ApplicationServices;
+
+    const response = await request(createApp(services, { allowedOrigins: ['http://localhost:3000'] }))
+      .get('/api/client/galleries/55555555-5555-4555-8555-555555555555/photos/44444444-4444-4444-8444-444444444444/representations/preview')
+      .set('Cookie', '__Secure-mj_client_session=valid-session');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('image/webp');
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.text ?? '')).toEqual(bytes);
+    expect(readVerifiedObject).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not expose originals through the client representation route', async () => {
+    const client = buildClientContext();
+    const services = {
+      ...baseServices(),
+      clientSessions: { resolve: async () => client, assertGallery: async () => undefined },
+      catalog: { getClientRepresentation: async () => { throw new Error('must not be called'); } },
+      photoStorage: { verifyObject: async () => { throw new Error('must not be called'); }, readObjectBytes: async () => { throw new Error('must not be called'); } },
+    } as unknown as ApplicationServices;
+    const response = await request(createApp(services))
+      .get('/api/client/galleries/55555555-5555-4555-8555-555555555555/photos/44444444-4444-4444-8444-444444444444/representations/original')
+      .set('Cookie', '__Secure-mj_client_session=valid-session');
+    expect(response.status).toBe(422);
+  });
+
+  it('rate-limits credential resend before calling the access service', async () => {
+    const actor = buildPhotographerContext();
+    const rateLimitCalls: Array<{ key: string; scope: string }> = [];
+    let resendCalled = false;
+    const services = {
+      ...baseServices(),
+      auth: {
+        login: async () => { throw new UnauthorizedError('Invalid email or password.'); },
+        resolve: async () => actor,
+        logout: async () => undefined,
+      },
+      galleryAccess: {
+        resend: async () => {
+          resendCalled = true;
+          return { resent: true, accessId: 'new-grant' };
+        },
+      },
+      rateLimits: {
+        assertAllowed: async (key: string, scope: string) => {
+          rateLimitCalls.push({ key, scope });
+        },
+      },
+    } as unknown as ApplicationServices;
+
+    const response = await request(createApp(services, { allowedOrigins: ['http://localhost:3000'] }))
+      .post('/api/galleries/55555555-5555-4555-8555-555555555555/access/resend')
+      .set('Origin', 'http://localhost:3000')
+      .set('Cookie', '__Host-mj_session=valid');
+
+    expect(response.status).toBe(200);
+    expect(rateLimitCalls).toHaveLength(1);
+    expect(rateLimitCalls[0]?.scope).toBe('access-reset');
+    expect(rateLimitCalls[0]?.key).toMatch(new RegExp('^access-resend:' + actor.userId + ':'));
+    expect(resendCalled).toBe(true);
+  });
+
+  it('does not claim provider readiness from the API root endpoint', async () => {
+    const response = await request(createApp()).get('/api');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('running');
+    expect(response.body.data.status).not.toBe('ready');
+  });
+
   it('GET /api/health should return the API health envelope', async () => {
     const response = await request(createApp()).get('/api/health');
 
@@ -141,7 +233,7 @@ describe('API foundation', () => {
     expect(JSON.stringify(response.body)).not.toContain('stack');
   });
 
-  it('accepts a binary photo upload and serves it through a view capability', async () => {
+  it('accepts a binary photo upload without exposing bearer read capabilities', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mjstudio-api-upload-'));
     try {
       const storage = new LocalPhotoStorage(root, 'http://localhost:3001', 'integration-test-secret-that-is-long-enough');
@@ -167,13 +259,6 @@ describe('API foundation', () => {
         fileSize: bytes.length,
       });
 
-      const viewCapability = await storage.createViewCapability(key, 60);
-      const viewPath = new URL(viewCapability.url).pathname;
-      const viewed = await request(app).get(viewPath);
-      expect(viewed.status).toBe(200);
-      expect(viewed.headers['content-type']).toContain('image/jpeg');
-      expect(viewed.body).toEqual(bytes);
-      expect(viewed.headers['cache-control']).toBe('private, no-store');
     } finally {
       await rm(root, { recursive: true, force: true });
     }

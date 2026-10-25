@@ -108,8 +108,11 @@ export function galleriesRouter(services: ApplicationServices) {
     catch (error) { next(error); }
   });
   router.post('/:galleryId/access/resend', auth, async (req: AuthenticatedRequest, res, next) => {
-    try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.galleryAccess.resend(req.user!, galleryId))); }
-    catch (error) { next(error); }
+    try {
+      const { galleryId } = parseInput(galleryParamSchema, req.params);
+      await services.rateLimits.assertAllowed(`access-resend:${req.user!.userId}:${req.ip}`, 'access-reset');
+      res.json(successEnvelope(await services.galleryAccess.resend(req.user!, galleryId)));
+    } catch (error) { next(error); }
   });
 
   router.get('/:galleryId/delivery', auth, async (req: AuthenticatedRequest, res, next) => {

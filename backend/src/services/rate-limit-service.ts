@@ -11,10 +11,18 @@ const policies = {
   feedback: { limit: 10, windowSeconds: 3600 },
 } as const;
 
+const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
+// Retain two hours so cleanup never removes a bucket that can still affect
+// any currently configured rate-limit window (the longest is one hour).
+
 export class PostgresRateLimitService implements RateLimitProvider {
-  constructor(private readonly database: Database) {}
+  private lastCleanupAt = Number.NEGATIVE_INFINITY;
+  private cleanupInFlight: Promise<void> | undefined;
+
+  constructor(private readonly database: Database, private readonly now: () => number = Date.now) {}
 
   async assertAllowed(key: string, scope: keyof typeof policies) {
+    await this.cleanupExpiredBucketsIfDue();
     const policy = policies[scope];
     const digest = createHash('sha256').update(key).digest('hex');
     const result = await this.database.query<{ request_count: number }>(
@@ -26,5 +34,24 @@ export class PostgresRateLimitService implements RateLimitProvider {
       [scope, digest, policy.windowSeconds],
     );
     if ((result.rows[0]?.request_count ?? 0) > policy.limit) throw new RateLimitError();
+  }
+
+  private async cleanupExpiredBucketsIfDue(): Promise<void> {
+    if (this.cleanupInFlight) {
+      await this.cleanupInFlight;
+      return;
+    }
+    const now = this.now();
+    if (now - this.lastCleanupAt < CLEANUP_INTERVAL_MS) return;
+
+    this.cleanupInFlight = this.database.query(
+      `DELETE FROM api_rate_limit_buckets
+        WHERE bucket_start < NOW() - INTERVAL '2 hours'`,
+    ).then(() => {
+      this.lastCleanupAt = this.now();
+    }).finally(() => {
+      this.cleanupInFlight = undefined;
+    });
+    await this.cleanupInFlight;
   }
 }

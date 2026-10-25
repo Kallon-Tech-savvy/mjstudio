@@ -10,10 +10,10 @@ import { SharpImageProcessor } from '../src/services/sharp-image-processor.js';
 import { CleanupPhotoAssetsHandler, ProcessPhotoAssetsHandler, ReconcilePhotoAssetHandler } from '../src/services/job-handlers.js';
 import { JobService, JobWorker } from '../src/services/job-service.js';
 import { PhotoService } from '../src/services/photo-service.js';
-import { PhotoRepresentationService } from '../src/services/photo-representation-service.js';
 import { createApp } from '../src/app.js';
 import { CatalogService } from '../src/services/catalog-service.js';
 import { ClientSessionService } from '../src/services/client-access-service.js';
+import { DownloadService } from '../src/services/client-workflow-services.js';
 import request from 'supertest';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -110,17 +110,10 @@ suite('photo processing against PostgreSQL', () => {
         WHERE photo_id = $1 AND type = 'preview' AND state = 'current'`,
       [photoId],
     );
-    const representation = await new PhotoRepresentationService(storage).createView({
-      storageKey: preview.rows[0].storage_key,
-      mimeType: preview.rows[0].mime_type,
-      width: preview.rows[0].width,
-      height: preview.rows[0].height,
-    }, 60);
-    const viewToken = new URL(representation.url).pathname.split('/').at(-1)!;
-    const previewResponse = await storage.readCapability(viewToken);
-    expect(previewResponse?.mimeType).toBe('image/webp');
-    expect(previewResponse?.bytes.subarray(0, 4).toString('ascii')).toBe('RIFF');
-    expect(representation).toMatchObject({ width: 900, height: 600, mimeType: 'image/webp' });
+    const verifiedPreview = await storage.verifyObject(preview.rows[0].storage_key);
+    expect(verifiedPreview).toMatchObject({ width: 900, height: 600, mimeType: 'image/webp' });
+    const previewBytes = await storage.readObjectBytes(preview.rows[0].storage_key);
+    expect(previewBytes.subarray(0, 4).toString('ascii')).toBe('RIFF');
 
     const job = await database.query("SELECT status FROM application_jobs WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1", [photoId]);
     expect(job.rows[0]?.status).toBe('completed');
@@ -217,11 +210,20 @@ suite('photo processing against PostgreSQL', () => {
     );
 
     const clientSessions = new ClientSessionService(database, { assertAllowed: async () => undefined });
+    const studioSessionToken = randomUUID() + randomUUID();
     const services = {
-      auth: {}, galleries: {}, photos: {}, galleryAccess: {},
-      clientSessions, selections: {}, recommendations: {}, downloads: {}, feedback: {},
+      auth: { resolve: async () => ({
+        userId,
+        email: `${userId}@integration.test`,
+        displayName: 'Integration Photographer',
+        studioId: gallery.rows[0].studio_id,
+        membershipId: randomUUID(),
+        role: 'owner' as const,
+      }) }, galleries: {}, photos: {}, galleryAccess: {},
+      clientSessions, selections: {}, recommendations: {}, downloads: new DownloadService(database, photoStorage), feedback: {},
       proofing: {}, delivery: {},
-      catalog: new CatalogService(database, new PhotoRepresentationService(photoStorage)),
+      catalog: new CatalogService(database),
+      photoStorage,
       rateLimits: { assertAllowed: async () => undefined },
       jobs: new JobService(database),
     } as unknown as import('../src/services/container.js').ApplicationServices;
@@ -245,11 +247,74 @@ suite('photo processing against PostgreSQL', () => {
       });
 
       const thumbnailPath = new URL(response.body.data[0].thumbnail.url).pathname;
-      const imageResponse = await request(app).get(thumbnailPath);
+      const imageResponse = await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`);
       expect(imageResponse.status).toBe(200);
       expect(imageResponse.headers['content-type']).toContain('image/webp');
       expect(imageResponse.headers['cache-control']).toBe('private, no-store');
       expect(Buffer.from(imageResponse.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
+
+      // Studio previews are session-authorized too; previously issued URLs must not be bearer capabilities.
+      const studioPreview = await request(app)
+        .get(`/api/galleries/${galleryId}/photos/${photoId}/representations/preview`)
+        .set('Cookie', `__Host-mj_session=${studioSessionToken}`);
+      expect(studioPreview.status).toBe(200);
+      expect(studioPreview.headers['cache-control']).toBe('private, no-store');
+      expect(Buffer.from(studioPreview.body).subarray(0, 4).toString('ascii')).toBe('RIFF');
+
+      // Studio membership is revalidated for each request, not only when the session is resolved.
+      await database.query('DELETE FROM gallery_members WHERE gallery_id = $1 AND user_id = $2', [galleryId, userId]);
+      await request(app)
+        .get(`/api/galleries/${galleryId}/photos/${photoId}/representations/preview`)
+        .set('Cookie', `__Host-mj_session=${studioSessionToken}`)
+        .expect(404);
+
+      // The route must not permit callers to request the original asset as a representation.
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/representations/original`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(422);
+
+      // Previously issued representation URLs must stop working when a gallery is archived.
+      await database.query('UPDATE galleries SET archived_at = NOW() WHERE id = $1', [galleryId]);
+      await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+      await database.query('UPDATE galleries SET archived_at = NULL WHERE id = $1', [galleryId]);
+
+      // Revoking the gallery grant must also invalidate an existing representation URL.
+      await database.query('UPDATE gallery_access SET revoked_at = NOW() WHERE id = $1', [accessId]);
+      await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+      await database.query('UPDATE gallery_access SET revoked_at = NULL WHERE id = $1', [accessId]);
+
+      // Download authorization is checked again at fetch time, including permission changes.
+      await database.query("UPDATE gallery_access SET permission = 'view' WHERE id = $1", [accessId]);
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(403);
+      await database.query("UPDATE gallery_access SET permission = 'view_download' WHERE id = $1", [accessId]);
+
+      // The same image URL must stop working as soon as its session is revoked.
+      await database.query('UPDATE client_sessions SET revoked_at = NOW() WHERE id = $1', [sessionId]);
+      await request(app)
+        .get(thumbnailPath)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+
+      // Download URLs are authenticated routes, not bearer capabilities; revocation must invalidate them immediately.
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
+        .set('Cookie', `__Secure-mj_client_session=${sessionToken}`)
+        .expect(401);
+      await request(app)
+        .get(`/api/client/galleries/${galleryId}/photos/${photoId}/download-file`)
+        .expect(401);
     } finally {
       await database.query('DELETE FROM photos WHERE id = $1', [photoId]);
       await database.query('DELETE FROM client_sessions WHERE id = $1', [sessionId]);

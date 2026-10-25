@@ -1,7 +1,7 @@
 import type { PhotographerContext, ClientContext } from '../auth/context.js';
+import { env } from '../config/env.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import type { Database } from './service-common.js';
-import { PhotoRepresentationService } from './photo-representation-service.js';
 import type { PhotoStorage } from './photo-service.js';
 
 export const MAX_PAGE_SIZE = 100;
@@ -12,10 +12,7 @@ export function validatePage(page: number, limit: number) {
 }
 
 export class CatalogService {
-  constructor(
-    private readonly database: Database,
-    private readonly photoRepresentations?: PhotoRepresentationService,
-  ) {}
+  constructor(private readonly database: Database) {}
 
   async listClients(actor: PhotographerContext, page: number, limit: number) {
     validatePage(page, limit);
@@ -119,8 +116,6 @@ export class CatalogService {
   }
 
   async listSelectedPhotos(actor: PhotographerContext, galleryId: string) {
-    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
-
     const membership = await this.database.query(
       `SELECT 1 FROM galleries g
          JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
@@ -156,13 +151,32 @@ export class CatalogService {
       reviewStatus: item.reviewStatus,
       reviewNote: item.reviewNote,
       reviewedAt: item.reviewedAt,
-      preview: await this.photoRepresentations!.createView({
-        storageKey: item.previewStorageKey,
+      preview: {
+        url: new URL(`/api/galleries/${galleryId}/photos/${item.photoId}/representations/preview`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
         width: item.previewWidth,
         height: item.previewHeight,
         mimeType: item.previewMimeType,
-      }, 600),
+      },
     })));
+  }
+
+  async getStudioRepresentation(actor: PhotographerContext, galleryId: string, photoId: string) {
+    const result = await this.database.query<{ storageKey: string; mimeType: string }>(
+      `SELECT pa.storage_key AS "storageKey", pa.mime_type AS "mimeType"
+         FROM galleries g
+         JOIN gallery_members gm ON gm.gallery_id = g.id AND gm.user_id = $1
+         JOIN studio_members sm ON sm.studio_id = g.studio_id AND sm.user_id = $1
+         JOIN photos p ON p.gallery_id = g.id AND p.id = $3
+           AND p.deleted_at IS NULL AND p.status = 'active'
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'preview'
+           AND pa.state = 'current' AND pa.upload_status = 'uploaded'
+           AND pa.processing_status = 'ready'
+        WHERE g.id = $2 AND g.studio_id = $4 AND g.archived_at IS NULL
+        LIMIT 1`,
+      [actor.userId, galleryId, photoId, actor.studioId],
+    );
+    if (!result.rows[0]) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    return result.rows[0];
   }
 
   async getClientGallery(client: ClientContext, galleryId: string) {
@@ -181,7 +195,6 @@ export class CatalogService {
 
   async getClientPhoto(client: ClientContext, galleryId: string, photoId: string) {
     if (client.galleryId !== galleryId) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
-    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
 
     const result = await this.database.query(
       `SELECT p.id, p.position, r.photo_id IS NOT NULL AS recommended,
@@ -199,6 +212,7 @@ export class CatalogService {
             WHERE cs.id = $3 AND ga.id = $4 AND ga.gallery_id = p.gallery_id
               AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
               AND g.publication_status = 'published' AND g.archived_at IS NULL
+              AND (g.expires_at IS NULL OR g.expires_at > NOW())
               AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
               AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
           )`,
@@ -212,19 +226,41 @@ export class CatalogService {
       photoId: item.id,
       position: item.position,
       recommended: item.recommended,
-      preview: await this.photoRepresentations.createView({
-        storageKey: item.previewStorageKey,
+      preview: {
+        url: new URL(`/api/client/galleries/${galleryId}/photos/${item.id}/representations/preview`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
         width: item.previewWidth,
         height: item.previewHeight,
         mimeType: item.previewMimeType,
-      }, 600),
+      },
     };
   }
 
+  async getClientRepresentation(client: ClientContext, galleryId: string, photoId: string, type: 'thumbnail' | 'preview') {
+    if (client.galleryId !== galleryId) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    const result = await this.database.query<{ storageKey: string; mimeType: string }>(
+      `SELECT pa.storage_key AS "storageKey", pa.mime_type AS "mimeType"
+         FROM photos p
+         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = $5 AND pa.state = 'current'
+           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
+         JOIN galleries g ON g.id = p.gallery_id
+         JOIN client_sessions cs ON cs.id = $3
+         JOIN gallery_access ga ON ga.id = cs.gallery_access_id
+        WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL AND p.status = 'active'
+          AND ga.id = $4 AND ga.gallery_id = g.id AND cs.gallery_access_id = ga.id
+          AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
+          AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+          AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
+          AND g.publication_status = 'published' AND g.archived_at IS NULL
+          AND (g.expires_at IS NULL OR g.expires_at > NOW())`,
+      [photoId, galleryId, client.clientSessionId, client.galleryAccessId, type],
+    );
+    const asset = result.rows[0];
+    if (!asset) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
+    return asset;
+  }
   async listClientPhotos(client: ClientContext, galleryId: string, page: number, limit: number) {
     validatePage(page, limit);
     if (client.galleryId !== galleryId) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
-    if (!this.photoRepresentations) throw new Error('Photo representation service is not configured.');
     const offset = (page - 1) * limit;
     const [items, count] = await Promise.all([
       this.database.query(
@@ -247,6 +283,7 @@ export class CatalogService {
             JOIN galleries g ON g.id = ga.gallery_id
             WHERE cs.id = $2 AND ga.id = $3 AND ga.gallery_id = p.gallery_id AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
               AND g.publication_status = 'published' AND g.archived_at IS NULL
+              AND (g.expires_at IS NULL OR g.expires_at > NOW())
               AND (cs.expires_at IS NULL OR cs.expires_at > NOW()) AND (ga.expires_at IS NULL OR ga.expires_at > NOW()))
           AND EXISTS (SELECT 1 FROM photo_assets pa WHERE pa.photo_id = p.id AND pa.type = 'thumbnail' AND pa.state = 'current'
             AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready')`, [galleryId, client.clientSessionId, client.galleryAccessId]),
@@ -255,12 +292,12 @@ export class CatalogService {
       photoId: item.id,
       position: item.position,
       recommended: item.recommended,
-      thumbnail: await this.photoRepresentations!.createView({
-        storageKey: item.thumbnailStorageKey,
+      thumbnail: {
+        url: new URL(`/api/client/galleries/${galleryId}/photos/${item.id}/representations/thumbnail`, env.APP_BASE_URL ?? 'http://localhost:3001').toString(),
         width: item.thumbnailWidth,
         height: item.thumbnailHeight,
         mimeType: item.thumbnailMimeType,
-      }, 1800),
+      },
     })));
     return { items: resolvedItems, total: Number(count.rows[0]?.count ?? 0) };
   }
