@@ -190,7 +190,11 @@ export class LocalPhotoStorage implements PhotoStorage {
     await this.assertSafeParentDirectories(objectPath, true);
     await writeFile(objectPath, bytes, { flag: 'wx', mode: 0o600 });
     try {
-      await writeFile(this.metadataPath(objectPath), JSON.stringify({ mimeType: detectedType }), { flag: 'wx', mode: 0o600 });
+      await writeFile(this.metadataPath(objectPath), JSON.stringify({
+        mimeType: detectedType,
+        fileSize: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      }), { flag: 'wx', mode: 0o600 });
     } catch (error) {
       // Do not leave an object that cannot be verified or retried after a sidecar-write failure.
       await rm(objectPath, { force: true });
