@@ -85,7 +85,7 @@ describe('PostgresScryptPasswordVerifier', () => {
   });
 
   it('verifies the scrypt$<salt>$<32-byte hex digest> format produced by the seed script', async () => {
-    const salt = 'test-salt';
+    const salt = '0123456789abcdef';
     const digest = scryptSync('correct-password', salt, 32).toString('hex');
     const database = {
       query: async () => ({ rows: [{ id: 'user-1', password_hash: `scrypt$${salt}$${digest}` }] }),
@@ -98,7 +98,7 @@ describe('PostgresScryptPasswordVerifier', () => {
 
   it('rejects malformed stored password hashes without throwing', async () => {
     const database = {
-      query: async () => ({ rows: [{ id: 'user-1', password_hash: 'scrypt$salt$not-a-valid-digest' }] }),
+      query: async () => ({ rows: [{ id: 'user-1', password_hash: `scrypt$invalid-salt${'a'.repeat(64)}` }] }),
     };
     const verifier = new PostgresScryptPasswordVerifier(database as never);
 
