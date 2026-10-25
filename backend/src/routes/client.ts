@@ -62,9 +62,9 @@ export function clientRouter(services: ApplicationServices) {
       const type = parseInput(z.enum(['thumbnail', 'preview']), req.params.type, 'INVALID_REQUEST');
       assertRouteGallery(req.client!, galleryId);
       const asset = await services.catalog.getClientRepresentation(req.client!, galleryId, photoId, type);
-      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      const verified = await services.photoStorage.readVerifiedObject(asset.storageKey);
       if (!verified) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
-      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      const bytes = verified.bytes;
       res.set('Content-Type', verified.mimeType)
         .set('Cache-Control', 'private, no-store')
         .set('X-Content-Type-Options', 'nosniff')
@@ -112,9 +112,9 @@ export function clientRouter(services: ApplicationServices) {
       await services.rateLimits.assertAllowed(`download:${req.client!.clientSessionId}:${req.ip}`, 'download');
       assertRouteGallery(req.client!, galleryId);
       const asset = await services.downloads.getDownloadAsset(req.client!, galleryId, photoId);
-      const verified = await services.photoStorage.verifyObject(asset.storageKey);
+      const verified = await services.photoStorage.readVerifiedObject(asset.storageKey);
       if (!verified) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
-      const bytes = await services.photoStorage.readObjectBytes(asset.storageKey);
+      const bytes = verified.bytes;
       const filename = asset.filename.replace(/[\\r\\n"\\\\]/g, '_').replace(/[^\\x20-\\x7E]/g, '_') || 'photograph';
       res.set('Content-Type', verified.mimeType)
         .set('Content-Disposition', `attachment; filename="${filename}"`)
