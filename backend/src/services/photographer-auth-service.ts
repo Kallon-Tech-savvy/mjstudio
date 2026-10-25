@@ -26,7 +26,17 @@ export class PostgresScryptPasswordVerifier implements PasswordVerifier {
       await this.burnPasswordVerification(password);
       return null;
     }
-    const [scheme, salt, digest] = row.password_hash.split('
+    const [scheme, salt, digest] = row.password_hash.split('\n');
+    if (scheme !== 'scrypt' || !salt || !digest || !/^[a-f0-9]{128}$/i.test(digest)) {
+      await this.burnPasswordVerification(password);
+      return null;
+    }
+    const candidate = (await scrypt(password, salt, PASSWORD_HASH_BYTES)) as Buffer;
+    const expected = Buffer.from(digest, 'hex');
+    if (expected.length !== candidate.length || !timingSafeEqual(candidate, expected)) return null;
+    return { userId: row.id };
+  }
+}
 
 export interface PasswordVerifier {
   verify(email: string, password: string): Promise<{ userId: string } | null>;
