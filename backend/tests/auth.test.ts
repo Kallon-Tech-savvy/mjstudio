@@ -28,6 +28,18 @@ describe('authentication foundation', () => {
   });
 
 
+  it('fails closed on malformed stored gallery PIN hashes', async () => {
+    for (const pinHash of ['broken', ':abcd', `00000000000000000000000000000000:00`, `gggggggggggggggggggggggggggggggg:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, `00000000000000000000000000000000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:extra`]) {
+      const database = {
+        query: async (sql: string) => sql.includes('FROM gallery_access ga JOIN galleries g')
+          ? { rows: [{ id: 'access-1', pin_hash: pinHash, gallery_id: 'gallery-1' }] }
+          : { rows: [] },
+      };
+      const service = new ClientSessionService(database as never, { assertAllowed: async () => undefined });
+      await expect(service.create('secret-token', '123456', 'client-ip')).rejects.toThrow();
+    }
+  });
+
   it('rejects client sessions when the gallery itself has expired', async () => {
     const statements: string[] = [];
     const database = {
