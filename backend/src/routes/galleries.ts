@@ -69,6 +69,15 @@ export function galleriesRouter(services: ApplicationServices) {
     try { const { galleryId } = parseInput(galleryParamSchema, req.params); res.json(successEnvelope(await services.galleries.get(req.user!, galleryId))); }
     catch (error) { next(error); }
   });
+  router.get('/:galleryId/feedback', auth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { galleryId } = parseInput(galleryParamSchema, req.params);
+    const feedback = await services.feedback.listForStudio(req.user!, galleryId);
+    res.json(successEnvelope(feedback));
+  } catch (error) {
+    next(error);
+  }
+});
   router.patch('/:galleryId', auth, async (req: AuthenticatedRequest, res, next) => {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body);

@@ -126,7 +126,7 @@ export type ClientSelection = {
 };
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001/api";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api";
 
 export class ApiError extends Error {
   constructor(
@@ -289,7 +289,16 @@ export async function setStudioPhotoReview(
   reviewedAt?: string | null;
   updatedAt?: string;
 }> {
-  return apiRequest<StudioSelectedPhoto>(`/galleries/${galleryId}/selected-photos/${photoId}/review`, {
+  return apiRequest<{
+    id: string;
+    galleryId: string;
+    photoId: string;
+    status: "approved" | "needs_revision";
+    note?: string | null;
+    reviewedBy?: string | null;
+    reviewedAt?: string | null;
+    updatedAt?: string;
+  }>(`/galleries/${galleryId}/selected-photos/${photoId}/review`, {
     method: "PUT",
     body: JSON.stringify({ status, note }),
   });

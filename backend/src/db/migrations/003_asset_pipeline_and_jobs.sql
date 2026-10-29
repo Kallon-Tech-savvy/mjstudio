@@ -31,6 +31,14 @@ ALTER TABLE photo_assets
   ALTER COLUMN processing_status SET DEFAULT 'not_required',
   ALTER COLUMN processing_status SET NOT NULL;
 
+ALTER TABLE photo_assets
+  DROP CONSTRAINT IF EXISTS photo_assets_type_check,
+  DROP CONSTRAINT IF EXISTS photo_assets_state_check,
+  DROP CONSTRAINT IF EXISTS photo_assets_upload_status_check,
+  DROP CONSTRAINT IF EXISTS photo_assets_processing_status_check,
+  DROP CONSTRAINT IF EXISTS photo_assets_original_processing_check,
+  DROP CONSTRAINT IF EXISTS photo_assets_derivative_processing_check;
+
 ALTER TABLE photo_assets DROP CONSTRAINT IF EXISTS photo_assets_status_check;
 ALTER TABLE photo_assets DROP COLUMN IF EXISTS status;
 ALTER TABLE photo_assets

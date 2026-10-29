@@ -63,20 +63,26 @@ export class GalleryService {
               COALESCE(ga.selected_count, 0)::int AS "selectedCount"
          FROM galleries g
          JOIN clients c ON c.id = g.client_id
-         LEFT JOIN LATERAL (
-           SELECT s.status AS selection_status,
-                  s.submitted_at AS selection_submitted_at,
-                  COUNT(si.id) FILTER (WHERE si.selected)::int AS selected_count
-             FROM gallery_access a
-             LEFT JOIN gallery_selections s ON s.gallery_access_id = a.id
-             LEFT JOIN gallery_selection_items si ON si.gallery_selection_id = s.id
-            WHERE a.gallery_id = g.id
-              AND a.revoked_at IS NULL
-              AND (a.expires_at IS NULL OR a.expires_at > NOW())
-            GROUP BY s.status, s.submitted_at
-            ORDER BY a.created_at DESC
-            LIMIT 1
-         ) ga ON TRUE
+         
+LEFT JOIN LATERAL (
+  SELECT
+    s.status AS selection_status,
+    s.submitted_at AS selection_submitted_at,
+    (
+      SELECT COUNT(*)::int
+      FROM gallery_selection_items si
+      WHERE si.gallery_selection_id = s.id
+        AND si.selected = TRUE
+    ) AS selected_count
+  FROM gallery_access a
+  LEFT JOIN gallery_selections s ON s.gallery_access_id = a.id
+  WHERE a.gallery_id = g.id
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > NOW())
+  ORDER BY a.created_at DESC
+  LIMIT 1
+) ga ON TRUE
+
         WHERE g.id = $1 AND g.studio_id = $2`,
       [galleryId, actor.studioId],
     );
