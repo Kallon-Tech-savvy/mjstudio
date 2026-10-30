@@ -73,7 +73,7 @@ function ClientAccessPage() {
 
           <label className="field">
             <span>Six-digit PIN</span>
-            <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="\\d{6}" required />
+            <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="\d{6}" required />
           </label>
 
           {error ? <div className="error-box">{error}</div> : null}
