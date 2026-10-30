@@ -313,11 +313,19 @@ export async function setStudioPhotoReview(
   });
 }
 
+export type GalleryAccessCredentials = {
+  id: string;
+  permission: "view" | "view_download";
+  expiresAt: string | null;
+  accessKey: string;
+  pin: string;
+};
+
 export async function createGalleryAccess(
   galleryId: string,
   input: { permission: "view" | "view_download"; expiresAt?: string | null },
-): Promise<{ accessKey?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }> {
-  return apiRequest<{ accessKey?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }>(
+): Promise<GalleryAccessCredentials> {
+  return apiRequest<GalleryAccessCredentials>(
     `/galleries/${galleryId}/access`,
     {
       method: "POST",
