@@ -97,7 +97,7 @@ export function galleriesRouter(services: ApplicationServices) {
     try {
       const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body);
       const body = parseInput(z.object({ permission: z.enum(['view', 'view_download']), expiresAt: z.string().datetime().nullable().optional() }).strict(), req.body, 'INVALID_GALLERY_ACCESS');
-      res.status(201).json(successEnvelope(await services.galleryAccess.create(req.user!, galleryId, { permission: body.permission, expiresAt: body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt) })));
+      res.set('Cache-Control', 'no-store').status(201).json(successEnvelope(await services.galleryAccess.create(req.user!, galleryId, { permission: body.permission, expiresAt: body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt) })));
     } catch (error) { next(error); }
   });
   router.get('/:galleryId/access', auth, async (req: AuthenticatedRequest, res, next) => {
@@ -109,7 +109,7 @@ export function galleriesRouter(services: ApplicationServices) {
       const { galleryId } = parseInput(galleryParamSchema, req.params); requireJsonBody(req.body);
       await services.rateLimits.assertAllowed(`access-reset:${req.user!.userId}:${req.ip}`, 'access-reset');
       const body = parseInput(z.object({ permission: z.enum(['view', 'view_download']), expiresAt: z.string().datetime().nullable().optional() }).strict(), req.body, 'INVALID_GALLERY_ACCESS');
-      res.json(successEnvelope(await services.galleryAccess.reset(req.user!, galleryId, body.permission, body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt))));
+      res.set('Cache-Control', 'no-store').json(successEnvelope(await services.galleryAccess.reset(req.user!, galleryId, body.permission, body.expiresAt == null ? body.expiresAt : new Date(body.expiresAt))));
     } catch (error) { next(error); }
   });
   router.post('/:galleryId/access/revoke', auth, async (req: AuthenticatedRequest, res, next) => {
