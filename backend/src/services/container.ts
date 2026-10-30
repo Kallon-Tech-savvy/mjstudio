@@ -84,7 +84,24 @@ export function unavailableServices(): ApplicationServices {
     jobs: { enqueue: unavailable, enqueueInTransaction: unavailable, claim: unavailable, heartbeat: unavailable, complete: unavailable, fail: unavailable } as unknown as JobService,
   };
 }
-
+export function developmentAccessDelivery(): AccessCredentialDelivery {
+  return {
+    deliver: async ({ galleryId, secretToken, pin }) => {
+      console.info('[DEV ACCESS DELIVERY]', {
+        galleryId,
+        secretToken,
+        pin,
+      });
+    },
+    resend: async ({ galleryId, accessId }) => {
+      console.info('[DEV ACCESS RESEND]', {
+        galleryId,
+        accessId,
+        note: 'Original credentials cannot be recovered from their hashes.',
+      });
+    },
+  };
+}
 export function unavailableProviders(database: Pool): ServiceProviders {
   const unavailable = async (): Promise<never> => { throw new ServiceUnavailableError('External storage, delivery, or processing provider is not configured.'); };
   const rateLimits = new PostgresRateLimitService(database);

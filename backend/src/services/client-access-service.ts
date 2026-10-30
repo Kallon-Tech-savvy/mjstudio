@@ -104,7 +104,27 @@ export class GalleryAccessService {
         [grantId, galleryId, hashCredential(secretToken), pinHash, permission, expiresAt],
       );
     });
-    await this.delivery.deliver({ galleryId, secretToken, pin });
+try {
+  await this.delivery.deliver({ galleryId, secretToken, pin });
+} catch (deliveryError) {
+  await inTransaction(this.database, async (transaction) => {
+    await transaction.query(
+      `UPDATE gallery_access
+          SET revoked_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND revoked_at IS NULL`,
+      [grantId],
+    );
+
+    await transaction.query(
+      `UPDATE client_sessions
+          SET revoked_at = NOW(), updated_at = NOW()
+        WHERE gallery_access_id = $1 AND revoked_at IS NULL`,
+      [grantId],
+    );
+  });
+
+  throw deliveryError;
+}
     return { id: grantId, permission, expiresAt };
   }
 }

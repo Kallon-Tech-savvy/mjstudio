@@ -3,7 +3,11 @@ import { env } from './config/env.js';
 import { logger } from './logging/logger.js';
 import { db, testDatabaseConnection } from './db/client.js';
 import { serializeError } from './logging/serialize-error.js';
-import { createApplicationServices, unavailableProviders } from './services/container.js';
+import {
+  createApplicationServices,
+  developmentAccessDelivery,
+  unavailableProviders,
+} from './services/container.js';
 
 if (!env.DATABASE_URL) {
   throw new Error('DATABASE_URL is required to start the API server.');
@@ -19,7 +23,13 @@ try {
   process.exit(1);
 }
 
-const services = createApplicationServices(unavailableProviders(db));
+const providers = unavailableProviders(db);
+
+if (env.NODE_ENV === 'development') {
+  providers.accessDelivery = developmentAccessDelivery();
+}
+
+const services = createApplicationServices(providers);
 const app = createApp(services);
 
 app.listen(env.PORT, () => {

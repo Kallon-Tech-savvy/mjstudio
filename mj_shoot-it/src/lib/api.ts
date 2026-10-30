@@ -317,6 +317,21 @@ export async function createGalleryAccess(
   );
 }
 
+export async function resetGalleryAccess(
+  galleryId: string,
+  input: { permission: "view" | "view_download"; expiresAt?: string | null },
+): Promise<{ accessKey?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }> {
+  return apiRequest<{
+    accessKey?: string;
+    permission: string;
+    expiresAt?: string | null;
+    [key: string]: unknown;
+  }>(`/galleries/${galleryId}/access/reset`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function verifyClientAccess(input: {
   secret: string;
   pin: string;
