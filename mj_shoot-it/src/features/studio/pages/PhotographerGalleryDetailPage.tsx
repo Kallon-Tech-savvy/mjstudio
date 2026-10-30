@@ -13,6 +13,7 @@ import {
   prepareStudioDelivery,
   releaseStudioDelivery,
   setStudioPhotoReview,
+  type GalleryAccessCredentials,
   type PhotoRecord,
   type StudioDeliveryDetails,
   type StudioFeedback,
@@ -158,6 +159,8 @@ export default function PhotographerGalleryDetailPage() {
   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
   const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
+  const [accessCredentials, setAccessCredentials] = useState<GalleryAccessCredentials | null>(null);
+  const [isIssuingAccess, setIsIssuingAccess] = useState(false);
   const [error, setError] = useState("");
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [delivery, setDelivery] = useState<StudioDeliveryDetails | null>(null);
@@ -199,6 +202,7 @@ export default function PhotographerGalleryDetailPage() {
       setSelection([]);
       setFeedback([]);
       setDelivery(null);
+      setAccessCredentials(null);
 
       try {
         const me = await getPhotographerMe();
@@ -235,20 +239,27 @@ export default function PhotographerGalleryDetailPage() {
   }, [galleryId, navigate]);
 
   const handleAccessGrant = async () => {
-    if (!galleryId) return;
+    if (!galleryId || isIssuingAccess) return;
 
+    setIsIssuingAccess(true);
+    setAccessCredentials(null);
+    setError("");
     try {
-      await createGalleryAccess(galleryId, { permission, expiresAt: null });
-      const photoResponse = await listGalleryPhotos(galleryId, 1, 20);
-      setPhotos(photoResponse.items ?? []);
+      const credentials = await createGalleryAccess(galleryId, { permission, expiresAt: null });
+      setAccessCredentials(credentials);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to create gallery access.");
+    } finally {
+      setIsIssuingAccess(false);
     }
   };
 
   if (!galleryId) return <Navigate to="/photographer/galleries" replace />;
 
   const selectedPhoto = selectedPhotoIndex === null ? null : selection[selectedPhotoIndex] ?? null;
+  const clientAccessUrl = accessCredentials
+    ? `${window.location.origin}/client/access?galleryId=${encodeURIComponent(galleryId)}#secret=${encodeURIComponent(accessCredentials.secretToken)}`
+    : "";
 
   return (
     <main className="page-shell">
@@ -269,8 +280,31 @@ export default function PhotographerGalleryDetailPage() {
               <option value="view_download">View + download</option>
             </select>
           </label>
-          <button type="button" className="primary-button" onClick={handleAccessGrant}>Issue access link</button>
+          <button type="button" className="primary-button" disabled={isIssuingAccess} onClick={handleAccessGrant}>
+            {isIssuingAccess ? "Issuing..." : "Issue access link"}
+          </button>
         </div>
+
+        {accessCredentials ? (
+          <section className="panel access-credentials-panel" aria-live="polite">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Share with client</p>
+                <h2>Access issued</h2>
+                <p className="muted">Send the link and PIN separately. This PIN is shown only in this response.</p>
+              </div>
+            </div>
+            <label className="field">
+              <span>Client access link</span>
+              <input readOnly value={clientAccessUrl} onFocus={(event) => event.currentTarget.select()} />
+            </label>
+            <label className="field">
+              <span>Six-digit PIN — send separately</span>
+              <input readOnly value={accessCredentials.pin} onFocus={(event) => event.currentTarget.select()} />
+            </label>
+            <p className="muted">The access secret is carried in the link fragment, not sent as a URL query parameter. Do not share the PIN in the same message as the link.</p>
+          </section>
+        ) : null}
 
         {error ? <div className="error-box">{error}</div> : null}
 
