@@ -1,3 +1,5 @@
+@import "./styles/tokens.css";
+
 :root {
   --page-bg: #0b1325;
   --panel-bg: #111a30;
