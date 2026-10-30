@@ -26,6 +26,15 @@ function ClientAccessPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const linkSecret = fragment.get("secret");
+    if (!linkSecret) return;
+
+    setSecret(linkSecret);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }, []);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -53,14 +62,18 @@ function ClientAccessPage() {
         </div>
 
         <form className="stack" onSubmit={handleSubmit}>
-          <label className="field">
-            <span>Access secret</span>
-            <input value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="secret" required />
-          </label>
+          {secret ? (
+            <p className="muted">Access key received from your private gallery link.</p>
+          ) : (
+            <label className="field">
+              <span>Access secret</span>
+              <input value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="secret" required />
+            </label>
+          )}
 
           <label className="field">
             <span>Six-digit PIN</span>
-            <input value={pin} onChange={(event) => setPin(event.target.value)} placeholder="123456" inputMode="numeric" maxLength={6} required />
+            <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="\\d{6}" required />
           </label>
 
           {error ? <div className="error-box">{error}</div> : null}
