@@ -86,13 +86,8 @@ export function unavailableServices(): ApplicationServices {
 }
 export function developmentAccessDelivery(): AccessCredentialDelivery {
   return {
-    deliver: async ({ galleryId, secretToken, pin }) => {
-      console.info('[DEV ACCESS DELIVERY]', {
-        galleryId,
-        secretToken,
-        pin,
-      });
-    },
+    // Manual delivery is handled by the photographer using the one-time API response.
+    deliver: async () => undefined,
     resend: async ({ galleryId, accessId }) => {
       console.info('[DEV ACCESS RESEND]', {
         galleryId,
