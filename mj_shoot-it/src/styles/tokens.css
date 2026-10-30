@@ -1,0 +1,50 @@
+/* MJ Studio design tokens — Swiss editorial, monochrome foundation. */
+:root {
+  color-scheme: light;
+  --page-bg: #f4f4f2;
+  --panel-bg: #ffffff;
+  --panel-alt: #f0f0ee;
+  --surface: #ffffff;
+  --ink: #171717;
+  --muted: #686868;
+  --line: #dededb;
+  --border: #dededb;
+  --brand: #171717;
+  --brand-dark: #333333;
+  --accent: #555555;
+  --tomato: #777777;
+  --maroon: #333333;
+  --obsidian-dark: #111111;
+  --obsidian-card: #f7f7f5;
+  --success: #333333;
+  --danger: #292929;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
+  --font-ui: "Space Grotesk", "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  --font-display: "Instrument Serif", "Bodoni MT", Georgia, serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --content-width: 1200px;
+  --radius-control: 4px;
+  --radius-panel: 6px;
+}
+body {
+  background: var(--page-bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-feature-settings: "ss01" on;
+  letter-spacing: -0.01em;
+}
+h1, h2, h3, .editorial-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
+button, input, select, textarea { font-family: var(--font-ui); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+::selection { background: #d8d8d5; color: #111111; }
