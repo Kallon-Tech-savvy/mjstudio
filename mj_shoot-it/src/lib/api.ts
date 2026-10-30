@@ -317,7 +317,7 @@ export type GalleryAccessCredentials = {
   id: string;
   permission: "view" | "view_download";
   expiresAt: string | null;
-  accessKey: string;
+  secretToken: string;
   pin: string;
 };
 
@@ -337,9 +337,10 @@ export async function createGalleryAccess(
 export async function resetGalleryAccess(
   galleryId: string,
   input: { permission: "view" | "view_download"; expiresAt?: string | null },
-): Promise<{ accessKey?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }> {
+): Promise<{ secretToken?: string; pin?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }> {
   return apiRequest<{
-    accessKey?: string;
+    secretToken?: string;
+    pin?: string;
     permission: string;
     expiresAt?: string | null;
     [key: string]: unknown;
