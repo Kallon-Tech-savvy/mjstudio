@@ -125,8 +125,9 @@ export type ClientSelection = {
   items: ClientSelectionItem[];
 };
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api";
+// Same-origin by default; Vite proxies /api to the backend during development.
+// Set VITE_API_BASE_URL only when the deployed API uses a separate origin.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export class ApiError extends Error {
   constructor(
