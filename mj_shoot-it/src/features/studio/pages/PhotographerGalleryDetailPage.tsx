@@ -2,6 +2,7 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { StudioDeliverySection, StudioFeedbackReview, StudioPhotoList, StudioSelectionReview } from "@/features/studio/components/GalleryWorkspaceSections";
 import {
+  ApiError,
   createGalleryAccess,
   getGallery,
   getPhotographerMe,
@@ -189,11 +190,19 @@ export default function PhotographerGalleryDetailPage() {
   };
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
       if (!galleryId) return;
+      setError("");
+      setGallery(null);
+      setPhotos([]);
+      setSelection([]);
+      setFeedback([]);
+      setDelivery(null);
 
       try {
         const me = await getPhotographerMe();
+        if (!active) return;
         if (!me?.user) {
           navigate("/photographer/login", { replace: true });
           return;
@@ -204,20 +213,25 @@ export default function PhotographerGalleryDetailPage() {
           listGalleryPhotos(galleryId, 1, 20),
           listSelectedPhotos(galleryId),
           listStudioFeedback(galleryId),
-          getStudioDelivery(galleryId).catch(() => null),
+          getStudioDelivery(galleryId).catch((err: unknown) => {
+            if (err instanceof ApiError && err.status === 404) return null;
+            throw err;
+          }),
         ]);
-
+        if (!active) return;
         setGallery(galleryResponse as GalleryDetail);
         setPhotos(photoResponse.items ?? []);
         setSelection(selectionResponse);
         setFeedback(feedbackResponse);
-        if (deliveryResponse) setDelivery(deliveryResponse);
+        setDelivery(deliveryResponse);
       } catch (caughtError) {
+        if (!active) return;
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
     };
 
     void load();
+    return () => { active = false; };
   }, [galleryId, navigate]);
 
   const handleAccessGrant = async () => {
