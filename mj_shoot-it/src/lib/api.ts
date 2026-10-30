@@ -141,15 +141,23 @@ export class ApiError extends Error {
 }
 
 async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: Record<string, unknown> }> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (cause) {
+    const message = cause instanceof Error && cause.name === "AbortError"
+      ? "The request was cancelled."
+      : "Cannot reach MJ Studio. Check your connection and try again.";
+    throw new ApiError(message, "NETWORK_ERROR", 0);
+  }
 
   if (response.status === 204) {
     return { data: undefined as T };
