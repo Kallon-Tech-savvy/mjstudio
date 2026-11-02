@@ -218,8 +218,8 @@ export class DownloadService {
       [photoId, client.galleryId, client.clientSessionId, client.galleryAccessId]);
     const photo = result.rows[0];
     if (!photo) throw new NotFoundError('DOWNLOAD_NOT_READY', 'Photo is not available for download.');
-    await this.database.query('INSERT INTO photo_downloads (id, gallery_access_id, client_session_id, photo_id) VALUES ($1, $2, $3, $4)', [this.createId(), client.galleryAccessId, client.clientSessionId, photoId]);
     const capability = await this.storage.createDownloadCapability(photo.storage_key, 120);
+    await this.database.query('INSERT INTO photo_downloads (id, gallery_access_id, client_session_id, photo_id) VALUES ($1, $2, $3, $4)', [this.createId(), client.galleryAccessId, client.clientSessionId, photoId]);
     return capability;
   }
 }
@@ -245,15 +245,14 @@ export class FeedbackService {
               NULL::int AS "position", gf.message, gf.created_at AS "createdAt"
          FROM gallery_feedback gf
          JOIN gallery_access ga ON ga.id = gf.gallery_access_id
-        WHERE ga.gallery_id = $1 AND ga.revoked_at IS NULL
+        WHERE ga.gallery_id = $1
        UNION ALL
        SELECT pf.id, 'photo' AS "feedbackType", pf.photo_id AS "photoId", p.filename,
               p.position, pf.message, pf.created_at AS "createdAt"
          FROM photo_feedback pf
          JOIN gallery_access ga ON ga.id = pf.gallery_access_id
          JOIN photos p ON p.id = pf.photo_id
-        WHERE ga.gallery_id = $1 AND ga.revoked_at IS NULL
-          AND p.gallery_id = $1 AND p.deleted_at IS NULL
+        WHERE ga.gallery_id = $1 AND p.gallery_id = $1 AND p.deleted_at IS NULL
        ORDER BY "createdAt" DESC`,
       [galleryId],
     );

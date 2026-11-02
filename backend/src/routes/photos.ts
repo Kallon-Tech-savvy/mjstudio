@@ -5,7 +5,7 @@ import type { ApplicationServices } from '../services/container.js';
 import { collectionEnvelope, successEnvelope } from '../utils/response.js';
 import { galleryParamSchema, paginationSchema, parseInput, photoParamSchema, requireJsonBody } from '../http/validation.js';
 
-const createSchema = z.object({ filename: z.string().trim().min(1).max(255), mimeType: z.string().trim().min(1).max(150) }).strict();
+const createSchema = z.object({ filename: z.string().trim().min(1).max(255), mimeType: z.string().trim().regex(/^image\/[a-z0-9.+-]+$/i).max(150) }).strict();
 const updateSchema = z.object({ filename: z.string().trim().min(1).max(255) }).strict();
 const reorderSchema = z.object({ photoIds: z.array(z.string().uuid()).min(1).max(500) }).strict();
 

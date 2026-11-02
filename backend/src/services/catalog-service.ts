@@ -176,7 +176,7 @@ export class CatalogService {
               AND (cs.expires_at IS NULL OR cs.expires_at > NOW()) AND (ga.expires_at IS NULL OR ga.expires_at > NOW()))
           AND (g.expires_at IS NULL OR g.expires_at > NOW())`, [galleryId, client.clientSessionId, client.galleryAccessId]);
     if (!result.rows[0]) throw new NotFoundError('GALLERY_NOT_FOUND', 'Gallery not found.');
-    return result.rows[0];
+    return { ...result.rows[0], permission: client.permission };
   }
 
   async getClientPhoto(client: ClientContext, galleryId: string, photoId: string) {

@@ -1,21 +1,37 @@
+import { type FormEvent, type TouchEvent, useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useState, type FormEvent, type TouchEvent } from "react";
 import {
-  createGalleryFeedback,
-  createPhotoFeedback,
-  getClientGallery,
-  getClientDelivery,
-  downloadDeliveryPhoto,
-  getClientSelection,
-  submitSelection,
-  setSelection,
-  verifyClientAccess,
-  listClientPhotos,
-  getClientPhoto,
+  ApiError,
   type ClientDeliveryResponse,
   type ClientPhoto,
   type ClientSelection,
+  createGalleryFeedback,
+  createPhotoFeedback,
+  downloadDeliveryPhoto,
+  getClientDelivery,
+  getClientGallery,
+  getClientPhoto,
+  getClientSelection,
+  listClientPhotos,
+  setSelection,
+  submitSelection,
+  verifyClientAccess,
 } from "@/lib/api";
+
+function startPhotoDownload(url: string, filename: string) {
+  const downloadUrl = new URL(url, window.location.origin);
+  if (downloadUrl.protocol !== "http:" && downloadUrl.protocol !== "https:") {
+    throw new Error("The download link is invalid. Please try again.");
+  }
+
+  const link = document.createElement("a");
+  link.href = downloadUrl.href;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
 
 function ClientAccessPage() {
   const navigate = useNavigate();
@@ -44,7 +60,9 @@ function ClientAccessPage() {
       const access = await verifyClientAccess({ secret, pin });
       navigate(`/client/gallery/${galleryId || access.galleryId}`, { replace: true });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Gallery access could not be verified.");
+      setError(caughtError instanceof ApiError && caughtError.code === "INVALID_GALLERY_ACCESS"
+        ? "We couldn't verify this access. Check that you are using the latest gallery link and its matching PIN. The studio may need to publish the gallery or issue new access."
+        : caughtError instanceof Error ? caughtError.message : "Gallery access could not be verified.");
     } finally {
       setIsSubmitting(false);
     }
@@ -54,26 +72,26 @@ function ClientAccessPage() {
     <main className="page-shell auth-shell">
       <div className="panel auth-panel">
         <div className="panel-header">
-          <p className="eyebrow">Client gallery</p>
-          <h1>Verify access</h1>
+          <p className="eyebrow">Private gallery</p>
+          <h1>Your gallery is just a step away.</h1>
           <p className="muted">
-            The browser is never the authority. A valid secret and PIN grant a temporary session, and the server enforces access.
+            Enter the six-digit PIN your photographer shared. Your private link and PIN will open the gallery securely.
           </p>
         </div>
 
         <form className="stack" onSubmit={handleSubmit}>
           {secret ? (
-            <p className="muted">Access key received from your private gallery link.</p>
+            <p className="muted">Your private gallery link is ready. Enter the matching PIN to continue.</p>
           ) : (
             <label className="field">
-              <span>Access secret</span>
-              <input value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="secret" required />
+              <span>Private access key</span>
+              <input value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Paste the key from your link" required />
             </label>
           )}
 
           <label className="field">
-            <span>Six-digit PIN</span>
-            <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="\d{6}" required />
+            <span>Six-digit gallery PIN</span>
+            <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter 6 digits" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="\d{6}" required />
           </label>
 
           {error ? <div className="error-box">{error}</div> : null}
@@ -118,21 +136,36 @@ function ClientPhotoViewer({
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof getClientPhoto>> | null>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   const currentIndex = photos.findIndex((item) => item.photoId === photoId);
   const previousPhoto = currentIndex > 0 ? photos[currentIndex - 1] : null;
   const nextPhoto = currentIndex >= 0 && currentIndex < photos.length - 1 ? photos[currentIndex + 1] : null;
   const isSelected = selectedPhotoIds.has(photoId);
-  const isAtLoadedEnd = currentIndex >= 0 && currentIndex === photos.length - 1;
   const canAdvance = Boolean(nextPhoto) || hasMorePhotos;
+  const previousPhotoId = previousPhoto?.photoId;
+
+  const handleNext = useCallback(async () => {
+    if (nextPhoto) {
+      onNavigate(nextPhoto.photoId);
+      return;
+    }
+    if (hasMorePhotos) {
+      const firstNewPhotoId = await onLoadMore();
+      if (firstNewPhotoId) onNavigate(firstNewPhotoId);
+    }
+  }, [hasMorePhotos, nextPhoto, onLoadMore, onNavigate]);
 
   useEffect(() => {
     let active = true;
     setPhoto(null);
     setError("");
+    setFeedbackError("");
+    setFeedbackStatus("");
 
     void getClientPhoto(galleryId, photoId)
       .then((result) => {
@@ -152,9 +185,9 @@ function ClientPhotoViewer({
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
-      } else if (event.key === "ArrowLeft" && previousPhoto) {
+      } else if (event.key === "ArrowLeft" && previousPhotoId) {
         event.preventDefault();
-        onNavigate(previousPhoto.photoId);
+        onNavigate(previousPhotoId);
       } else if (event.key === "ArrowRight" && canAdvance) {
         event.preventDefault();
         void handleNext();
@@ -163,7 +196,7 @@ function ClientPhotoViewer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, onNavigate, previousPhoto?.photoId, nextPhoto?.photoId]);
+  }, [canAdvance, handleNext, onClose, onNavigate, previousPhotoId]);
 
   const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     setTouchStartX(event.changedTouches[0]?.clientX ?? null);
@@ -180,28 +213,18 @@ function ClientPhotoViewer({
     if (distance > 0 && previousPhoto) onNavigate(previousPhoto.photoId);
   };
 
-  const handleNext = async () => {
-    if (nextPhoto) {
-      onNavigate(nextPhoto.photoId);
-      return;
-    }
-    if (hasMorePhotos) {
-      const firstNewPhotoId = await onLoadMore();
-      if (firstNewPhotoId) onNavigate(firstNewPhotoId);
-    }
-  };
-
   const handlePhotoFeedback = async () => {
     if (!feedback.trim()) return;
     setIsFeedbackSubmitting(true);
-    setError("");
+    setFeedbackError("");
 
     try {
       await createPhotoFeedback(galleryId, photoId, feedback.trim());
       setFeedback("");
       setIsFeedbackOpen(false);
+      setFeedbackStatus("Your note was sent to the photographer.");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Photo feedback could not be submitted.");
+      setFeedbackError(caughtError instanceof Error ? caughtError.message : "Photo feedback could not be submitted.");
     } finally {
       setIsFeedbackSubmitting(false);
     }
@@ -251,7 +274,7 @@ function ClientPhotoViewer({
           )}
         </div>
 
-        <div className="viewer-controls" aria-label="Photograph controls">
+        <nav className="viewer-controls" aria-label="Photograph controls">
           <button
             type="button"
             className="viewer-nav viewer-nav-previous"
@@ -290,7 +313,7 @@ function ClientPhotoViewer({
           >
             {isFeedbackOpen ? "Close note" : "Leave a note"}
           </button>
-        </div>
+        </nav>
 
         {isFeedbackOpen ? (
           <form
@@ -309,10 +332,10 @@ function ClientPhotoViewer({
               value={feedback}
               onChange={(event) => setFeedback(event.target.value)}
               placeholder="Tell your photographer what you'd like changed or reviewed."
-              autoFocus
+              maxLength={5000}
               disabled={isFeedbackSubmitting}
             />
-            {error ? <div className="viewer-feedback-error">{error}</div> : null}
+            {feedbackError ? <div className="viewer-feedback-error" role="alert">{feedbackError}</div> : null}
             <div className="viewer-feedback-actions">
               <button
                 type="button"
@@ -331,6 +354,7 @@ function ClientPhotoViewer({
             </div>
           </form>
         ) : null}
+        {feedbackStatus ? <output className="muted" aria-live="polite">{feedbackStatus}</output> : null}
       </div>
     </div>
   );
@@ -431,10 +455,10 @@ function ClientSelectionReviewPage() {
       <div className="client-gallery selection-review-page">
         <header className="gallery-header">
           <div>
-            <p className="eyebrow">Review your selection</p>
+            <p className="eyebrow">Your shortlist</p>
             <h1>{galleryName}</h1>
             <p className="gallery-intro">
-              These are the photographs you have chosen. Review them before sending your selection to the photographer.
+              A final look before you send these choices to your photographer. You can still remove a photograph before submitting.
             </p>
           </div>
           <Link to={`/client/gallery/${galleryId}`} className="secondary-button">
@@ -446,13 +470,13 @@ function ClientSelectionReviewPage() {
 
         <div className="gallery-summary" aria-live="polite">
           <strong>{selectedPhotoIds.size} selected</strong>
-          <span>Review before submission</span>
+          <span>Ready when you are</span>
         </div>
 
         {selectedPhotos.length === 0 ? (
           <section className="empty-state panel">
-            <h2>No photographs selected yet</h2>
-            <p>Return to the gallery and choose the photographs you want your photographer to work with.</p>
+            <h2>Your shortlist is empty</h2>
+            <p>Browse the gallery and select the photographs you’d like your photographer to focus on.</p>
             <Link to={`/client/gallery/${galleryId}`} className="primary-button">
               Choose photographs
             </Link>
@@ -488,13 +512,13 @@ function ClientSelectionReviewPage() {
 
         <div className="selection-review-actions">
           {selectionStatus === "submitted" ? (
-            <p className="muted" role="status">
+            <output className="muted" aria-live="polite">
               Your selection has been sent to the photographer.
-            </p>
+            </output>
           ) : (
             <>
               <p className="muted">
-                When you're happy with these choices, send them to your photographer.
+                Happy with your choices? Send them to your photographer to review.
               </p>
               <button
                 type="button"
@@ -502,7 +526,7 @@ function ClientSelectionReviewPage() {
                 onClick={() => void handleSubmit()}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Sending…" : "Send selection"}
+                {isSubmitting ? "Sending…" : "Send to photographer"}
               </button>
             </>
           )}
@@ -606,13 +630,16 @@ function ClientDeliveryPage() {
   const [delivery, setDelivery] = useState<ClientDeliveryResponse | null>(null);
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
   const [galleryName, setGalleryName] = useState("Gallery");
+  const [canDownload, setCanDownload] = useState(false);
   const [loading, setLoading] = useState(true);
   const [downloadingPhotoId, setDownloadingPhotoId] = useState<string | null>(null);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const load = async () => {
       if (!galleryId) return;
+      setCanDownload(false);
       try {
         const [galleryRes, deliveryRes, photoRes] = await Promise.all([
           getClientGallery(galleryId),
@@ -620,6 +647,7 @@ function ClientDeliveryPage() {
           listClientPhotos(galleryId, 1, 100),
         ]);
         setGalleryName(String(galleryRes.name ?? "Gallery"));
+        setCanDownload(galleryRes.permission === "view_download");
         setDelivery(deliveryRes);
         setPhotos(photoRes.items ?? []);
       } catch (err) {
@@ -632,14 +660,14 @@ function ClientDeliveryPage() {
   }, [galleryId]);
 
   const handleDownloadSingle = async (photoId: string) => {
-    if (!galleryId || downloadingPhotoId) return;
+    if (!galleryId || downloadingPhotoId || isDownloadingAll) return;
     setDownloadingPhotoId(photoId);
     setError("");
     try {
       const res = await downloadDeliveryPhoto(galleryId, photoId);
-      if (res.download_url) {
-        window.open(res.download_url, "_blank");
-      }
+      if (!res.download_url) throw new Error("The download link could not be created. Please try again.");
+      const item = delivery?.items.find((deliveryItem) => deliveryItem.photoId === photoId);
+      startPhotoDownload(res.download_url, item?.filename || "photograph");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed. Please try again.");
     } finally {
@@ -648,22 +676,25 @@ function ClientDeliveryPage() {
   };
 
   const handleDownloadAllDirect = async () => {
-    if (!delivery || !delivery.items.length || !galleryId) return;
+    if (!delivery || !delivery.items.length || !galleryId || downloadingPhotoId || isDownloadingAll) return;
+    setIsDownloadingAll(true);
     setError("");
-    for (const item of delivery.items) {
-      try {
-        const res = await downloadDeliveryPhoto(galleryId, item.photoId);
-        if (res.download_url) {
-          const a = document.createElement("a");
-          a.href = res.download_url;
-          a.download = item.filename || "photograph";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
+    let failedDownloads = 0;
+    try {
+      for (const item of delivery.items) {
+        try {
+          const res = await downloadDeliveryPhoto(galleryId, item.photoId);
+          if (!res.download_url) throw new Error("Download link was not returned.");
+          startPhotoDownload(res.download_url, item.filename || "photograph");
+        } catch {
+          failedDownloads += 1;
         }
-      } catch (err) {
-        console.error("Download error for photo", item.photoId, err);
       }
+      if (failedDownloads > 0) {
+        setError(`${failedDownloads} of ${delivery.items.length} photographs could not be prepared. You can retry failed downloads individually.`);
+      }
+    } finally {
+      setIsDownloadingAll(false);
     }
   };
 
@@ -713,14 +744,19 @@ function ClientDeliveryPage() {
               {delivery.releasedAt ? new Date(delivery.releasedAt).toLocaleDateString() : "recently"}.
             </p>
           </div>
-          {deliveredItems.length > 0 ? (
-            <button type="button" className="primary-button" onClick={handleDownloadAllDirect}>
-              Download All Photographs
-            </button>
-          ) : null}
+          <div className="client-delivery-actions">
+            <Link to={`/client/gallery/${galleryId}`} className="secondary-button">Back to gallery</Link>
+            {canDownload && deliveredItems.length > 0 ? (
+              <button type="button" className="primary-button" onClick={() => void handleDownloadAllDirect()} disabled={isDownloadingAll || Boolean(downloadingPhotoId)}>
+                {isDownloadingAll ? "Preparing downloads…" : "Download all"}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {error ? <div className="error-box">{error}</div> : null}
+        {!canDownload ? <output className="muted" aria-live="polite">This gallery link allows viewing only. Contact the studio if you need download access.</output> : null}
+        {canDownload && deliveredItems.length > 1 ? <p className="muted">Download all starts one file per photograph. Your browser may ask to allow multiple downloads.</p> : null}
 
         <div className="photo-grid client-delivery-grid">
           {deliveredItems.map((item) => (
@@ -740,14 +776,15 @@ function ClientDeliveryPage() {
               </div>
               <div className="photo-meta client-delivery-meta">
                 <strong>Photograph {item.position + 1}</strong>
-                <button
+                {canDownload ? <button
                   type="button"
                   className="secondary-button compact-button"
-                  disabled={downloadingPhotoId === item.photoId}
+                  disabled={isDownloadingAll || downloadingPhotoId === item.photoId}
                   onClick={() => handleDownloadSingle(item.photoId)}
+                  aria-label={`Download photograph ${item.position + 1}`}
                 >
                   {downloadingPhotoId === item.photoId ? "Preparing…" : "Download"}
-                </button>
+                </button> : null}
               </div>
             </article>
           ))}
@@ -761,6 +798,8 @@ function ClientGalleryPage() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
+  const [deliveryIsReleased, setDeliveryIsReleased] = useState(false);
+  const [canDownload, setCanDownload] = useState(false);
   const [totalPhotos, setTotalPhotos] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -768,6 +807,9 @@ function ClientGalleryPage() {
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
   const [error, setError] = useState("");
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
   const [selectionStatus, setSelectionStatus] = useState<ClientSelection["status"]>("draft");
@@ -776,12 +818,14 @@ function ClientGalleryPage() {
     const load = async () => {
       if (!galleryId) return;
       try {
+        setDeliveryIsReleased(false);
         const [gallery, photoResponse, selectionResponse] = await Promise.all([
           getClientGallery(galleryId),
           listClientPhotos(galleryId, 1, 20),
           getClientSelection(galleryId),
         ]);
         setGalleryName(String(gallery.name ?? "Gallery"));
+        setCanDownload(gallery.permission === "view_download");
         setPhotos(photoResponse.items ?? []);
         setTotalPhotos(photoResponse.total ?? 0);
         setCurrentPage(1);
@@ -793,6 +837,12 @@ function ClientGalleryPage() {
           ),
         );
         setSelectionStatus(selectionResponse.status);
+        try {
+          const deliveryResponse = await getClientDelivery(galleryId);
+          setDeliveryIsReleased(deliveryResponse.isReleased);
+        } catch (deliveryError) {
+          setError(deliveryError instanceof Error ? deliveryError.message : "Delivery status could not be checked.");
+        }
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
@@ -855,15 +905,32 @@ function ClientGalleryPage() {
   };
 
   const handleGalleryFeedback = async () => {
-    if (!galleryId || !feedback.trim()) return;
+    if (!galleryId || !feedback.trim() || isFeedbackSubmitting) return;
 
+    setIsFeedbackSubmitting(true);
+    setFeedbackError("");
     try {
       await createGalleryFeedback(galleryId, feedback.trim());
       setFeedback("");
       setIsFeedbackOpen(false);
+      setFeedbackStatus("Your note was sent to the photographer.");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Your feedback could not be submitted.");
+      setFeedbackError(caughtError instanceof Error ? caughtError.message : "Your feedback could not be submitted.");
+    } finally {
+      setIsFeedbackSubmitting(false);
     }
+  };
+
+  const handleOpenGalleryFeedback = () => {
+    setFeedbackError("");
+    setFeedbackStatus("");
+    setIsFeedbackOpen(true);
+  };
+
+  const handleCloseGalleryFeedback = () => {
+    if (isFeedbackSubmitting) return;
+    setFeedbackError("");
+    setIsFeedbackOpen(false);
   };
 
   if (!galleryId) {
@@ -878,12 +945,18 @@ function ClientGalleryPage() {
             <p className="eyebrow">Your photographs</p>
             <h1>{galleryName}</h1>
             <p className="gallery-intro">
-              Take your time. Open any photograph to view it larger, then select the photographs you want.
+              Take your time. Open a photograph to see it in detail, then choose the images you’d like to keep in focus.
             </p>
           </div>
+          {deliveryIsReleased ? (
+            <Link to={`/client/gallery/${galleryId}/delivery`} className="primary-button delivery-ready-link">
+              {canDownload ? "Download final photos" : "View final photos"}
+            </Link>
+          ) : null}
         </header>
 
         {error ? <div className="error-box">{error}</div> : null}
+        {feedbackStatus ? <output className="muted" aria-live="polite">{feedbackStatus}</output> : null}
 
         <div className="gallery-summary" aria-live="polite">
           <strong>{selectedPhotoIds.size} selected</strong>
@@ -892,7 +965,10 @@ function ClientGalleryPage() {
 
         <div className="photo-grid client-photo-grid">
           {photos.length === 0 ? (
-            <div className="empty-state">No photos are visible in this gallery yet.</div>
+            <div className="empty-state">
+              <strong>Your gallery is taking shape.</strong>
+              <span>There are no photographs to review just yet. Check back soon or contact the studio for an update.</span>
+            </div>
           ) : (
             photos.map((photo) => {
               const selected = selectedPhotoIds.has(photo.photoId);
@@ -948,27 +1024,44 @@ function ClientGalleryPage() {
         ) : null}
 
         {isFeedbackOpen ? (
-          <section className="gallery-feedback">
+          <form
+            className="gallery-feedback"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleGalleryFeedback();
+            }}
+          >
             <textarea
+              id="gallery-feedback"
               className="textarea"
               value={feedback}
               onChange={(event) => setFeedback(event.target.value)}
-              placeholder="Anything you'd like your photographer to know?"
-              aria-label="Gallery feedback"
+              placeholder="Share a thought, question, or anything you’d like the photographer to know."
+              aria-label="Note for your photographer"
+              maxLength={5000}
+              disabled={isFeedbackSubmitting}
             />
-            <button type="button" className="primary-button" onClick={() => void handleGalleryFeedback()}>
-              Send note
+            {feedbackError ? <div className="error-box" role="alert">{feedbackError}</div> : null}
+            <button type="button" className="secondary-button" onClick={handleCloseGalleryFeedback} disabled={isFeedbackSubmitting}>
+              Cancel
             </button>
-          </section>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={isFeedbackSubmitting || !feedback.trim()}
+            >
+              {isFeedbackSubmitting ? "Sending…" : "Send note"}
+            </button>
+          </form>
         ) : (
-          <button type="button" className="button-ghost feedback-trigger" onClick={() => setIsFeedbackOpen(true)}>
+          <button type="button" className="button-ghost feedback-trigger" onClick={handleOpenGalleryFeedback}>
             Leave a note for your photographer
           </button>
         )}
       </div>
 
       {selectedPhotoIds.size > 0 ? (
-        <div className="selection-bar" role="status" aria-live="polite">
+        <section className="selection-bar" aria-live="polite" aria-label="Selection status">
           <div>
             <strong>{selectedPhotoIds.size} selected</strong>
             <span className="selection-bar-note">Your choices are saved.</span>
@@ -976,7 +1069,7 @@ function ClientGalleryPage() {
           <Link to={`/client/gallery/${galleryId}/selection`} className="primary-button selection-review-link">
             Review selection
           </Link>
-        </div>
+        </section>
       ) : null}
 
       {viewerPhotoId ? (

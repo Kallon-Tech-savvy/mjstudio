@@ -87,6 +87,10 @@ export class GalleryAccessService {
       const current = await transaction.query<{ id: string; expires_at: Date | null }>(
         'SELECT id, expires_at FROM gallery_access WHERE gallery_id = $1 AND revoked_at IS NULL FOR UPDATE', [galleryId]);
       let hasCurrentGrant = Boolean(current.rows[0]);
+      const previousGrantId = current.rows[0]?.id ?? (await transaction.query<{ id: string }>(
+        'SELECT id FROM gallery_access WHERE gallery_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [galleryId],
+      )).rows[0]?.id;
       if (current.rows[0]?.expires_at && new Date(current.rows[0].expires_at) <= new Date()) {
         await transaction.query('UPDATE gallery_access SET revoked_at = NOW(), updated_at = NOW() WHERE id = $1', [current.rows[0].id]);
         await transaction.query('UPDATE client_sessions SET revoked_at = NOW(), updated_at = NOW() WHERE gallery_access_id = $1 AND revoked_at IS NULL', [current.rows[0].id]);
@@ -103,6 +107,24 @@ export class GalleryAccessService {
         'INSERT INTO gallery_access (id, gallery_id, secret_token_hash, pin_hash, permission, expires_at) VALUES ($1, $2, $3, $4, $5, $6)',
         [grantId, galleryId, hashCredential(secretToken), pinHash, permission, expiresAt],
       );
+      if (previousGrantId) {
+        await transaction.query(
+          'UPDATE gallery_selections SET gallery_access_id = $2 WHERE gallery_access_id = $1',
+          [previousGrantId, grantId],
+        );
+        await transaction.query(
+          'UPDATE photo_selections SET gallery_access_id = $2 WHERE gallery_access_id = $1',
+          [previousGrantId, grantId],
+        );
+        await transaction.query(
+          'UPDATE gallery_feedback SET gallery_access_id = $2 WHERE gallery_access_id = $1',
+          [previousGrantId, grantId],
+        );
+        await transaction.query(
+          'UPDATE photo_feedback SET gallery_access_id = $2 WHERE gallery_access_id = $1',
+          [previousGrantId, grantId],
+        );
+      }
     });
     // Credentials are returned only in this authenticated issuance response.
     // Persist only hashes; the frontend must show the plaintext once and never log it.

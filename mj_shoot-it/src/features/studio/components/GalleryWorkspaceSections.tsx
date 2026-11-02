@@ -81,11 +81,11 @@ export function StudioDeliverySection({
   onRelease: () => void;
 }) {
   return (
-    <section className="studio-delivery-section panel" style={{ marginTop: "20px" }}>
+    <section className="studio-delivery-section panel">
       <div className="panel-header compact-header">
         <div>
-          <p className="eyebrow">Delivery Workflow</p>
-          <h2>Release Final Photographs</h2>
+          <p className="eyebrow">Final delivery</p>
+          <h2>Prepare the client’s photographs</h2>
           <p className="muted">{delivery?.approvedCount ?? 0} of {delivery?.totalSelectedCount ?? 0} selected photographs approved.</p>
         </div>
         <span className={"tag status-" + (delivery?.status || "pending")}>
@@ -93,24 +93,25 @@ export function StudioDeliverySection({
         </span>
       </div>
 
-      <div style={{ margin: "20px 0" }}>
+      <div className="studio-delivery-controls">
         {delivery?.releasedAt ? (
-          <div className="success-box" style={{ background: "#e6f4ea", padding: "16px", borderRadius: "4px", color: "#137333" }}>
-            <strong>Delivery Active:</strong> Final photographs were released to client on {new Date(delivery.releasedAt).toLocaleString()}.
+          <div className="success-box delivery-success">
+            <strong>Delivered to client</strong>
+            <span>Released on {new Date(delivery.releasedAt).toLocaleString()}.</span>
           </div>
         ) : delivery?.canPrepare ? (
-          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <div className="studio-delivery-actions">
             <button type="button" className="primary-button" disabled={isProcessing} onClick={onPrepare}>
-              {isProcessing ? "Preparing..." : "1. Prepare Final Delivery Assets"}
+              {isProcessing ? "Preparing…" : "Prepare final photographs"}
             </button>
             {delivery.status === "ready" || delivery.items.length ? (
-              <button type="button" className="primary-button" style={{ background: "#137333" }} disabled={isProcessing} onClick={onRelease}>
-                {isProcessing ? "2. Explicitly Release to Client" : "Release Delivery"}
+              <button type="button" className="primary-button" disabled={isProcessing} onClick={onRelease}>
+                {isProcessing ? "Releasing…" : "Release to client"}
               </button>
             ) : null}
           </div>
         ) : (
-          <p className="muted">You cannot prepare delivery until all selected photographs are reviewed and approved in Proofing.</p>
+          <p className="muted">Approve each selected photograph in Proofing to prepare the final delivery.</p>
         )}
       </div>
 

@@ -31,6 +31,7 @@ export type GalleryRecord = {
   selectedCount?: number;
   clientName?: string;
   expiresAt?: string | null;
+  permission?: "view" | "view_download";
   createdAt?: string;
   [key: string]: unknown;
 };
@@ -275,6 +276,64 @@ export async function listGalleryPhotos(galleryId: string, page = 1, limit = 20)
   return apiCollectionRequest(`/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => normalizePhoto(item, galleryId));
 }
 
+export async function getStudioPhotoStatus(photoId: string): Promise<{ status: string }> {
+  return apiRequest<{ status: string }>(`/photos/${photoId}`);
+}
+
+type PhotoUploadCapability = {
+  photo: { id: string; position: number; status: string };
+  upload: { method: "PUT" | "POST"; url: string; headers?: Record<string, string>; expiresAt: string };
+};
+
+export async function createPhotoUpload(
+  galleryId: string,
+  file: File,
+): Promise<PhotoUploadCapability> {
+  return apiRequest<PhotoUploadCapability>(`/galleries/${galleryId}/photos`, {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, mimeType: file.type }),
+  });
+}
+
+export function uploadPhotoFile(
+  capability: PhotoUploadCapability["upload"],
+  file: File,
+  onProgress: (progress: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(capability.method, capability.url);
+    request.withCredentials = false;
+    request.setRequestHeader("Content-Type", file.type);
+    for (const [name, value] of Object.entries(capability.headers ?? {})) {
+      request.setRequestHeader(name, value);
+    }
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(100);
+        resolve();
+      } else {
+        reject(new Error(`Photo storage rejected the upload (HTTP ${request.status}). Try selecting the photo again.`));
+      }
+    };
+    request.onerror = () => reject(new Error("Photo upload failed. Check your connection and try again."));
+    request.ontimeout = () => reject(new Error("Photo upload timed out. Try selecting the photo again."));
+    request.onabort = () => reject(new Error("Photo upload was cancelled."));
+    request.send(file);
+  });
+}
+
+export async function completePhotoUpload(photoId: string): Promise<void> {
+  await apiRequest(`/photos/${photoId}/upload-complete`, { method: "POST" });
+}
+
+export async function deletePhoto(photoId: string): Promise<void> {
+  await apiRequest(`/photos/${photoId}`, { method: "DELETE" });
+}
+
 export async function listStudioFeedback(galleryId: string): Promise<StudioFeedback[]> {
   return apiRequest<StudioFeedback[]>(`/galleries/${galleryId}/feedback`);
 }
@@ -321,6 +380,26 @@ export type GalleryAccessCredentials = {
   pin: string;
 };
 
+export type GalleryAccessSummary = {
+  id: string;
+  permission: "view" | "view_download";
+  expiresAt: string | null;
+  revokedAt: string | null;
+};
+
+export async function getGalleryAccess(galleryId: string): Promise<GalleryAccessSummary[]> {
+  const { items } = await apiCollectionRequest<GalleryAccessSummary>(
+    `/galleries/${galleryId}/access`,
+    (item) => ({
+      id: String(item.id ?? ""),
+      permission: item.permission === "view_download" ? "view_download" : "view",
+      expiresAt: typeof item.expiresAt === "string" ? item.expiresAt : null,
+      revokedAt: typeof item.revokedAt === "string" ? item.revokedAt : null,
+    }),
+  );
+  return items;
+}
+
 export async function createGalleryAccess(
   galleryId: string,
   input: { permission: "view" | "view_download"; expiresAt?: string | null },
@@ -337,14 +416,8 @@ export async function createGalleryAccess(
 export async function resetGalleryAccess(
   galleryId: string,
   input: { permission: "view" | "view_download"; expiresAt?: string | null },
-): Promise<{ secretToken?: string; pin?: string; permission: string; expiresAt?: string | null; [key: string]: unknown }> {
-  return apiRequest<{
-    secretToken?: string;
-    pin?: string;
-    permission: string;
-    expiresAt?: string | null;
-    [key: string]: unknown;
-  }>(`/galleries/${galleryId}/access/reset`, {
+): Promise<GalleryAccessCredentials> {
+  return apiRequest<GalleryAccessCredentials>(`/galleries/${galleryId}/access/reset`, {
     method: "POST",
     body: JSON.stringify(input),
   });

@@ -24,4 +24,6 @@ Rate limits use shared PostgreSQL fixed-window buckets and hash subject identifi
 
 ## Provider readiness
 
-The HTTP routes are composed with PostgreSQL services. This repository does not yet provide real object storage, image processing, email delivery, or a production password-hash migration. Their adapters currently fail closed with 503. The API must not be considered production-ready until these adapters and migration/deployment settings are supplied. Access create/reset sends credentials through the delivery adapter and never returns their raw values.
+Development mode uses a local filesystem photo store under `backend/.local-photo-storage` and a background photo-processing worker. Uploads are limited to 25 MB and 60 megapixels; generated previews and thumbnails are WebP. This adapter is for local development only: signed capabilities are invalidated when the API restarts, storage is tied to one machine, and no backup or multi-instance coordination is provided.
+
+Production still fails closed until production object storage, image processing, email delivery, and a production password-hash migration are configured. The API must not be considered production-ready until these adapters and deployment settings are supplied. Access create/reset sends credentials through the delivery adapter and never returns their raw values.

@@ -19,9 +19,9 @@
   --success: #333333;
   --danger: #292929;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
-  --font-ui: "Space Grotesk", "IBM Plex Sans", "Helvetica Neue", sans-serif;
-  --font-display: "Instrument Serif", "Bodoni MT", Georgia, serif;
-  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  --font-ui: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-display: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-mono: "SFMono-Regular", Consolas, monospace;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -43,7 +43,7 @@ body {
 h1, h2, h3, .editorial-title {
   font-family: var(--font-display);
   font-weight: 400;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
 }
 button, input, select, textarea { font-family: var(--font-ui); }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

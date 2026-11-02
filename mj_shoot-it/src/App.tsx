@@ -31,41 +31,44 @@ function HomePage() {
     <main className="page-shell landing-shell">
       <section className="panel hero-panel">
         <p className="eyebrow">MJ Studio</p>
-        <h1>Private gallery workflows for photographers and clients.</h1>
+        <h1>Thoughtful galleries, beautifully delivered.</h1>
         <p className="lead">
-          The frontend is intentionally a thin consumer of the MJ Studio API. All permission decisions stay with the backend.
+          Prepare private client galleries, review selections, and share polished imagery without the usual back-and-forth.
         </p>
 
         <div className="cta-row">
           <Link to="/photographer/login" className="primary-button">
-            Photographer login
+            Enter studio
           </Link>
           <Link to="/client/access" className="secondary-button">
-            Client access
+            Open client gallery
           </Link>
         </div>
       </section>
 
       <section className="feature-grid">
         <article className="panel card">
-          <h2>Photographer</h2>
-          <p>Studio overview, gallery operations, access issuance, and asset workflows are surfaced through secure API contracts.</p>
+          <p className="eyebrow">For photographers</p>
+          <h2>Prepare with clarity</h2>
+          <p>Create galleries, issue access, and keep each delivery moving with a calm, purposeful workspace.</p>
           <Link to="/photographer/dashboard" className="tiny-link">
             Open dashboard
           </Link>
         </article>
 
         <article className="panel card">
-          <h2>Client</h2>
-          <p>Clients verify access with a secret and PIN, review images, provide selections, and submit gallery feedback.</p>
+          <p className="eyebrow">For clients</p>
+          <h2>Review with ease</h2>
+          <p>Open the gallery securely, browse imagery, leave notes, and choose favourites without friction.</p>
           <Link to="/client/access" className="tiny-link">
             Open client access
           </Link>
         </article>
 
         <article className="panel card">
-          <h2>Trust boundary</h2>
-          <p>The browser is only a presentation layer. It never owns authorization, gallery state, or download policy.</p>
+          <p className="eyebrow">Built for trust</p>
+          <h2>Secure by default</h2>
+          <p>Permissions remain server-side so every gallery action is enforced, and the browser only presents the experience.</p>
           <Link to="/photographer/login" className="tiny-link">
             Sign in
           </Link>
@@ -102,10 +105,8 @@ function PhotographerLoginPage() {
       <div className="panel auth-panel">
         <div className="panel-header">
           <p className="eyebrow">Photographer workspace</p>
-          <h1>Sign in to MJ Studio</h1>
-          <p className="muted">
-            Authentication is handled by the backend service. The UI never decides who is allowed to view a gallery.
-          </p>
+          <h1>Welcome back.</h1>
+          <p className="muted">Sign in to prepare galleries, follow client selections, and keep each delivery moving.</p>
         </div>
 
         <form className="stack" onSubmit={handleSubmit}>
@@ -246,7 +247,7 @@ function PhotographerDashboardPage() {
           </div>
           <ul className="list-stack">
             {galleries.filter((gallery) => gallery.selectionStatus === "submitted").length === 0 ? (
-              <li className="empty-state">No client selections are waiting for review.</li>
+              <li className="empty-state">You’re all caught up. New client selections will appear here.</li>
             ) : (
               galleries
                 .filter((gallery) => gallery.selectionStatus === "submitted")
@@ -274,7 +275,11 @@ function PhotographerDashboardPage() {
           </div>
           <ul className="list-stack">
             {galleries.length === 0 ? (
-              <li className="empty-state">No galleries yet.</li>
+              <li className="empty-state">
+                <strong>Your first gallery starts here.</strong>
+                <span>Set up a private space for clients to review their photographs.</span>
+                <Link to="/photographer/galleries" className="tiny-link">Create a gallery</Link>
+              </li>
             ) : (
               galleries.map((gallery) => (
                 <li key={gallery.galleryId} className="list-row">

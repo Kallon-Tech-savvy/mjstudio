@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { UnauthorizedError } from '../src/errors.js';
 import { buildPhotographerContext } from '../src/auth/context.js';
@@ -21,6 +21,37 @@ const baseServices = () => ({
 }) as unknown as ApplicationServices;
 
 describe('API foundation', () => {
+  it('creates a photo upload capability for an image and rejects non-image uploads', async () => {
+    const createPhoto = vi.fn(async (_actor: unknown, _galleryId: string, _input: unknown) => ({
+      photo: { id: '66666666-6666-4666-8666-666666666666', position: 0, status: 'processing' },
+      asset: { uploadStatus: 'pending' },
+      upload: { method: 'PUT', url: 'https://storage.example/upload', expiresAt: '2026-11-01T04:00:00.000Z' },
+    }));
+    const services = {
+      ...baseServices(),
+      photos: { create: createPhoto },
+    } as unknown as ApplicationServices;
+    const app = createApp(services, { allowedOrigins: ['http://localhost:3000'] });
+
+    const accepted = await request(app)
+      .post('/api/galleries/55555555-5555-4555-8555-555555555555/photos')
+      .set('Origin', 'http://localhost:3000')
+      .set('Cookie', '__Host-mj_session=valid')
+      .send({ filename: 'portrait.jpg', mimeType: 'image/jpeg' });
+    expect(accepted.status).toBe(201);
+    expect(accepted.body.data.upload.method).toBe('PUT');
+    expect(createPhoto).toHaveBeenCalledOnce();
+    expect(createPhoto.mock.calls[0]?.[2]).toEqual({ filename: 'portrait.jpg', mimeType: 'image/jpeg' });
+
+    const rejected = await request(app)
+      .post('/api/galleries/55555555-5555-4555-8555-555555555555/photos')
+      .set('Origin', 'http://localhost:3000')
+      .set('Cookie', '__Host-mj_session=valid')
+      .send({ filename: 'notes.txt', mimeType: 'text/plain' });
+    expect(rejected.status).toBe(422);
+    expect(createPhoto).toHaveBeenCalledOnce();
+  });
+
   it('GET /api/health should return the API health envelope', async () => {
     const response = await request(createApp()).get('/api/health');
 

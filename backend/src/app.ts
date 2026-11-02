@@ -19,10 +19,12 @@ import { photosRouter } from './routes/photos.js';
 import { recommendationsRouter } from './routes/recommendations.js';
 import { clientRouter } from './routes/client.js';
 import { unavailableServices, type ApplicationServices } from './services/container.js';
+import { localPhotoStorageRouter } from './infrastructure/local-photo-storage-router.js';
+import type { LocalDevelopmentPhotoStorage } from './infrastructure/local-photo-storage.js';
 
 export function createApp(
   services: ApplicationServices = unavailableServices(),
-  options: { allowedOrigins?: string[] } = {},
+  options: { allowedOrigins?: string[]; localPhotoStorage?: LocalDevelopmentPhotoStorage } = {},
 ): Express {
   const app = express();
   const allowedOrigins = options.allowedOrigins ?? env.FRONTEND_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -48,11 +50,12 @@ export function createApp(
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
+        imgSrc: ["'self'", "data:", "https:", new URL(env.APP_BASE_URL ?? `http://localhost:${env.PORT}`).origin],
         fontSrc: ["'self'", "data:"],
         connectSrc: [
           "'self'",
-          "http://localhost:3000", // Replace with the API origin in production.
+          "http://localhost:3000",
+          new URL(env.APP_BASE_URL ?? `http://localhost:${env.PORT}`).origin,
         ],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -71,8 +74,11 @@ export function createApp(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-CSRF-Token'],
+    allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'X-Upload-Capability'],
   }));
+  if (options.localPhotoStorage) {
+    app.use('/api/local-photo-storage', localPhotoStorageRouter(options.localPhotoStorage, allowedOrigins));
+  }
   app.use(express.json({ limit: '1mb', type: 'application/json' }));
   app.use(cookieParser());
   app.use((req, _res, next) => {

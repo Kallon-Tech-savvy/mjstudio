@@ -36,3 +36,17 @@ Use `.agents/skills/mjstudio-workflow/SKILL.md` as the project-specific entry po
 
 ## Completion report
 Include the outcome, important files changed, checks actually run and results, and unresolved risks. For UX work, identify which user journey and actor were affected. If blocked, state the blocker and next action.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs for this repo live as GitHub issues; use the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo. See `docs/agents/domain.md`.

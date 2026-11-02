@@ -3,4 +3,5 @@ dist/
 .env
 .env.*
 coverage/
+.local-photo-storage/
 .DS_Store
