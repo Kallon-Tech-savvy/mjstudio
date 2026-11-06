@@ -39,7 +39,9 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
             WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
         // A replacement must not reuse a superseded row's unique storage key.
         // Reuse this candidate key across rolled-back attempts, avoiding orphan growth.
-        const destinationKey = `${derivative.key}/${existing.rows[0]?.id ?? sourceAssetId}`;
+        // Keep the version beside the legacy file, not beneath it: local adapters
+        // cannot use an existing object as a directory.
+        const destinationKey = `${derivative.key}-${existing.rows[0]?.id ?? sourceAssetId}`;
         let assetId: string | undefined = existing.rows[0]?.id;
         if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
         if (existing.rows[0]) {
