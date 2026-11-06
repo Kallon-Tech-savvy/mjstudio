@@ -133,14 +133,20 @@ LEFT JOIN LATERAL (
         [galleryId],
       );
       const deps = readiness.rows[0];
-      assertGalleryCanPublish(row, {
+      assertGalleryCanPublish({
+        archivedAt: row.archived_at,
+        workflowStatus: row.workflow_status,
+        publicationStatus: row.publication_status,
+      }, {
         hasUsablePhotos: deps.has_usable_photos,
         hasClient: deps.has_client,
         hasActiveAccess: deps.has_active_access,
       });
       const updated = await transaction.query(
-        `UPDATE galleries SET publication_status = 'published', published_at = NOW(), updated_at = NOW()
-          WHERE id = $1 RETURNING id, publication_status AS "publicationStatus", published_at AS "publishedAt"`,
+        `UPDATE galleries SET publication_status = 'published',
+              workflow_status = CASE WHEN workflow_status = 'draft' THEN 'reviewing' ELSE workflow_status END,
+              published_at = NOW(), updated_at = NOW()
+          WHERE id = $1 RETURNING id, workflow_status AS "workflowStatus", publication_status AS "publicationStatus", published_at AS "publishedAt"`,
         [galleryId],
       );
       return updated.rows[0];
