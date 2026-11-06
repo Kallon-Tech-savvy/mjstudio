@@ -55,6 +55,10 @@ jobs:
         run: npm ci
       - name: Build frontend
         run: npm run build
+      - name: Install browser for gallery workflow tests
+        run: npx playwright install --with-deps chromium
+      - name: Test gallery creation workflow
+        run: npm run test:gallery
 
   migrations:
     name: PostgreSQL migration smoke test

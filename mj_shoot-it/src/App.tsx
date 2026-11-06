@@ -1,29 +1,16 @@
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { NewGalleryForm } from "@/features/studio/components/NewGalleryForm";
+import { Link, useNavigate } from "react-router-dom";
+import PhotographerGalleriesPage from "@/features/studio/pages/PhotographerGalleriesPage";
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  createGallery,
-  createGalleryAccess,
-  getGallery,
   getPhotographerMe,
   getStudioSummary,
-  listSelectedPhotos,
-  listStudioFeedback,
-  getStudioDelivery,
-  prepareStudioDelivery,
-  releaseStudioDelivery,
-  type StudioDeliveryDetails,
   listClients,
-  listGalleryPhotos,
   listGalleries,
   photographerLogin,
   photographerLogout,
   type ClientRecord,
   type GalleryRecord,
-  type PhotoRecord,
   type PhotographerUser,
-  type StudioSelectedPhoto,
-  type StudioFeedback,
 } from "@/lib/api";
 
 function HomePage() {
@@ -300,80 +287,6 @@ function PhotographerDashboardPage() {
   );
 }
 
-function PhotographerGalleriesPage() {
-  const navigate = useNavigate();
-  const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const ensureAccess = async () => {
-      try {
-        const me = await getPhotographerMe();
-        if (!me?.user) {
-          navigate("/photographer/login", { replace: true });
-          return;
-        }
-
-        const [response, clientResponse] = await Promise.all([listGalleries(1, 20), listClients(1, 100)]);
-        setGalleries(response.items ?? []);
-        setClients(clientResponse.items ?? []);
-      } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "Unable to load galleries.");
-      }
-    };
-
-    void ensureAccess();
-  }, [navigate]);
-
-  const reload = async () => {
-    const [response, clientResponse] = await Promise.all([listGalleries(1, 20), listClients(1, 100)]);
-    setGalleries(response.items ?? []);
-    setClients(clientResponse.items ?? []);
-  };
-
-  return (
-    <main className="page-shell">
-      <div className="panel">
-        <div className="panel-header compact-header">
-          <div>
-            <p className="eyebrow">Photographer</p>
-            <h1>Galleries</h1>
-          </div>
-          <Link to="/photographer/dashboard" className="secondary-button">
-            Back to dashboard
-          </Link>
-        </div>
-
-        <NewGalleryForm clients={clients} onCreated={reload} />
-
-        {error ? <div className="error-box">{error}</div> : null}
-
-        <ul className="list-stack spaced-list">
-          {galleries.length === 0 ? (
-            <li className="empty-state">No galleries are available for this studio yet.</li>
-          ) : (
-            galleries.map((gallery) => (
-              <li key={gallery.galleryId} className="list-row interactive-row">
-                <div>
-                  <strong>{gallery.clientName ?? gallery.name}</strong>
-                  <small>
-                    {gallery.selectionStatus === "submitted"
-                      ? `${gallery.selectedCount ?? 0} photographs selected · Selection received`
-                      : gallery.status ?? "draft"}
-                  </small>
-                </div>
-                <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
-                  {gallery.selectionStatus === "submitted" ? "Review →" : "Open"}
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      </div>
-    </main>
-  );
-}
 
 import AppRouter from "@/app/router";
 import PhotographerGalleryDetailPage from "@/features/studio/pages/PhotographerGalleryDetailPage";

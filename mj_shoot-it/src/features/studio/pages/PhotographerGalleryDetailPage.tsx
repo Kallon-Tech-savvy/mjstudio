@@ -1,4 +1,4 @@
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { StudioDeliverySection, StudioFeedbackReview, StudioPhotoList, StudioSelectionReview } from "@/features/studio/components/GalleryWorkspaceSections";
 import {
@@ -178,8 +178,16 @@ function StudioPhotoViewerModal({
 
 export default function PhotographerGalleryDetailPage() {
   const { galleryId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [gallery, setGallery] = useState<GalleryDetail | null>(null);
+
+  useEffect(() => {
+    if (!gallery || searchParams.get("created") !== "1") return;
+    const heading = document.getElementById("photo-upload-heading");
+    heading?.scrollIntoView({ block: "start" });
+    heading?.focus({ preventScroll: true });
+  }, [gallery, searchParams]);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
   const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
@@ -428,6 +436,14 @@ export default function PhotographerGalleryDetailPage() {
 
   return (
     <main className="page-shell">
+      {searchParams.get("created") === "1" && !hasActiveAccess ? (
+        <section className="gallery-setup-banner" aria-label="Gallery created">
+          <p className="eyebrow">01 Complete / 02 Add photographs / 03 Share access</p>
+          <h2>Your gallery is created.</h2>
+          <p>Next, add your photographs. No client access has been issued by creating this draft.</p>
+          <a className="primary-button" href="#photo-upload">Add photographs ↓</a>
+        </section>
+      ) : null}
       <div className="panel">
         <div className="panel-header compact-header">
           <div>
@@ -533,11 +549,11 @@ export default function PhotographerGalleryDetailPage() {
           />
         ) : null}
 
-        <section className="photo-upload panel" aria-labelledby="photo-upload-heading">
+        <section id="photo-upload" className="photo-upload panel" aria-labelledby="photo-upload-heading">
           <div className="panel-header compact-header">
             <div>
               <p className="eyebrow">Gallery photos</p>
-              <h2 id="photo-upload-heading">Add photographs</h2>
+              <h2 id="photo-upload-heading" tabIndex={-1}>Add photographs</h2>
               <p className="muted">Choose image files to add to this gallery. They’ll appear here as each upload finishes processing.</p>
             </div>
           </div>

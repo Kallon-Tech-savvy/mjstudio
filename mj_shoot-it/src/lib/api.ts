@@ -258,10 +258,10 @@ export async function createGallery(input: {
   name: string;
   expiresAt?: string | null;
 }): Promise<GalleryRecord> {
-  return apiRequest<GalleryRecord>("/galleries", {
+  return normalizeGallery(await apiRequest<Record<string, unknown>>("/galleries", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }));
 }
 
 export async function getGallery(galleryId: string): Promise<GalleryRecord> {
