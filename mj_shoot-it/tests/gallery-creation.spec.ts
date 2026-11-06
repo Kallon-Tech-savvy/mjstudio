@@ -177,7 +177,7 @@ test("loading error can be retried", async ({ page }) => {
   await expect(page.getByLabel("Gallery name", { exact: true })).toBeVisible();
 });
 
-for (const width of [390, 768, 1440]) {
+for (const width of [320, 390, 768, 1024, 1440]) {
   test(`layout at ${width}px has no horizontal overflow through all setup steps`, async ({
     page,
   }) => {

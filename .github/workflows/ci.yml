@@ -53,12 +53,14 @@ jobs:
           cache-dependency-path: mj_shoot-it/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Typecheck frontend
+        run: npm run typecheck
       - name: Build frontend
         run: npm run build
       - name: Install browser for gallery workflow tests
         run: npx playwright install --with-deps chromium
-      - name: Test gallery creation workflow
-        run: npm run test:gallery
+      - name: Test photographer and client workflows
+        run: npm run test:workflow
 
   migrations:
     name: PostgreSQL migration smoke test

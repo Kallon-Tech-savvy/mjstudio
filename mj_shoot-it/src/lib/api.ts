@@ -268,6 +268,11 @@ export async function getGallery(galleryId: string): Promise<GalleryRecord> {
   return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`));
 }
 
+/** Publishing explicitly makes a prepared gallery available for client review. */
+export async function publishGallery(galleryId: string): Promise<Partial<GalleryRecord>> {
+  return apiRequest<Partial<GalleryRecord>>(`/galleries/${galleryId}/publish`, { method: "POST" });
+}
+
 export async function getStudioSelection(galleryId: string): Promise<StudioSelection> {
   return apiRequest<StudioSelection>(`/galleries/${galleryId}/selection`);
 }
@@ -304,6 +309,7 @@ export function uploadPhotoFile(
     const request = new XMLHttpRequest();
     request.open(capability.method, capability.url);
     request.withCredentials = false;
+    request.timeout = 120_000;
     request.setRequestHeader("Content-Type", file.type);
     for (const [name, value] of Object.entries(capability.headers ?? {})) {
       request.setRequestHeader(name, value);

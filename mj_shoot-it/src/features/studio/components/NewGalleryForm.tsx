@@ -254,7 +254,7 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
           <p>
             Add photographs.
             <br />
-            Then share, when you’re ready.
+            Prepare access, then publish for client review.
           </p>
         </div>
       </aside>

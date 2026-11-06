@@ -8,7 +8,9 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "lint": "biome check",
     "format": "biome format --write",
-    "test:gallery": "playwright test tests/gallery-creation.spec.ts"
+    "test:gallery": "playwright test tests/gallery-creation.spec.ts",
+    "typecheck": "tsc --noEmit",
+    "test:workflow": "playwright test"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -1,5 +1,6 @@
+import { GalleryPublicationPanel } from "../components/GalleryPublicationPanel";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StudioDeliverySection, StudioFeedbackReview, StudioPhotoList, StudioSelectionReview } from "@/features/studio/components/GalleryWorkspaceSections";
 import {
   ApiError,
@@ -16,6 +17,7 @@ import {
   listSelectedPhotos,
   listStudioFeedback,
   prepareStudioDelivery,
+  publishGallery,
   releaseStudioDelivery,
   resetGalleryAccess,
   setStudioPhotoReview,
@@ -29,7 +31,7 @@ import {
 
 type GalleryDetail = Record<string, unknown> & {
   name?: string;
-  selectionStatus?: string;
+  selectionStatus?: string | null;
   selectionSubmittedAt?: string | null;
 };
 
@@ -38,6 +40,7 @@ type PhotoUploadItem = {
   file: File;
   status: "queued" | "uploading" | "processing" | "complete" | "failed";
   progress: number;
+  photoId?: string;
   error?: string;
 };
 
@@ -191,7 +194,7 @@ export default function PhotographerGalleryDetailPage() {
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
   const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
-  const [permission, setPermission] = useState<"view" | "view_download">("view_download");
+  const [permission, setPermission] = useState<"view" | "view_download">("view");
   const [accessCredentials, setAccessCredentials] = useState<GalleryAccessCredentials | null>(null);
   const [hasActiveAccess, setHasActiveAccess] = useState(false);
   const [accessStatus, setAccessStatus] = useState<"loading" | "available" | "forbidden" | "error">("loading");
@@ -205,9 +208,24 @@ export default function PhotographerGalleryDetailPage() {
   const [photoUploads, setPhotoUploads] = useState<PhotoUploadItem[]>([]);
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
+  const [checkingUploadId, setCheckingUploadId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const uploadLock = useRef(false);
+  const publishLock = useRef(false);
+  const waitingForPhotos = isUploadingPhotos || photoUploads.some((item) => ["queued", "uploading", "processing"].includes(item.status));
+
+  useEffect(() => {
+    if (!isUploadingPhotos && !isPublishing) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [isUploadingPhotos, isPublishing]);
 
   const handlePhotoFiles = async (files: FileList | null) => {
-    if (!galleryId || !files?.length || isUploadingPhotos) return;
+    if (!galleryId || !gallery || !files?.length || uploadLock.current || isPublishing) return;
+    uploadLock.current = true;
 
     const uploads = Array.from(files).map((file): PhotoUploadItem => ({
       id: crypto.randomUUID(),
@@ -225,11 +243,12 @@ export default function PhotographerGalleryDetailPage() {
       if (upload.status === "failed") continue;
       let photoId: string | null = null;
       let uploadCompleted = false;
+      let completionAttempted = false;
       try {
         const capability = await createPhotoUpload(galleryId, upload.file);
         photoId = capability.photo.id;
         setPhotoUploads((current) => current.map((item) =>
-          item.id === upload.id ? { ...item, status: "uploading" } : item,
+          item.id === upload.id ? { ...item, photoId: capability.photo.id, status: "uploading" } : item,
         ));
         await uploadPhotoFile(capability.upload, upload.file, (progress) => {
           setPhotoUploads((current) => current.map((item) =>
@@ -239,6 +258,7 @@ export default function PhotographerGalleryDetailPage() {
         setPhotoUploads((current) => current.map((item) =>
           item.id === upload.id ? { ...item, status: "processing" } : item,
         ));
+        completionAttempted = true;
         await completePhotoUpload(capability.photo.id);
         uploadCompleted = true;
         acceptedUploads += 1;
@@ -259,7 +279,13 @@ export default function PhotographerGalleryDetailPage() {
         }
       } catch (caughtError) {
         let errorMessage = caughtError instanceof Error ? caughtError.message : "Unable to upload this photo.";
-        if (photoId && !uploadCompleted) {
+        let recovered = false;
+        if (photoId && completionAttempted) {
+          // A lost completion response is not proof that the server rejected the photo.
+          try { recovered = (await getStudioPhotoStatus(photoId)).status === "active"; } catch { /* Keep the upload for explicit reconciliation. */ }
+          if (recovered && !uploadCompleted) acceptedUploads += 1;
+        }
+        if (photoId && !completionAttempted) {
           try {
             await deletePhoto(photoId);
           } catch (cleanupError) {
@@ -271,8 +297,9 @@ export default function PhotographerGalleryDetailPage() {
           item.id === upload.id
             ? {
                 ...item,
-                status: uploadCompleted ? "processing" : "failed",
-                error: uploadCompleted ? `Upload was accepted, but processing could not be confirmed: ${errorMessage}` : errorMessage,
+                status: recovered ? "complete" : completionAttempted ? "processing" : "failed",
+                progress: recovered ? 100 : item.progress,
+                error: recovered ? undefined : completionAttempted ? `Upload confirmation was interrupted. Check this upload before choosing the file again. ${errorMessage}` : errorMessage,
               }
             : item,
         ));
@@ -288,7 +315,43 @@ export default function PhotographerGalleryDetailPage() {
       setPhotoUploadError(caughtError instanceof Error ? caughtError.message : "Photos uploaded but the gallery could not be refreshed.");
     } finally {
       setIsUploadingPhotos(false);
+      uploadLock.current = false;
     }
+  };
+
+  const checkUpload = async (upload: PhotoUploadItem) => {
+    if (!upload.photoId || checkingUploadId || isUploadingPhotos) return;
+    setCheckingUploadId(upload.id);
+    try {
+      let status = (await getStudioPhotoStatus(upload.photoId)).status;
+      if (status !== "active" && status !== "failed") {
+        // This endpoint is idempotent: retry confirmation, never the original upload.
+        await completePhotoUpload(upload.photoId);
+        status = (await getStudioPhotoStatus(upload.photoId)).status;
+      }
+      if (status === "failed") await deletePhoto(upload.photoId);
+      setPhotoUploads((current) => current.map((item) => item.id === upload.id ? {
+        ...item, status: status === "active" ? "complete" : status === "failed" ? "failed" : "processing",
+        progress: status === "active" ? 100 : item.progress,
+        error: status === "active" ? undefined : status === "failed" ? "Processing failed. The incomplete photo was removed; choose the file again." : "Still preparing this photograph. Check again shortly.",
+      } : item));
+      setPhotos((await listGalleryPhotos(galleryId!, 1, 20)).items);
+    } catch (caught) {
+      setPhotoUploads((current) => current.map((item) => item.id === upload.id ? { ...item, error: caught instanceof Error ? caught.message : "Unable to check this upload. Try again." } : item));
+    } finally { setCheckingUploadId(null); }
+  };
+
+  const handlePublish = async () => {
+    if (!galleryId || !gallery || publishLock.current || waitingForPhotos || !hasActiveAccess) return;
+    publishLock.current = true;
+    setIsPublishing(true);
+    setPublishError("");
+    try {
+      const updated = await publishGallery(galleryId);
+      setGallery((current) => ({ ...current, ...updated }));
+    }
+    catch (caught) { setPublishError(caught instanceof Error ? caught.message : "Unable to publish. Your draft and access credentials are still here."); }
+    finally { setIsPublishing(false); publishLock.current = false; }
   };
 
   const handlePrepareDelivery = async () => {
@@ -382,10 +445,10 @@ export default function PhotographerGalleryDetailPage() {
 
     void load();
     return () => { active = false; };
-  }, [galleryId, navigate]);
+  }, [galleryId, navigate, reloadKey]);
 
   const handleAccessGrant = async () => {
-    if (!galleryId || isIssuingAccess) return;
+    if (!galleryId || !gallery || isIssuingAccess || isPublishing || isUploadingPhotos) return;
 
     setIsIssuingAccess(true);
     setError("");
@@ -429,6 +492,14 @@ export default function PhotographerGalleryDetailPage() {
 
   if (!galleryId) return <Navigate to="/photographer/galleries" replace />;
 
+  if (!gallery) return (
+    <main className="page-shell"><section className="panel workflow-state">
+      <h1>{error ? "Your gallery couldn’t be loaded." : "Loading your gallery…"}</h1>
+      {error ? <><p className="error-box" role="alert">{error}</p><button className="primary-button" type="button" onClick={() => setReloadKey((key) => key + 1)}>Try again</button></> : <output>Checking your photographs and client access.</output>}
+      <Link className="secondary-button" to="/photographer/galleries">Back to galleries</Link>
+    </section></main>
+  );
+
   const selectedPhoto = selectedPhotoIndex === null ? null : selection[selectedPhotoIndex] ?? null;
   const clientAccessUrl = accessCredentials
     ? `${window.location.origin}/client/access?galleryId=${encodeURIComponent(galleryId)}#secret=${encodeURIComponent(accessCredentials.secretToken)}`
@@ -438,7 +509,7 @@ export default function PhotographerGalleryDetailPage() {
     <main className="page-shell">
       {searchParams.get("created") === "1" && !hasActiveAccess ? (
         <section className="gallery-setup-banner" aria-label="Gallery created">
-          <p className="eyebrow">01 Complete / 02 Add photographs / 03 Share access</p>
+          <p className="eyebrow">01 Created / 02 Photographs / 03 Access / 04 Publish</p>
           <h2>Your gallery is created.</h2>
           <p>Next, add your photographs. No client access has been issued by creating this draft.</p>
           <a className="primary-button" href="#photo-upload">Add photographs ↓</a>
@@ -450,14 +521,67 @@ export default function PhotographerGalleryDetailPage() {
             <p className="eyebrow">Gallery workspace</p>
             <h1>{String(gallery?.name ?? "Loading gallery…")}</h1>
           </div>
-          <Link to="/photographer/galleries" className="secondary-button">Back to galleries</Link>
+          <button type="button" className="secondary-button" disabled={isUploadingPhotos || isPublishing || Boolean(checkingUploadId)} onClick={() => navigate("/photographer/galleries")}>Back to galleries</button>
         </div>
+
+        <section id="photo-upload" className="photo-upload panel" aria-labelledby="photo-upload-heading">
+          <div className="panel-header compact-header">
+            <div>
+              <p className="eyebrow">Gallery photos</p>
+              <h2 id="photo-upload-heading" tabIndex={-1}>Add photographs</h2>
+              <p className="muted">Choose image files to add to this gallery. They’ll appear here as each upload finishes processing.</p>
+            </div>
+          </div>
+          <label className="field photo-upload-picker">
+            <span>Select photos to upload</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={isUploadingPhotos || isPublishing}
+              onChange={(event) => {
+                void handlePhotoFiles(event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          {photoUploadError ? <div className="error-box" role="alert">{photoUploadError}</div> : null}
+          {photoUploads.length ? (
+            <ul className="list-stack photo-upload-list" aria-live="polite">
+              {photoUploads.map((upload) => (
+                <li className="list-row photo-upload-row" key={upload.id}>
+                  <div className="photo-upload-details">
+                    <strong>{upload.file.name}</strong>
+                    <small>
+                      {upload.status === "queued" ? "Waiting to upload" : null}
+                      {upload.status === "uploading" ? `Uploading · ${upload.progress}%` : null}
+                      {upload.status === "processing" ? upload.error ?? "Upload received · preparing photo" : null}
+                      {upload.status === "complete" ? "Upload complete" : null}
+                      {upload.status === "failed" ? upload.error : null}
+                    </small>
+                    {upload.status === "uploading" ? (
+                      <progress value={upload.progress} max={100} aria-label={`Uploading ${upload.file.name}`} />
+                    ) : null}
+                  </div>
+                  {upload.status === "processing" && !isUploadingPhotos ? <button className="secondary-button" type="button" disabled={Boolean(checkingUploadId)} onClick={() => void checkUpload(upload)}>{checkingUploadId === upload.id ? "Checking…" : "Check upload"}</button> : null}
+                  <span className={`tag photo-upload-status status-${upload.status}`}>
+                    {upload.status === "complete" ? "Complete" : upload.status === "failed" ? "Failed" : upload.status === "processing" ? "Processing" : upload.status === "uploading" ? "Uploading" : "Queued"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+        <StudioPhotoList photos={photos} />
 
         {accessStatus === "loading" ? <p className="muted">Checking client access…</p> : null}
         {accessStatus === "forbidden" ? <p className="muted">You do not have permission to manage client access for this gallery.</p> : null}
         {accessStatus === "error" ? <div className="error-box">{accessError}</div> : null}
         {accessStatus === "available" ? (
-          <div className="toolbar-stack">
+          <section className="gallery-access-setup" aria-label="Prepare client access">
+            <h2>Prepare client access</h2>
+            <p className="muted">Choose what your client can do. The link opens only after you publish the gallery.</p>
+            <div className="toolbar-stack">
             <label className="field compact-field">
               <span>What the client can do</span>
               <select value={permission} onChange={(event) => setPermission(event.target.value as "view" | "view_download")}>
@@ -465,10 +589,11 @@ export default function PhotographerGalleryDetailPage() {
                 <option value="view_download">View + download</option>
               </select>
             </label>
-            <button type="button" className="primary-button" disabled={isIssuingAccess} onClick={handleAccessGrant}>
+            <button type="button" className="primary-button" disabled={isIssuingAccess || isUploadingPhotos || isPublishing} onClick={handleAccessGrant}>
               {isIssuingAccess ? (hasActiveAccess ? "Creating new link…" : "Issuing…") : (hasActiveAccess ? "Create new share link" : "Issue access link")}
             </button>
-          </div>
+            </div>
+          </section>
         ) : null}
         {hasActiveAccess ? (
           <p className="muted">
@@ -509,6 +634,16 @@ export default function PhotographerGalleryDetailPage() {
           </section>
         ) : null}
 
+        <GalleryPublicationPanel
+          published={gallery.publicationStatus === "published"}
+          hasPhotos={photos.some((photo) => photo.status === "active")}
+          hasAccess={hasActiveAccess && accessStatus === "available"}
+          busy={isPublishing || isIssuingAccess}
+          waitingForPhotos={waitingForPhotos}
+          error={publishError}
+          onPublish={() => void handlePublish()}
+        />
+
         {error ? <div className="error-box">{error}</div> : null}
 
         {gallery?.selectionStatus === "submitted" ? (
@@ -519,14 +654,14 @@ export default function PhotographerGalleryDetailPage() {
           />
         ) : null}
 
-        <StudioDeliverySection
+        {gallery.selectionStatus === "submitted" || delivery ? <StudioDeliverySection
           delivery={delivery}
           isProcessing={isProcessingDelivery}
           onPrepare={() => void handlePrepareDelivery()}
           onRelease={() => void handleReleaseDelivery()}
-        />
+        /> : null}
 
-        <StudioFeedbackReview feedback={feedback} />
+        {feedback.length > 0 ? <StudioFeedbackReview feedback={feedback} /> : null}
 
         {selectedPhoto ? (
           <StudioPhotoViewerModal
@@ -549,54 +684,7 @@ export default function PhotographerGalleryDetailPage() {
           />
         ) : null}
 
-        <section id="photo-upload" className="photo-upload panel" aria-labelledby="photo-upload-heading">
-          <div className="panel-header compact-header">
-            <div>
-              <p className="eyebrow">Gallery photos</p>
-              <h2 id="photo-upload-heading" tabIndex={-1}>Add photographs</h2>
-              <p className="muted">Choose image files to add to this gallery. They’ll appear here as each upload finishes processing.</p>
-            </div>
-          </div>
-          <label className="field photo-upload-picker">
-            <span>Select photos to upload</span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={isUploadingPhotos}
-              onChange={(event) => {
-                void handlePhotoFiles(event.currentTarget.files);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-          {photoUploadError ? <div className="error-box" role="alert">{photoUploadError}</div> : null}
-          {photoUploads.length ? (
-            <ul className="list-stack photo-upload-list" aria-live="polite">
-              {photoUploads.map((upload) => (
-                <li className="list-row photo-upload-row" key={upload.id}>
-                  <div className="photo-upload-details">
-                    <strong>{upload.file.name}</strong>
-                    <small>
-                      {upload.status === "queued" ? "Waiting to upload" : null}
-                      {upload.status === "uploading" ? `Uploading · ${upload.progress}%` : null}
-                      {upload.status === "processing" ? "Upload complete · preparing photo" : null}
-                      {upload.status === "complete" ? "Upload complete" : null}
-                      {upload.status === "failed" ? upload.error : null}
-                    </small>
-                    {upload.status === "uploading" ? (
-                      <progress value={upload.progress} max={100} aria-label={`Uploading ${upload.file.name}`} />
-                    ) : null}
-                  </div>
-                  <span className={`tag photo-upload-status status-${upload.status}`}>
-                    {upload.status === "complete" ? "Complete" : upload.status === "failed" ? "Failed" : upload.status === "processing" ? "Processing" : upload.status === "uploading" ? "Uploading" : "Queued"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
-        <StudioPhotoList photos={photos} />
+
       </div>
     </main>
   );

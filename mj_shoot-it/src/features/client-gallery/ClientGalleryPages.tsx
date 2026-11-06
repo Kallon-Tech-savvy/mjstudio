@@ -1,3 +1,4 @@
+import { loadClientPhotosForIds } from "@/lib/load-client-photos";
 import { type FormEvent, type TouchEvent, useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -362,6 +363,10 @@ function ClientPhotoViewer({
 
 function ClientSelectionReviewPage() {
   const { galleryId } = useParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
@@ -371,8 +376,11 @@ function ClientSelectionReviewPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
       if (!galleryId) return;
+      setLoading(true);
+      setLoadError("");
       try {
         const [gallery, selectionResponse] = await Promise.all([
           getClientGallery(galleryId),
@@ -385,31 +393,26 @@ function ClientSelectionReviewPage() {
             .map((item) => item.photoId),
         );
 
-        const loadedPhotos: ClientPhoto[] = [];
-        let page = 1;
-        let total = 0;
-
-        do {
-          const response = await listClientPhotos(galleryId, page, 100);
-          loadedPhotos.push(...(response.items ?? []));
-          total = response.total ?? loadedPhotos.length;
-          page += 1;
-        } while (loadedPhotos.length < total && [...selectedIds].some((id) => !loadedPhotos.some((photo) => photo.photoId === id)));
+        const loadedPhotos = await loadClientPhotosForIds(galleryId, selectedIds);
+        if (!active) return;
 
         setGalleryName(String(gallery.name ?? "Gallery"));
         setPhotos(loadedPhotos);
         setSelectedPhotoIds(selectedIds);
         setSelectionStatus(selectionResponse.status);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "Unable to load your selection.");
+        if (active) setLoadError(caughtError instanceof Error ? caughtError.message : "Unable to load your selection.");
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
     void load();
-  }, [galleryId]);
+    return () => { active = false; };
+  }, [galleryId, reloadKey]);
 
   const handleRemove = async (photoId: string) => {
-    if (!galleryId || removingPhotoId === photoId || selectionStatus === "submitted") return;
+    if (!galleryId || removingPhotoId || isSubmitting || loading || loadError || selectionStatus === "submitted") return;
 
     const previous = new Set(selectedPhotoIds);
     setSelectedPhotoIds((current) => {
@@ -431,7 +434,7 @@ function ClientSelectionReviewPage() {
   };
 
   const handleSubmit = async () => {
-    if (!galleryId || isSubmitting || selectionStatus === "submitted") return;
+    if (!galleryId || isSubmitting || removingPhotoId || loading || loadError || selectedPhotoIds.size === 0 || selectionStatus === "submitted") return;
 
     setIsSubmitting(true);
     setError("");
@@ -448,6 +451,13 @@ function ClientSelectionReviewPage() {
 
   if (!galleryId) return <Navigate to="/client/access" replace />;
 
+  if (loading || loadError) return (
+    <main className="page-shell client-gallery-shell"><section className="panel workflow-state">
+      <h1>{loading ? "Loading your shortlist…" : "Your shortlist couldn’t be loaded."}</h1>
+      {loadError ? <><p className="error-box" role="alert">{loadError}</p><button className="primary-button" type="button" onClick={() => setReloadKey((key) => key + 1)}>Try again</button></> : <output>Please wait while we check your saved choices.</output>}
+    </section></main>
+  );
+
   const selectedPhotos = photos.filter((photo) => selectedPhotoIds.has(photo.photoId));
 
   return (
@@ -461,16 +471,14 @@ function ClientSelectionReviewPage() {
               A final look before you send these choices to your photographer. You can still remove a photograph before submitting.
             </p>
           </div>
-          <Link to={`/client/gallery/${galleryId}`} className="secondary-button">
-            Back to photographs
-          </Link>
+          {removingPhotoId || isSubmitting ? <span className="muted">Saving your choices…</span> : <Link to={`/client/gallery/${galleryId}`} className="secondary-button">Back to photographs</Link>}
         </header>
 
-        {error ? <div className="error-box">{error}</div> : null}
+        {error ? <div className="error-box" role="alert">{error}</div> : null}
 
         <div className="gallery-summary" aria-live="polite">
           <strong>{selectedPhotoIds.size} selected</strong>
-          <span>Ready when you are</span>
+          <span>{removingPhotoId ? "Saving your change…" : isSubmitting ? "Sending your choices…" : "Ready when you are"}</span>
         </div>
 
         {selectedPhotos.length === 0 ? (
@@ -500,7 +508,7 @@ function ClientSelectionReviewPage() {
                   type="button"
                   className="photo-select-button is-selected"
                   onClick={() => void handleRemove(photo.photoId)}
-                  disabled={removingPhotoId === photo.photoId || selectionStatus === "submitted"}
+                  disabled={Boolean(removingPhotoId) || isSubmitting || selectionStatus === "submitted"}
                   aria-label={`Remove photograph ${photo.position + 1} from your selection`}
                 >
                   {removingPhotoId === photo.photoId ? "Removing…" : "Remove"}
@@ -524,7 +532,7 @@ function ClientSelectionReviewPage() {
                 type="button"
                 className="primary-button"
                 onClick={() => void handleSubmit()}
-                disabled={isSubmitting}
+                disabled={isSubmitting || Boolean(removingPhotoId) || selectedPhotoIds.size === 0}
               >
                 {isSubmitting ? "Sending…" : "Send to photographer"}
               </button>
@@ -635,29 +643,38 @@ function ClientDeliveryPage() {
   const [downloadingPhotoId, setDownloadingPhotoId] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
       if (!galleryId) return;
+      setLoading(true);
+      setLoadError("");
       setCanDownload(false);
       try {
-        const [galleryRes, deliveryRes, photoRes] = await Promise.all([
+        const [galleryRes, deliveryRes] = await Promise.all([
           getClientGallery(galleryId),
           getClientDelivery(galleryId),
-          listClientPhotos(galleryId, 1, 100),
         ]);
+        const loadedPhotos = deliveryRes.isReleased
+          ? await loadClientPhotosForIds(galleryId, new Set(deliveryRes.items.map((item) => item.photoId)))
+          : [];
+        if (!active) return;
         setGalleryName(String(galleryRes.name ?? "Gallery"));
         setCanDownload(galleryRes.permission === "view_download");
         setDelivery(deliveryRes);
-        setPhotos(photoRes.items ?? []);
+        setPhotos(loadedPhotos);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load delivery.");
+        if (active) setLoadError(err instanceof Error ? err.message : "Unable to load delivery.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
     void load();
-  }, [galleryId]);
+    return () => { active = false; };
+  }, [galleryId, reloadKey]);
 
   const handleDownloadSingle = async (photoId: string) => {
     if (!galleryId || downloadingPhotoId || isDownloadingAll) return;
@@ -708,6 +725,14 @@ function ClientDeliveryPage() {
     );
   }
 
+  if (loadError) return (
+    <main className="page-shell"><section className="panel workflow-state">
+      <h1>Your delivery couldn’t be loaded.</h1><p className="error-box" role="alert">{loadError}</p>
+      <button className="primary-button" type="button" onClick={() => setReloadKey((key) => key + 1)}>Try again</button>
+      <Link className="secondary-button" to={`/client/gallery/${galleryId}`}>Return to gallery</Link>
+    </section></main>
+  );
+
   if (!delivery || !delivery.isReleased) {
     return (
       <main className="page-shell">
@@ -728,7 +753,7 @@ function ClientDeliveryPage() {
     const match = photos.find((p) => p.photoId === item.photoId);
     return {
       ...item,
-      preview: match?.preview,
+      preview: match?.thumbnail,
     };
   });
 
@@ -852,7 +877,7 @@ function ClientGalleryPage() {
   }, [galleryId]);
 
   const handleSelectionToggle = async (photoId: string) => {
-    if (!galleryId || savingPhotoId === photoId || selectionStatus === "submitted") return;
+    if (!galleryId || savingPhotoId || selectionStatus === "submitted") return;
 
     const wasSelected = selectedPhotoIds.has(photoId);
     const nextSelected = !wasSelected;
@@ -999,7 +1024,7 @@ function ClientGalleryPage() {
                     type="button"
                     className={`photo-select-button ${selected ? "is-selected" : ""}`}
                     onClick={() => void handleSelectionToggle(photo.photoId)}
-                    disabled={savingPhotoId === photo.photoId || selectionStatus === "submitted"}
+                    disabled={Boolean(savingPhotoId) || selectionStatus === "submitted"}
                     aria-pressed={selected}
                   >
                     {savingPhotoId === photo.photoId
@@ -1064,11 +1089,9 @@ function ClientGalleryPage() {
         <section className="selection-bar" aria-live="polite" aria-label="Selection status">
           <div>
             <strong>{selectedPhotoIds.size} selected</strong>
-            <span className="selection-bar-note">Your choices are saved.</span>
+            <span className="selection-bar-note">{savingPhotoId ? "Saving your choice…" : error ? "A change could not be saved. Check the message above." : "Your choices are saved."}</span>
           </div>
-          <Link to={`/client/gallery/${galleryId}/selection`} className="primary-button selection-review-link">
-            Review selection
-          </Link>
+          {savingPhotoId ? <span className="muted">Saving…</span> : <Link to={`/client/gallery/${galleryId}/selection`} className="primary-button selection-review-link">Review selection</Link>}
         </section>
       ) : null}
 
