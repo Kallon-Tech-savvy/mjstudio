@@ -130,7 +130,7 @@ test("new client: validate email, keep entries on failure, retry successfully", 
   const posts = await studio(page, { failCreate: true });
   await nameShoot(page);
   await page.getByRole("combobox").fill("Mohamed");
-  await page.getByRole("button", { name: /Create “Mohamed”/ }).click();
+  await page.getByRole("option", { name: /Create “Mohamed”/ }).click();
   await page.getByLabel("Email (optional)", { exact: true }).fill("invalid");
   await expect(
     page.getByRole("button", { name: "Use this client" }),

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:database": "vitest run --config vitest.database.config.ts"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
