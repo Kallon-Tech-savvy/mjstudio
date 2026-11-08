@@ -6,6 +6,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { ModalDialog } from "@/components/ModalDialog";
 import {
   StudioDeliverySection,
   StudioFeedbackReview,
@@ -95,19 +96,6 @@ function StudioPhotoViewerModal({
     updated: Awaited<ReturnType<typeof setStudioPhotoReview>>,
   ) => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    const opener =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    dialog?.showModal();
-    return () => {
-      dialog?.close();
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
-    };
-  }, []);
   const [status, setStatus] = useState<"approved" | "needs_revision">(
     selectedPhoto.reviewStatus === "needs_revision"
       ? "needs_revision"
@@ -160,33 +148,11 @@ function StudioPhotoViewerModal({
   );
 
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="panel studio-photo-review-modal"
-      aria-label={`Review photograph ${selectedPhoto.position + 1}`}
-      onKeyDown={(event) => {
-        if (event.key !== "Tab") return;
-        const controls = event.currentTarget.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), select:not(:disabled), textarea:not(:disabled), input:not(:disabled), a[href]",
-        );
-        const first = controls[0];
-        const last = controls[controls.length - 1];
-        if (!first) {
-          event.preventDefault();
-          return;
-        }
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!isSaving) onClose();
-      }}
+      label={`Review photograph ${selectedPhoto.position + 1}`}
+      closeDisabled={isSaving}
+      onRequestClose={onClose}
     >
       <div className="panel-header compact-header">
         <div>
@@ -277,11 +243,17 @@ function StudioPhotoViewerModal({
           Next
         </button>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }
 
 export default function PhotographerGalleryDetailPage() {
+  // Async completions belong to this gallery instance, including active uploads.
+  const { galleryId } = useParams();
+  return <PhotographerGalleryWorkspace key={galleryId} />;
+}
+
+function PhotographerGalleryWorkspace() {
   const { galleryId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();

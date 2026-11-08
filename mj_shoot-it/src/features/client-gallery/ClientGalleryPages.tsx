@@ -3,6 +3,7 @@ import {
   type TouchEvent,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -12,6 +13,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { ModalDialog } from "@/components/ModalDialog";
 import {
   ApiError,
   type ClientDeliveryResponse,
@@ -170,6 +172,8 @@ function ClientPhotoViewer({
   totalPhotos,
   hasMorePhotos,
   onLoadMore,
+  feedback,
+  onFeedbackChange,
 }: {
   galleryId: string;
   photos: ClientPhoto[];
@@ -181,15 +185,24 @@ function ClientPhotoViewer({
   totalPhotos: number;
   hasMorePhotos: boolean;
   onLoadMore: () => Promise<string | null>;
+  feedback: string;
+  onFeedbackChange: (value: string) => void;
 }) {
   const [photo, setPhoto] = useState<Awaited<
     ReturnType<typeof getClientPhoto>
   > | null>(null);
   const [error, setError] = useState("");
-  const [feedback, setFeedback] = useState("");
   const [feedbackError, setFeedbackError] = useState("");
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const sendLock = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
@@ -204,13 +217,15 @@ function ClientPhotoViewer({
   const previousPhotoId = previousPhoto?.photoId;
 
   const handleNext = useCallback(async () => {
+    if (sendLock.current) return;
     if (nextPhoto) {
       onNavigate(nextPhoto.photoId);
       return;
     }
     if (hasMorePhotos) {
       const firstNewPhotoId = await onLoadMore();
-      if (firstNewPhotoId) onNavigate(firstNewPhotoId);
+      if (firstNewPhotoId && mounted.current && !sendLock.current)
+        onNavigate(firstNewPhotoId);
     }
   }, [hasMorePhotos, nextPhoto, onLoadMore, onNavigate]);
 
@@ -241,10 +256,13 @@ function ClientPhotoViewer({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      } else if (event.key === "ArrowLeft" && previousPhotoId) {
+      if (sendLock.current) return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("input, textarea, select, [contenteditable]")
+      )
+        return;
+      if (event.key === "ArrowLeft" && previousPhotoId) {
         event.preventDefault();
         onNavigate(previousPhotoId);
       } else if (event.key === "ArrowRight" && canAdvance) {
@@ -255,13 +273,14 @@ function ClientPhotoViewer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canAdvance, handleNext, onClose, onNavigate, previousPhotoId]);
+  }, [canAdvance, handleNext, onNavigate, previousPhotoId]);
 
   const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     setTouchStartX(event.changedTouches[0]?.clientX ?? null);
   };
 
   const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
+    if (sendLock.current) return;
     if (touchStartX === null) return;
     const endX = event.changedTouches[0]?.clientX ?? touchStartX;
     const distance = endX - touchStartX;
@@ -273,13 +292,14 @@ function ClientPhotoViewer({
   };
 
   const handlePhotoFeedback = async () => {
-    if (!feedback.trim()) return;
+    if (!feedback.trim() || sendLock.current) return;
+    sendLock.current = true;
     setIsFeedbackSubmitting(true);
     setFeedbackError("");
 
     try {
       await createPhotoFeedback(galleryId, photoId, feedback.trim());
-      setFeedback("");
+      onFeedbackChange("");
       setIsFeedbackOpen(false);
       setFeedbackStatus("Your note was sent to the photographer.");
     } catch (caughtError) {
@@ -289,22 +309,30 @@ function ClientPhotoViewer({
           : "Photo feedback could not be submitted.",
       );
     } finally {
+      sendLock.current = false;
       setIsFeedbackSubmitting(false);
     }
   };
 
   if (error) {
     return (
-      <div
+      <ModalDialog
         className="viewer-backdrop"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Photograph viewer"
+        label="Photograph viewer"
+        onRequestClose={onClose}
+        closeDisabled={isFeedbackSubmitting}
       >
-        <div className="viewer-panel">
+        <div
+          className={`viewer-panel${isFeedbackOpen ? " is-writing-note" : ""}`}
+        >
           <div className="viewer-toolbar">
             <span>Unable to open photograph</span>
-            <button type="button" className="viewer-close" onClick={onClose}>
+            <button
+              type="button"
+              className="viewer-close"
+              disabled={isFeedbackSubmitting}
+              onClick={onClose}
+            >
               Close
             </button>
           </div>
@@ -312,27 +340,27 @@ function ClientPhotoViewer({
             <div className="error-box">{error}</div>
           </div>
         </div>
-      </div>
+      </ModalDialog>
     );
   }
 
   return (
-    <div
+    <ModalDialog
       className="viewer-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Photograph viewer"
+      label="Photograph viewer"
+      onRequestClose={onClose}
+      closeDisabled={isFeedbackSubmitting}
     >
       <button
         type="button"
         className="viewer-dismiss"
+        tabIndex={-1}
+        disabled={isFeedbackSubmitting}
         aria-label="Close photograph viewer"
         onClick={onClose}
       />
       <div
-        className="viewer-panel"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        className={`viewer-panel${isFeedbackOpen ? " is-writing-note" : ""}`}
       >
         <div className="viewer-toolbar">
           <div>
@@ -343,12 +371,21 @@ function ClientPhotoViewer({
               <span className="viewer-recommended">Recommended</span>
             ) : null}
           </div>
-          <button type="button" className="viewer-close" onClick={onClose}>
+          <button
+            type="button"
+            className="viewer-close"
+            disabled={isFeedbackSubmitting}
+            onClick={onClose}
+          >
             Close
           </button>
         </div>
 
-        <div className="viewer-image-wrap">
+        <div
+          className="viewer-image-wrap"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {photo ? (
             <img
               src={photo.preview.url}
@@ -367,7 +404,7 @@ function ClientPhotoViewer({
             type="button"
             className="viewer-nav viewer-nav-previous"
             onClick={() => previousPhoto && onNavigate(previousPhoto.photoId)}
-            disabled={!previousPhoto}
+            disabled={!previousPhoto || isFeedbackSubmitting}
             aria-label="Previous photograph"
           >
             Previous
@@ -378,7 +415,7 @@ function ClientPhotoViewer({
             className={`viewer-select ${isSelected ? "is-selected" : ""}`}
             onClick={() => onSelectToggle(photoId)}
             aria-pressed={isSelected}
-            disabled={!photo}
+            disabled={!photo || isFeedbackSubmitting}
           >
             {isSelected ? "Selected" : "Select photograph"}
           </button>
@@ -387,7 +424,7 @@ function ClientPhotoViewer({
             type="button"
             className="viewer-nav viewer-nav-next"
             onClick={() => void handleNext()}
-            disabled={!canAdvance}
+            disabled={!canAdvance || isFeedbackSubmitting}
             aria-label="Next photograph"
           >
             Next
@@ -397,7 +434,7 @@ function ClientPhotoViewer({
             type="button"
             className="viewer-feedback-trigger"
             onClick={() => setIsFeedbackOpen((open) => !open)}
-            disabled={!photo}
+            disabled={!photo || isFeedbackSubmitting}
           >
             {isFeedbackOpen ? "Close note" : "Leave a note"}
           </button>
@@ -418,7 +455,7 @@ function ClientPhotoViewer({
               id="photo-feedback"
               className="viewer-feedback-input"
               value={feedback}
-              onChange={(event) => setFeedback(event.target.value)}
+              onChange={(event) => onFeedbackChange(event.target.value)}
               placeholder="Tell your photographer what you'd like changed or reviewed."
               maxLength={5000}
               disabled={isFeedbackSubmitting}
@@ -433,7 +470,7 @@ function ClientPhotoViewer({
                 type="button"
                 className="viewer-feedback-cancel"
                 onClick={() => {
-                  setFeedback("");
+                  onFeedbackChange("");
                   setIsFeedbackOpen(false);
                 }}
                 disabled={isFeedbackSubmitting}
@@ -456,7 +493,7 @@ function ClientPhotoViewer({
           </output>
         ) : null}
       </div>
-    </div>
+    </ModalDialog>
   );
 }
 
@@ -1099,6 +1136,12 @@ function ClientDeliveryPage() {
 }
 
 function ClientGalleryPage() {
+  // Isolate photographs, selection state and note drafts when the gallery changes.
+  const { galleryId } = useParams();
+  return <ClientGalleryWorkspace key={galleryId} />;
+}
+
+function ClientGalleryWorkspace() {
   const { galleryId } = useParams();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
@@ -1111,6 +1154,7 @@ function ClientGalleryPage() {
     new Set(),
   );
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState("");
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
@@ -1467,6 +1511,10 @@ function ClientGalleryPage() {
           totalPhotos={totalPhotos}
           hasMorePhotos={hasMorePhotos}
           onLoadMore={handleLoadMore}
+          feedback={noteDrafts[viewerPhotoId] ?? ""}
+          onFeedbackChange={(value) =>
+            setNoteDrafts((current) => ({ ...current, [viewerPhotoId]: value }))
+          }
         />
       ) : null}
     </main>

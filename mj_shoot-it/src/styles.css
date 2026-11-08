@@ -2153,3 +2153,85 @@ button.studio-selection-card {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Reset native dialog dimensions while retaining the existing full-screen viewer. */
+dialog.viewer-backdrop {
+  margin: 0;
+  border: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+}
+
+dialog.viewer-backdrop:not([open]) {
+  display: none;
+}
+
+.viewer-panel {
+  overflow-y: auto;
+}
+
+.viewer-panel.is-writing-note .viewer-image-wrap {
+  min-height: min(28dvh, 240px);
+}
+
+.viewer-panel.is-writing-note .viewer-image-wrap img {
+  max-height: min(28dvh, 240px);
+}
+
+.viewer-feedback {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 16px 18px;
+  border-top: 1px solid #595653;
+}
+
+.viewer-feedback-input {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid #595653;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.viewer-feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.viewer-feedback-actions button,
+.viewer-feedback-trigger {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #595653;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.viewer-feedback-trigger {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.viewer-feedback-actions .viewer-feedback-submit {
+  background: #fff;
+  color: #171513;
+}
+
+.viewer-feedback :focus-visible,
+.viewer-feedback-trigger:focus-visible {
+  outline-color: #fff;
+}
+
+.viewer-feedback-actions button:disabled,
+.viewer-feedback-trigger:disabled {
+  opacity: 0.6;
+}
