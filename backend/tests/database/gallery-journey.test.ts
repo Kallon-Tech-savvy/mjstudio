@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { buildPhotographerContext, type PhotographerContext } from '../../src/auth/context.js';
@@ -72,6 +73,58 @@ afterEach(async () => {
 afterAll(async () => { await pool.end(); });
 
 describe('PostgreSQL gallery journey', () => {
+  it('rejects an edit that overlaps a submission and preserves both selection records', async () => {
+    const { client, photoId } = await publishedFixture();
+    await selections.setSelection(client, photoId, true);
+    const selection = await selections.getSelection(client);
+    const submitting = await pool.connect();
+    let edit: Promise<unknown> | undefined;
+    try {
+      await submitting.query('BEGIN');
+      const { rows: [{ pid }] } = await submitting.query('SELECT pg_backend_pid() AS pid');
+      // Hold the same row update as submitSelection before its commit. The other
+      // connection must wait BEFORE trusting the old draft status.
+      await submitting.query("UPDATE gallery_selections SET status = 'submitted', submitted_at = NOW() WHERE id = $1", [selection.id]);
+      let settled = false;
+      edit = selections.setSelection(client, photoId, false).then(
+        (value) => { settled = true; return value; },
+        (error: unknown) => { settled = true; return error; },
+      );
+      let blocked = false;
+      const deadline = Date.now() + 5_000;
+      while (!settled && !blocked && Date.now() < deadline) {
+        const result = await pool.query('SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked', [pid]);
+        blocked = result.rows[0].blocked;
+        if (!blocked && !settled) await delay(10);
+      }
+      expect(blocked, 'edit must wait for the submission transaction').toBe(true);
+      await submitting.query('COMMIT');
+      expect(await edit).toMatchObject({ code: 'SELECTION_ALREADY_SUBMITTED' });
+      const stored = await selections.getSelection(client);
+      expect(stored.status).toBe('submitted');
+      expect(stored.items).toEqual([expect.objectContaining({ photoId, selected: true })]);
+      const legacy = await pool.query('SELECT selection FROM photo_selections WHERE gallery_access_id = $1 AND photo_id = $2', [client.galleryAccessId, photoId]);
+      expect(legacy.rows[0].selection).toBe('favourite');
+      expect((await selections.submitSelection(client)).selectedCount).toBe(1);
+    } finally {
+      await submitting.query('ROLLBACK');
+      submitting.release();
+      await edit;
+    }
+  });
+
+  it.each([false, true])('returns one stable receipt for simultaneous submissions (existing shortlist: %s)', async (existing) => {
+    const { client, photoId } = await publishedFixture();
+    if (existing) await selections.setSelection(client, photoId, true);
+    const receipts = await Promise.all([
+      selections.submitSelection(client),
+      selections.submitSelection(client),
+    ]);
+    expect(receipts[0]).toEqual(receipts[1]);
+    expect(receipts[0]).toMatchObject({ status: 'submitted', selectedCount: existing ? 1 : 0 });
+    await expect(selections.setSelection(client, photoId, false)).rejects.toMatchObject({ code: 'SELECTION_ALREADY_SUBMITTED' });
+  });
+
   it('persists publication, verified client access, selection, proofing and explicit delivery release', async () => {
     const { actor, galleryId, photoId, client } = await publishedFixture();
     const stored = await galleries.get(actor, galleryId);
