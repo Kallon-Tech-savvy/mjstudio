@@ -204,8 +204,14 @@ export function StudioFeedbackReview({
 
 export function StudioPhotoList({
   photos,
+  busy = false,
+  onCheck,
+  onRemove,
 }: {
   photos: import("@/lib/api").PhotoRecord[];
+  busy?: boolean;
+  onCheck?: (photo: import("@/lib/api").PhotoRecord) => void;
+  onRemove?: (photo: import("@/lib/api").PhotoRecord) => void;
 }) {
   return (
     <ul className="list-stack spaced-list">
@@ -215,12 +221,38 @@ export function StudioPhotoList({
         </li>
       ) : (
         photos.map((photo) => (
-          <li key={photo.photoId} className="list-row">
+          <li key={photo.photoId} className="list-row saved-photo-row">
             <div>
               <strong>{photo.filename}</strong>
-              <small>{photo.mimeType ?? "image"}</small>
+              <small>
+                {photo.status === "failed"
+                  ? "This upload needs attention. Remove it only if you want to choose the file again."
+                  : photo.status === "processing"
+                    ? "Preparing photograph"
+                    : photo.status && photo.status !== "active"
+                      ? "Upload needs checking"
+                      : "Ready"}
+              </small>
             </div>
-            <span className="tag">{photo.status ?? "ready"}</span>
+            {photo.status === "failed" && onRemove ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={busy}
+                onClick={() => onRemove(photo)}
+              >
+                Remove incomplete upload
+              </button>
+            ) : photo.status && photo.status !== "active" && onCheck ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={busy}
+                onClick={() => onCheck(photo)}
+              >
+                Check upload
+              </button>
+            ) : null}
           </li>
         ))
       )}

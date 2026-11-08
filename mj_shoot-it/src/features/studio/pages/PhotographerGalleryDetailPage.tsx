@@ -294,6 +294,11 @@ export default function PhotographerGalleryDetailPage() {
     heading?.focus({ preventScroll: true });
   }, [gallery, searchParams]);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+  const [photoPage, setPhotoPage] = useState(1);
+  const [photoTotal, setPhotoTotal] = useState(0);
+  const [photoLibraryError, setPhotoLibraryError] = useState("");
+  const photoLibraryRequest = useRef(0);
+  const photoLibraryLock = useRef(false);
   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
   const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
   const [permission, setPermission] = useState<"view" | "view_download">(
@@ -340,6 +345,31 @@ export default function PhotographerGalleryDetailPage() {
     window.addEventListener("beforeunload", warnBeforeLeaving);
     return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
   }, [isUploadingPhotos, isPublishing]);
+
+  useEffect(
+    () => () => {
+      photoLibraryRequest.current += 1;
+    },
+    [],
+  );
+
+  const refreshPhotoLibrary = async (
+    targetPage: number,
+    isCurrent: () => boolean = () => true,
+  ) => {
+    if (!galleryId) return;
+    let response = await listGalleryPhotos(galleryId, targetPage, 20);
+    const validPage = Math.min(
+      targetPage,
+      Math.max(1, Math.ceil(response.total / 20)),
+    );
+    if (validPage !== targetPage)
+      response = await listGalleryPhotos(galleryId, validPage, 20);
+    if (!isCurrent()) return;
+    setPhotos(response.items);
+    setPhotoPage(validPage);
+    setPhotoTotal(response.total);
+  };
 
   const handlePhotoFiles = async (files: FileList | null) => {
     if (
@@ -490,6 +520,8 @@ export default function PhotographerGalleryDetailPage() {
           : 1;
       const refreshedPhotos = await listGalleryPhotos(galleryId, lastPage, 20);
       setPhotos(refreshedPhotos.items);
+      setPhotoPage(lastPage);
+      setPhotoTotal(refreshedPhotos.total);
     } catch (caughtError) {
       setPhotoUploadError(
         caughtError instanceof Error
@@ -541,7 +573,7 @@ export default function PhotographerGalleryDetailPage() {
             : item,
         ),
       );
-      setPhotos((await listGalleryPhotos(galleryId, 1, 20)).items);
+      await refreshPhotoLibrary(photoPage);
     } catch (caught) {
       setPhotoUploads((current) =>
         current.map((item) =>
@@ -586,7 +618,7 @@ export default function PhotographerGalleryDetailPage() {
             : item,
         ),
       );
-      setPhotos((await listGalleryPhotos(galleryId, 1, 20)).items);
+      await refreshPhotoLibrary(photoPage);
     } catch (caught) {
       setPhotoUploadError(
         caught instanceof Error
@@ -595,6 +627,84 @@ export default function PhotographerGalleryDetailPage() {
       );
     } finally {
       setCheckingUploadId(null);
+    }
+  };
+
+  const manageSavedPhotos = async (
+    targetPage: number,
+    action?: { photo: PhotoRecord; kind: "check" | "remove" },
+  ) => {
+    if (
+      !galleryId ||
+      photoLibraryLock.current ||
+      isUploadingPhotos ||
+      isPublishing ||
+      checkingUploadId
+    )
+      return;
+    photoLibraryLock.current = true;
+    const request = ++photoLibraryRequest.current;
+    const isCurrent = () => request === photoLibraryRequest.current;
+    setCheckingUploadId(action?.photo.photoId ?? "photo-page");
+    setPhotoLibraryError("");
+    try {
+      if (action) {
+        const { photo, kind } = action;
+        if (kind === "remove") {
+          await deletePhoto(photo.photoId);
+          if (isCurrent())
+            setPhotoUploads((current) =>
+              current.filter((item) => item.photoId !== photo.photoId),
+            );
+        } else {
+          let { status } = await getStudioPhotoStatus(photo.photoId);
+          if (status !== "active" && status !== "failed") {
+            await completePhotoUpload(photo.photoId);
+            status = (await getStudioPhotoStatus(photo.photoId)).status;
+          }
+          if (isCurrent())
+            setPhotoUploads((current) =>
+              current.map((item) =>
+                item.photoId === photo.photoId
+                  ? {
+                      ...item,
+                      status:
+                        status === "active"
+                          ? "complete"
+                          : status === "failed"
+                            ? "failed"
+                            : "processing",
+                      error:
+                        status === "active"
+                          ? undefined
+                          : "Check the saved photograph below for its latest status.",
+                    }
+                  : item,
+              ),
+            );
+        }
+      }
+      await refreshPhotoLibrary(targetPage, isCurrent);
+    } catch (caught) {
+      if (isCurrent())
+        setPhotoLibraryError(
+          caught instanceof Error
+            ? caught.message
+            : "Unable to update photographs. Try again.",
+        );
+      if (action && isCurrent()) {
+        // Confirmation may have changed the persisted status even if its response failed.
+        try {
+          await refreshPhotoLibrary(targetPage, isCurrent);
+        } catch {
+          /* Keep the error and current page for an explicit refresh. */
+        }
+      }
+    } finally {
+      if (isCurrent()) {
+        setCheckingUploadId(null);
+        photoLibraryLock.current = false;
+      }
     }
   };
 
@@ -659,6 +769,13 @@ export default function PhotographerGalleryDetailPage() {
     useCallback(
       async (isCurrent: () => boolean) => {
         if (!galleryId) return;
+        photoLibraryRequest.current += 1;
+        photoLibraryLock.current = false;
+        setCheckingUploadId(null);
+        setPhotoUploads([]);
+        setPhotoPage(1);
+        setPhotoTotal(0);
+        setPhotoLibraryError("");
         setError("");
         setGallery(null);
         setPhotos([]);
@@ -702,6 +819,7 @@ export default function PhotographerGalleryDetailPage() {
           if (!isCurrent()) return;
           setGallery(galleryResponse as GalleryDetail);
           setPhotos(photoResponse.items ?? []);
+          setPhotoTotal(photoResponse.total);
           setSelection(selectionResponse);
           setFeedback(feedbackResponse);
           setDelivery(deliveryResponse);
@@ -998,7 +1116,77 @@ export default function PhotographerGalleryDetailPage() {
             </ul>
           ) : null}
         </section>
-        <StudioPhotoList photos={photos} />
+        <section
+          aria-label="Saved photographs"
+          aria-busy={Boolean(checkingUploadId)}
+        >
+          <h2>Saved photographs</h2>
+          <p className="muted">
+            These uploads are saved to this gallery. Check unfinished
+            photographs before choosing the files again.
+          </p>
+          {photoLibraryError ? (
+            <p className="error-box" role="alert">
+              {photoLibraryError}
+            </p>
+          ) : null}
+          <StudioPhotoList
+            photos={photos}
+            busy={
+              isUploadingPhotos || isPublishing || Boolean(checkingUploadId)
+            }
+            onCheck={(photo) =>
+              void manageSavedPhotos(photoPage, { photo, kind: "check" })
+            }
+            onRemove={(photo) =>
+              void manageSavedPhotos(photoPage, { photo, kind: "remove" })
+            }
+          />
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={
+              isUploadingPhotos || isPublishing || Boolean(checkingUploadId)
+            }
+            onClick={() => void manageSavedPhotos(photoPage)}
+          >
+            Refresh photographs
+          </button>
+          <nav
+            className="photo-library-pagination"
+            aria-label="Photograph pages"
+          >
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={
+                photoPage <= 1 ||
+                isUploadingPhotos ||
+                isPublishing ||
+                Boolean(checkingUploadId)
+              }
+              onClick={() => void manageSavedPhotos(photoPage - 1)}
+            >
+              Previous photographs
+            </button>
+            <output>
+              Page {photoPage} of {Math.max(1, Math.ceil(photoTotal / 20))}
+            </output>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={
+                photoPage * 20 >= photoTotal ||
+                isUploadingPhotos ||
+                isPublishing ||
+                Boolean(checkingUploadId)
+              }
+              onClick={() => void manageSavedPhotos(photoPage + 1)}
+            >
+              Next photographs
+            </button>
+          </nav>
+        </section>
 
         {accessStatus === "loading" ? (
           <p className="muted">Checking client access…</p>
@@ -1133,7 +1321,7 @@ export default function PhotographerGalleryDetailPage() {
 
         <GalleryPublicationPanel
           published={gallery.publicationStatus === "published"}
-          hasPhotos={photos.some((photo) => photo.status === "active")}
+          hasPhotos={photoTotal > 0}
           hasAccess={hasActiveAccess && accessStatus === "available"}
           busy={isPublishing || isIssuingAccess}
           waitingForPhotos={waitingForPhotos}

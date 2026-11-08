@@ -2134,3 +2134,22 @@ button.studio-selection-card {
 .creation-stage [role="option"]:hover {
   background: var(--studio-paper);
 }
+
+.photo-library-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.saved-photo-row {
+  flex-wrap: wrap;
+}
+
+.saved-photo-row > div {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
