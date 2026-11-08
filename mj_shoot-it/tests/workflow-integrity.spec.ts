@@ -168,7 +168,15 @@ test("delivery network failure is a recoverable error rather than a false prepar
   ).toBeVisible();
 });
 
-async function interruptedUpload(page: Page, getStatus: () => string) {
+async function interruptedUpload(
+  page: Page,
+  getStatus: () => string,
+  options: {
+    transferFails?: boolean;
+    completionSucceeds?: boolean;
+    removeFails?: boolean;
+  } = {},
+) {
   const deleted: string[] = [];
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -176,11 +184,19 @@ async function interruptedUpload(page: Page, getStatus: () => string) {
     const ok = (data: unknown) => route.fulfill({ json: { data } });
     if (method === "DELETE") {
       deleted.push(path);
+      if (options.removeFails)
+        return route.fulfill({
+          status: 503,
+          json: { error: { message: "Could not remove upload" } },
+        });
       return ok({});
     }
     if (path === "/api/auth/me")
       return ok({ user: { userId: "owner", studioId: "studio" } });
-    if (path.endsWith("/upload-complete")) return route.abort("failed");
+    if (path.endsWith("/upload-complete"))
+      return options.completionSucceeds
+        ? ok({ status: "processing" })
+        : route.abort("failed");
     if (path === "/api/photos/photo-new") return ok({ status: getStatus() });
     if (path.endsWith("/photos") && method === "POST")
       return ok({
@@ -197,7 +213,9 @@ async function interruptedUpload(page: Page, getStatus: () => string) {
     return ok([]);
   });
   await page.route("**/storage-test", (route) =>
-    route.fulfill({ status: 204 }),
+    options.transferFails
+      ? route.abort("failed")
+      : route.fulfill({ status: 204 }),
   );
   await page.goto(`/photographer/galleries/${galleryId}`);
   await page.getByLabel("Select photos to upload").setInputFiles({
@@ -229,6 +247,90 @@ test("unconfirmed processing shows an honest status and can be checked without r
   await page.getByRole("button", { name: "Check upload" }).click();
   await expect(page.locator(".photo-upload-status")).toHaveText("Complete");
   expect(deleted).toEqual([]);
+});
+
+test("a lost transfer response keeps the photo available for confirmation", async ({
+  page,
+}) => {
+  let status = "pending";
+  const deleted = await interruptedUpload(page, () => status, {
+    transferFails: true,
+  });
+  await expect(
+    page.getByRole("button", { name: "Check upload" }),
+  ).toBeVisible();
+  expect(deleted).toEqual([]);
+  await expect(page.locator(".photo-upload-status")).toHaveText("Needs check");
+  status = "active";
+  await page.getByRole("button", { name: "Check upload" }).click();
+  await expect(page.locator(".photo-upload-status")).toHaveText("Complete");
+  expect(deleted).toEqual([]);
+});
+
+test("failed processing retains the original until the photographer removes it", async ({
+  page,
+}) => {
+  const deleted = await interruptedUpload(page, () => "failed", {
+    completionSucceeds: true,
+  });
+  await expect(page.getByText(/original has been kept/)).toBeVisible();
+  expect(deleted).toEqual([]);
+  await page.getByRole("button", { name: "Remove incomplete upload" }).click();
+  await expect(page.getByText(/Upload removed/)).toBeVisible();
+  expect(deleted).toEqual(["/api/photos/photo-new"]);
+});
+
+test("a failed explicit removal keeps the original recovery action available", async ({
+  page,
+}) => {
+  await interruptedUpload(page, () => "failed", {
+    completionSucceeds: true,
+    removeFails: true,
+  });
+  await page.getByRole("button", { name: "Remove incomplete upload" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Could not remove upload",
+  );
+  await expect(
+    page.getByRole("button", { name: "Remove incomplete upload" }),
+  ).toBeEnabled();
+  await expect(page.getByText(/original has been kept/)).toBeVisible();
+});
+
+test("upload recovery stays usable on a narrow phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 760 });
+  await interruptedUpload(page, () => "failed", { completionSucceeds: true });
+  await expect(
+    page.getByRole("button", { name: "Remove incomplete upload" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  const details = page.locator(".photo-upload-details");
+  expect((await details.boundingBox())?.width).toBeGreaterThan(120);
+});
+
+test("starting another batch preserves unresolved uploads", async ({
+  page,
+}) => {
+  await interruptedUpload(page, () => "processing");
+  await expect(
+    page.getByRole("button", { name: "Check upload" }),
+  ).toBeVisible();
+  await page.getByLabel("Select photos to upload").setInputFiles({
+    name: "second.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from("fixture"),
+  });
+  await expect(page.locator(".photo-upload-details strong")).toHaveText([
+    "portrait.jpg",
+    "second.jpg",
+  ]);
+  await expect(page.getByRole("button", { name: "Check upload" })).toHaveCount(
+    2,
+  );
 });
 
 test("missing selected photographs produce a bounded retry state rather than a misleading empty shortlist", async ({

@@ -50,7 +50,13 @@ type GalleryDetail = Record<string, unknown> & {
 type PhotoUploadItem = {
   id: string;
   file: File;
-  status: "queued" | "uploading" | "processing" | "complete" | "failed";
+  status:
+    | "queued"
+    | "uploading"
+    | "unconfirmed"
+    | "processing"
+    | "complete"
+    | "failed";
   progress: number;
   photoId?: string;
   error?: string;
@@ -318,8 +324,11 @@ export default function PhotographerGalleryDetailPage() {
   const publishLock = useRef(false);
   const waitingForPhotos =
     isUploadingPhotos ||
+    Boolean(checkingUploadId) ||
     photoUploads.some((item) =>
-      ["queued", "uploading", "processing"].includes(item.status),
+      ["queued", "uploading", "unconfirmed", "processing"].includes(
+        item.status,
+      ),
     );
 
   useEffect(() => {
@@ -338,7 +347,8 @@ export default function PhotographerGalleryDetailPage() {
       !gallery ||
       !files?.length ||
       uploadLock.current ||
-      isPublishing
+      isPublishing ||
+      checkingUploadId
     )
       return;
     uploadLock.current = true;
@@ -354,7 +364,10 @@ export default function PhotographerGalleryDetailPage() {
           : "Choose an image file.",
       }),
     );
-    setPhotoUploads(uploads);
+    setPhotoUploads((current) => [
+      ...current.filter((item) => item.photoId && item.status !== "complete"),
+      ...uploads,
+    ]);
     setPhotoUploadError("");
     setIsUploadingPhotos(true);
     let acceptedUploads = 0;
@@ -394,7 +407,6 @@ export default function PhotographerGalleryDetailPage() {
           capability.photo.id,
         );
         if (processingStatus === "failed") {
-          await deletePhoto(capability.photo.id);
           setPhotoUploads((current) =>
             current.map((item) =>
               item.id === upload.id
@@ -402,7 +414,7 @@ export default function PhotographerGalleryDetailPage() {
                     ...item,
                     status: "failed",
                     error:
-                      "Photo processing failed. The incomplete photo was removed; try uploading it again.",
+                      "Photo processing failed. Your original has been kept. Remove this incomplete upload only if you want to upload the file again.",
                   }
                 : item,
             ),
@@ -430,13 +442,13 @@ export default function PhotographerGalleryDetailPage() {
           );
         }
       } catch (caughtError) {
-        let errorMessage =
+        const errorMessage =
           caughtError instanceof Error
             ? caughtError.message
             : "Unable to upload this photo.";
         let recovered = false;
-        if (photoId && completionAttempted) {
-          // A lost completion response is not proof that the server rejected the photo.
+        if (photoId) {
+          // A lost transfer or completion response does not prove the photo was rejected.
           try {
             recovered =
               (await getStudioPhotoStatus(photoId)).status === "active";
@@ -445,17 +457,6 @@ export default function PhotographerGalleryDetailPage() {
           }
           if (recovered && !uploadCompleted) acceptedUploads += 1;
         }
-        if (photoId && !completionAttempted) {
-          try {
-            await deletePhoto(photoId);
-          } catch (cleanupError) {
-            const cleanupMessage =
-              cleanupError instanceof Error
-                ? cleanupError.message
-                : "Unable to clean up the failed upload.";
-            errorMessage = `${errorMessage} The incomplete photo could not be removed: ${cleanupMessage}`;
-          }
-        }
         setPhotoUploads((current) =>
           current.map((item) =>
             item.id === upload.id
@@ -463,14 +464,16 @@ export default function PhotographerGalleryDetailPage() {
                   ...item,
                   status: recovered
                     ? "complete"
-                    : completionAttempted
-                      ? "processing"
+                    : photoId
+                      ? completionAttempted
+                        ? "processing"
+                        : "unconfirmed"
                       : "failed",
                   progress: recovered ? 100 : item.progress,
                   error: recovered
                     ? undefined
-                    : completionAttempted
-                      ? `Upload confirmation was interrupted. Check this upload before choosing the file again. ${errorMessage}`
+                    : photoId
+                      ? `${completionAttempted ? "Upload confirmation" : "Upload transfer"} was interrupted. Check this upload before choosing the file again. ${errorMessage}`
                       : errorMessage,
                 }
               : item,
@@ -500,7 +503,13 @@ export default function PhotographerGalleryDetailPage() {
   };
 
   const checkUpload = async (upload: PhotoUploadItem) => {
-    if (!galleryId || !upload.photoId || checkingUploadId || isUploadingPhotos)
+    if (
+      !galleryId ||
+      !upload.photoId ||
+      checkingUploadId ||
+      isUploadingPhotos ||
+      isPublishing
+    )
       return;
     setCheckingUploadId(upload.id);
     try {
@@ -510,7 +519,6 @@ export default function PhotographerGalleryDetailPage() {
         await completePhotoUpload(upload.photoId);
         status = (await getStudioPhotoStatus(upload.photoId)).status;
       }
-      if (status === "failed") await deletePhoto(upload.photoId);
       setPhotoUploads((current) =>
         current.map((item) =>
           item.id === upload.id
@@ -527,7 +535,7 @@ export default function PhotographerGalleryDetailPage() {
                   status === "active"
                     ? undefined
                     : status === "failed"
-                      ? "Processing failed. The incomplete photo was removed; choose the file again."
+                      ? "This upload needs attention. Its record has been kept. Remove this incomplete upload before choosing the file again."
                       : "Still preparing this photograph. Check again shortly.",
               }
             : item,
@@ -547,6 +555,43 @@ export default function PhotographerGalleryDetailPage() {
               }
             : item,
         ),
+      );
+    } finally {
+      setCheckingUploadId(null);
+    }
+  };
+
+  const removeIncompleteUpload = async (upload: PhotoUploadItem) => {
+    if (
+      !galleryId ||
+      !upload.photoId ||
+      checkingUploadId ||
+      isUploadingPhotos ||
+      isPublishing
+    )
+      return;
+    setCheckingUploadId(upload.id);
+    setPhotoUploadError("");
+    try {
+      await deletePhoto(upload.photoId);
+      setPhotoUploads((current) =>
+        current.map((item) =>
+          item.id === upload.id
+            ? {
+                ...item,
+                photoId: undefined,
+                status: "failed",
+                error: "Upload removed. You can choose the file again.",
+              }
+            : item,
+        ),
+      );
+      setPhotos((await listGalleryPhotos(galleryId, 1, 20)).items);
+    } catch (caught) {
+      setPhotoUploadError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to remove this upload. Try again.",
       );
     } finally {
       setCheckingUploadId(null);
@@ -823,7 +868,7 @@ export default function PhotographerGalleryDetailPage() {
         </section>
       ) : null}
       <div className="panel">
-        <div className="panel-header compact-header">
+        <div className="panel-header compact-header gallery-workspace-header">
           <div>
             <p className="eyebrow">Gallery workspace</p>
             <h1>{String(gallery?.name ?? "Loading gallery…")}</h1>
@@ -863,7 +908,9 @@ export default function PhotographerGalleryDetailPage() {
               type="file"
               accept="image/*"
               multiple
-              disabled={isUploadingPhotos || isPublishing}
+              disabled={
+                isUploadingPhotos || isPublishing || Boolean(checkingUploadId)
+              }
               onChange={(event) => {
                 void handlePhotoFiles(event.currentTarget.files);
                 event.currentTarget.value = "";
@@ -886,7 +933,8 @@ export default function PhotographerGalleryDetailPage() {
                       {upload.status === "uploading"
                         ? `Uploading · ${upload.progress}%`
                         : null}
-                      {upload.status === "processing"
+                      {upload.status === "processing" ||
+                      upload.status === "unconfirmed"
                         ? (upload.error ?? "Upload received · preparing photo")
                         : null}
                       {upload.status === "complete" ? "Upload complete" : null}
@@ -900,16 +948,34 @@ export default function PhotographerGalleryDetailPage() {
                       />
                     ) : null}
                   </div>
-                  {upload.status === "processing" && !isUploadingPhotos ? (
+                  {(upload.status === "processing" ||
+                    upload.status === "unconfirmed") &&
+                  !isUploadingPhotos ? (
                     <button
                       className="secondary-button"
                       type="button"
-                      disabled={Boolean(checkingUploadId)}
+                      disabled={Boolean(checkingUploadId) || isPublishing}
                       onClick={() => void checkUpload(upload)}
                     >
                       {checkingUploadId === upload.id
                         ? "Checking…"
                         : "Check upload"}
+                    </button>
+                  ) : null}
+                  {upload.status === "failed" && upload.photoId ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={
+                        Boolean(checkingUploadId) ||
+                        isUploadingPhotos ||
+                        isPublishing
+                      }
+                      onClick={() => void removeIncompleteUpload(upload)}
+                    >
+                      {checkingUploadId === upload.id
+                        ? "Removing…"
+                        : "Remove incomplete upload"}
                     </button>
                   ) : null}
                   <span
@@ -919,11 +985,13 @@ export default function PhotographerGalleryDetailPage() {
                       ? "Complete"
                       : upload.status === "failed"
                         ? "Failed"
-                        : upload.status === "processing"
-                          ? "Processing"
-                          : upload.status === "uploading"
-                            ? "Uploading"
-                            : "Queued"}
+                        : upload.status === "unconfirmed"
+                          ? "Needs check"
+                          : upload.status === "processing"
+                            ? "Processing"
+                            : upload.status === "uploading"
+                              ? "Uploading"
+                              : "Queued"}
                   </span>
                 </li>
               ))}

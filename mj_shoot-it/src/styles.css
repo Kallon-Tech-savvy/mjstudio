@@ -561,13 +561,23 @@ textarea:focus-visible {
   overflow-y: auto;
 }
 
+.gallery-workspace-header {
+  flex-wrap: wrap;
+}
+
+.gallery-workspace-header > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .photo-upload-row {
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .photo-upload-details {
   display: flex;
-  flex: 1;
+  flex: 1 1 240px;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
