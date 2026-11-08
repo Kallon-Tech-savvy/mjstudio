@@ -60,6 +60,16 @@ async function publishedFixture(permission: 'view' | 'view_download' = 'view_dow
   return { ...context, photoId, client, session };
 }
 
+async function waitForBlockedRequest(blockerPid: number, settled: () => boolean) {
+  const deadline = Date.now() + 5_000;
+  while (!settled() && Date.now() < deadline) {
+    const result = await pool.query('SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked', [blockerPid]);
+    if (result.rows[0].blocked) return true;
+    await delay(10);
+  }
+  return false;
+}
+
 beforeAll(async () => {
   const result = await pool.query('SELECT COUNT(*)::int AS count FROM schema_migrations');
   expect(result.rows[0].count).toBeGreaterThanOrEqual(7);
@@ -90,13 +100,7 @@ describe('PostgreSQL gallery journey', () => {
         (value) => { settled = true; return value; },
         (error: unknown) => { settled = true; return error; },
       );
-      let blocked = false;
-      const deadline = Date.now() + 5_000;
-      while (!settled && !blocked && Date.now() < deadline) {
-        const result = await pool.query('SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked', [pid]);
-        blocked = result.rows[0].blocked;
-        if (!blocked && !settled) await delay(10);
-      }
+      const blocked = await waitForBlockedRequest(pid, () => settled);
       expect(blocked, 'edit must wait for the submission transaction').toBe(true);
       await submitting.query('COMMIT');
       expect(await edit).toMatchObject({ code: 'SELECTION_ALREADY_SUBMITTED' });
@@ -123,6 +127,37 @@ describe('PostgreSQL gallery journey', () => {
     expect(receipts[0]).toEqual(receipts[1]);
     expect(receipts[0]).toMatchObject({ status: 'submitted', selectedCount: existing ? 1 : 0 });
     await expect(selections.setSelection(client, photoId, false)).rejects.toMatchObject({ code: 'SELECTION_ALREADY_SUBMITTED' });
+  });
+
+  it.each(['read', 'edit', 'submit'] as const)('rejects a %s waiting on access revocation without changing the shortlist', async (operation) => {
+    const { client, photoId } = await publishedFixture();
+    await selections.setSelection(client, photoId, true);
+    const revoking = await pool.connect();
+    let request: Promise<unknown> | undefined;
+    try {
+      await revoking.query('BEGIN');
+      const { rows: [{ pid }] } = await revoking.query('SELECT pg_backend_pid() AS pid');
+      await revoking.query('UPDATE gallery_access SET revoked_at = NOW() WHERE id = $1', [client.galleryAccessId]);
+      let settled = false;
+      const pending = operation === 'read' ? selections.getSelection(client)
+        : operation === 'edit' ? selections.setSelection(client, photoId, false)
+        : selections.submitSelection(client);
+      request = pending.then(
+        (value) => { settled = true; return value; },
+        (error: unknown) => { settled = true; return error; },
+      );
+      expect(await waitForBlockedRequest(pid, () => settled)).toBe(true);
+      await revoking.query('COMMIT');
+      expect(await request).toMatchObject({ code: 'INVALID_GALLERY_ACCESS' });
+      const stored = await pool.query(`SELECT gs.status, gsi.selected FROM gallery_selections gs
+        JOIN gallery_selection_items gsi ON gsi.gallery_selection_id = gs.id
+        WHERE gs.gallery_access_id = $1`, [client.galleryAccessId]);
+      expect(stored.rows).toEqual([{ status: 'draft', selected: true }]);
+    } finally {
+      await revoking.query('ROLLBACK');
+      revoking.release();
+      await request;
+    }
   });
 
   it('persists publication, verified client access, selection, proofing and explicit delivery release', async () => {

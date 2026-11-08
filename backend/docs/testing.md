@@ -8,6 +8,8 @@ Apply the repository migrations to that test database first. CI does this in its
 
 The database suite exercises publication, verified client sessions, selection submission and retry, proofing, delivery preparation and release, permission checks, and access replacement. Credentials are generated in memory and never logged.
 
+Selection concurrency checks use separate PostgreSQL connections and inspect actual blocking locks. An edit overlapping submission must wait and then reject without changing either selection table. Simultaneous submissions return the same receipt, including when neither request has created a shortlist yet. Reads, edits and submissions waiting on access revocation must reject once it commits. Selection operations lock access before the shortlist so access replacement cannot move the shortlist halfway through an operation.
+
 The photo pipeline suite additionally writes synthetic image bytes through signed HTTP upload capabilities, processes them with Sharp and the real local storage adapter, and verifies preview/thumbnail bytes, original delivery, and cleanup against PostgreSQL. Fault injection covers interrupted storage verification, processing rollback and retry, stale derivative replacement, expired worker ownership, and permanent processing failure. Fixture cleanup removes only that suite’s jobs, rows and temporary files.
 
 These are integration tests of the local development storage adapter. They do not configure or certify a cloud storage provider, email delivery, or production deployment.
