@@ -148,7 +148,7 @@ describe('PostgreSQL gallery journey', () => {
       );
       expect(await waitForBlockedRequest(pid, () => settled)).toBe(true);
       await revoking.query('COMMIT');
-      expect(await request).toMatchObject({ code: 'INVALID_GALLERY_ACCESS' });
+      expect(await request).toMatchObject({ statusCode: 403, code: 'FORBIDDEN', message: 'INVALID_GALLERY_ACCESS' });
       const stored = await pool.query(`SELECT gs.status, gsi.selected FROM gallery_selections gs
         JOIN gallery_selection_items gsi ON gsi.gallery_selection_id = gs.id
         WHERE gs.gallery_access_id = $1`, [client.galleryAccessId]);
