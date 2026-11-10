@@ -86,7 +86,105 @@ async function processingState(photoId: string) {
   return (await pool.query("SELECT status, attempts FROM application_jobs WHERE job_type = 'PROCESS_PHOTO_ASSETS' AND payload->>'photoId' = $1", [photoId])).rows;
 }
 
+function verificationStorage(storage: PhotoStorage, verifyObject: PhotoStorage['verifyObject']): PhotoStorage {
+  return {
+    createUploadCapability: storage.createUploadCapability.bind(storage),
+    createViewCapability: storage.createViewCapability.bind(storage),
+    createDownloadCapability: storage.createDownloadCapability.bind(storage),
+    verifyObject,
+  };
+}
+
+function gate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => { release = resolve; });
+  return { promise, release };
+}
+
 describe('real image, storage and PostgreSQL pipeline', () => {
+  it.each([false, true])('returns the current state after a newer confirmation finishes (delayed verification succeeds: %s)', async (valid) => {
+    const f = await fixture();
+    const started = gate();
+    const resume = gate();
+    const storage = verificationStorage(f.storage, async (key) => {
+      started.release();
+      await resume.promise;
+      return valid ? f.storage.verifyObject(key) : null;
+    });
+    const delayed = new PhotoService(pool, storage, f.jobs).uploadComplete(f.actor, f.galleryId, f.photoId)
+      .catch((error: unknown) => error);
+    try {
+      await started.promise;
+      await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
+      await new JobWorker(f.jobs, new ProcessPhotoAssetsHandler(f.storage, f.storage)).runOne();
+      resume.release();
+      expect(await delayed).toMatchObject({ status: 'active' });
+      expect(await photoState(f.photoId)).toBe('active');
+      expect(await processingState(f.photoId)).toEqual([{ status: 'completed', attempts: 1 }]);
+    } finally { resume.release(); await delayed; }
+  });
+
+  it.each(['confirmation', 'reconciliation'] as const)('recovers a failed verification through %s using valid database transitions', async (recovery) => {
+    const f = await fixture();
+    const missing = verificationStorage(f.storage, async () => null);
+    await expect(new PhotoService(pool, missing, f.jobs).uploadComplete(f.actor, f.galleryId, f.photoId))
+      .rejects.toMatchObject({ code: 'UPLOAD_NOT_VERIFIED' });
+    expect(await photoState(f.photoId)).toBe('failed');
+    if (recovery === 'confirmation') {
+      expect(await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId)).toMatchObject({ status: 'processing' });
+    } else {
+      await f.jobs.enqueue({ type: 'RECONCILE_PHOTO_ASSET', payload: { assetId: f.assetId } });
+      await new JobWorker(f.jobs, new ReconcilePhotoAssetHandler(f.storage, f.jobs)).runOne();
+    }
+    expect(await photoState(f.photoId)).toBe('processing');
+    expect(await processingState(f.photoId)).toEqual([{ status: 'pending', attempts: 0 }]);
+    await new JobWorker(f.jobs, new ProcessPhotoAssetsHandler(f.storage, f.storage)).runOne();
+    expect(await photoState(f.photoId)).toBe('active');
+  });
+
+  it('rejects delayed confirmation after deletion without scheduling image processing', async () => {
+    const f = await fixture();
+    const started = gate();
+    const resume = gate();
+    const storage = verificationStorage(f.storage, async (key) => {
+      const object = await f.storage.verifyObject(key);
+      started.release();
+      await resume.promise;
+      return object;
+    });
+    const delayed = new PhotoService(pool, storage, f.jobs).uploadComplete(f.actor, f.galleryId, f.photoId)
+      .catch((error: unknown) => error);
+    try {
+      await started.promise;
+      await f.photos.delete(f.actor, f.galleryId, f.photoId);
+      resume.release();
+      expect(await delayed).toMatchObject({ code: 'PHOTO_NOT_FOUND' });
+      expect(await processingState(f.photoId)).toEqual([]);
+    } finally { resume.release(); await delayed; }
+  });
+
+  it.each(['active', 'deleted'] as const)('makes obsolete reconciliation a no-op for an %s photo', async (state) => {
+    const f = await fixture();
+    if (state === 'active') {
+      await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
+      await new JobWorker(f.jobs, new ProcessPhotoAssetsHandler(f.storage, f.storage)).runOne();
+    } else {
+      await f.photos.delete(f.actor, f.galleryId, f.photoId);
+    }
+    let verified = false;
+    const storage = {
+      verifyObject: async () => { verified = true; return null; },
+      deleteObject: f.storage.deleteObject.bind(f.storage),
+    };
+    await f.jobs.enqueue({ type: 'RECONCILE_PHOTO_ASSET', payload: { assetId: f.assetId } });
+    await new JobWorker(f.jobs, new ReconcilePhotoAssetHandler(storage, f.jobs)).runOne();
+    expect(verified).toBe(false);
+    const job = await pool.query("SELECT status FROM application_jobs WHERE job_type = 'RECONCILE_PHOTO_ASSET' AND payload->>'assetId' = $1", [f.assetId]);
+    expect(job.rows[0].status).toBe('completed');
+    if (state === 'active') expect(await photoState(f.photoId)).toBe('active');
+    else expect(await processingState(f.photoId)).toEqual([]);
+  });
+
   it('processes real files, serves client derivatives, releases the original and cleans up deleted assets', async () => {
     const f = await fixture();
     const access = new GalleryAccessService(pool, { deliver: async () => undefined, resend: async () => undefined });
