@@ -55,3 +55,9 @@ Access-screen lifecycle regressions hold verification responses until the client
 ## Client picker pagination
 
 Gallery setup initially loads 100 clients and clearly identifies a partial list. Load more appends the next 100, deduplicating by client ID while preserving the search and chosen client. Failed requests retain that state and expose retry; concurrent requests are blocked and responses from superseded gallery loads are ignored. The browser regression on a 390px viewport loads client 101 after a failed request and creates a gallery with its existing client ID, without new-client data. This is incremental loading with local filtering, not server-side search. Offset pagination can shift when other staff add or remove clients; reopen the collection to refresh.
+
+## Release migration preflight
+
+Before starting a new API release, run `npm run migrate:check --prefix backend` from the repository root with the intended `DATABASE_URL`. Run from the source checkout with its migration SQL files and development tooling installed, as with `npm run migrate`. The command opens a read-only, repeatable-read transaction and compares the checked-out SQL filenames against recorded migration history. Missing history reports every expected migration. Empty migration artifacts, missing connection configuration, inaccessible history and connection failures exit nonzero. CI runs the command after applying migrations to its isolated test database.
+
+This check never applies migrations. Review and run `npm run migrate --prefix backend` separately against the intended database, then rerun the preflight before deploying. It checks recorded versions, not SQL checksums or schema drift, and does not lock out later database changes. Production deployment automation must invoke it explicitly; this repository change does not configure a hosting provider or check the production database.
