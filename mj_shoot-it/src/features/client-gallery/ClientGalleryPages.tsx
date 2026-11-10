@@ -1165,50 +1165,78 @@ function ClientGalleryWorkspace() {
   const [selectionStatus, setSelectionStatus] =
     useState<ClientSelection["status"]>("draft");
 
-  useEffect(() => {
-    const load = async () => {
-      if (!galleryId) return;
-      try {
-        setDeliveryIsReleased(false);
-        const [gallery, photoResponse, selectionResponse] = await Promise.all([
-          getClientGallery(galleryId),
-          listClientPhotos(galleryId, 1, 20),
-          getClientSelection(galleryId),
-        ]);
-        setGalleryName(String(gallery.name ?? "Gallery"));
-        setCanDownload(gallery.permission === "view_download");
-        setPhotos(photoResponse.items ?? []);
-        setTotalPhotos(photoResponse.total ?? 0);
-        setCurrentPage(1);
-        setSelectedPhotoIds(
-          new Set(
-            selectionResponse.items
-              .filter((item) => item.selected)
-              .map((item) => item.photoId),
-          ),
-        );
-        setSelectionStatus(selectionResponse.status);
-        try {
-          const deliveryResponse = await getClientDelivery(galleryId);
-          setDeliveryIsReleased(deliveryResponse.isReleased);
-        } catch (deliveryError) {
-          setError(
-            deliveryError instanceof Error
-              ? deliveryError.message
-              : "Delivery status could not be checked.",
-          );
-        }
-      } catch (caughtError) {
-        setError(
-          caughtError instanceof Error
-            ? caughtError.message
-            : "Unable to load gallery.",
-        );
-      }
-    };
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [deliveryError, setDeliveryError] = useState("");
 
-    void load();
-  }, [galleryId]);
+  const retryLoad = useRetryableLoad(
+    useCallback(
+      async (isCurrent: () => boolean) => {
+        if (!galleryId) return;
+        setLoading(true);
+        setLoadError("");
+        try {
+          const [gallery, photoResponse, selectionResponse] = await Promise.all(
+            [
+              getClientGallery(galleryId),
+              listClientPhotos(galleryId, 1, 20),
+              getClientSelection(galleryId),
+            ],
+          );
+          if (!isCurrent()) return;
+          setGalleryName(String(gallery.name ?? "Gallery"));
+          setCanDownload(gallery.permission === "view_download");
+          setPhotos(photoResponse.items ?? []);
+          setTotalPhotos(photoResponse.total ?? 0);
+          setCurrentPage(1);
+          setSelectedPhotoIds(
+            new Set(
+              selectionResponse.items
+                .filter((item) => item.selected)
+                .map((item) => item.photoId),
+            ),
+          );
+          setSelectionStatus(selectionResponse.status);
+        } catch (caughtError) {
+          if (isCurrent())
+            setLoadError(
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Unable to load gallery.",
+            );
+        } finally {
+          if (isCurrent()) setLoading(false);
+        }
+      },
+      [galleryId],
+    ),
+  );
+
+  // Delivery availability is independent of reviewing and saving choices.
+  const retryDelivery = useRetryableLoad(
+    useCallback(
+      async (isCurrent: () => boolean) => {
+        if (!galleryId) return;
+        setDeliveryLoading(true);
+        setDeliveryError("");
+        try {
+          const response = await getClientDelivery(galleryId);
+          if (isCurrent()) setDeliveryIsReleased(response.isReleased);
+        } catch (caughtError) {
+          if (isCurrent())
+            setDeliveryError(
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Delivery status could not be checked.",
+            );
+        } finally {
+          if (isCurrent()) setDeliveryLoading(false);
+        }
+      },
+      [galleryId],
+    ),
+  );
 
   const handleSelectionToggle = async (photoId: string) => {
     if (!galleryId || savingPhotoId || selectionStatus === "submitted") return;
@@ -1310,6 +1338,42 @@ function ClientGalleryWorkspace() {
     return <Navigate to="/client/access" replace />;
   }
 
+  if (loading || loadError) {
+    return (
+      <main className="page-shell client-gallery-shell">
+        <div className="client-gallery gallery-load-state">
+          <p className="eyebrow">Your photographs</p>
+          <h1>
+            {loading
+              ? "Opening your gallery"
+              : "Your gallery couldn’t be loaded"}
+          </h1>
+          {loading ? (
+            <output aria-live="polite">
+              Loading your photographs and saved choices…
+            </output>
+          ) : (
+            <div className="empty-state">
+              <p className="error-box" role="alert">
+                {loadError}
+              </p>
+              <p>
+                Your saved choices are unchanged. Try loading the gallery again.
+              </p>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={retryLoad}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell client-gallery-shell">
       <div className="client-gallery">
@@ -1332,7 +1396,34 @@ function ClientGalleryWorkspace() {
           ) : null}
         </header>
 
-        {error ? <div className="error-box">{error}</div> : null}
+        {deliveryLoading ? (
+          <output aria-live="polite" className="muted">
+            Checking final photo availability…
+          </output>
+        ) : null}
+        {deliveryError ? (
+          <section
+            className="empty-state delivery-status-notice"
+            aria-label="Delivery status"
+          >
+            <p role="alert">
+              We couldn’t check whether your final photos are ready.
+            </p>
+            <p>You can still review photographs and save your choices.</p>
+            <button
+              type="button"
+              className="button-ghost"
+              onClick={retryDelivery}
+            >
+              Check delivery again
+            </button>
+          </section>
+        ) : null}
+        {error ? (
+          <div className="error-box" role="alert">
+            {error}
+          </div>
+        ) : null}
         {feedbackStatus ? (
           <output className="muted" aria-live="polite">
             {feedbackStatus}

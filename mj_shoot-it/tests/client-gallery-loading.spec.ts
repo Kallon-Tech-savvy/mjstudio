@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+
 const photo = {
   photoId: "photo-1",
   position: 0,
@@ -43,6 +44,9 @@ test("shows loading without false empty counts or controls on a phone", async ({
     await expect(
       page.getByRole("button", { name: "Leave a note for your photographer" }),
     ).toHaveCount(0);
+    await page.screenshot({
+      path: "test-results/client-gallery-loading-mobile.png",
+    });
   } finally {
     resume();
   }
@@ -77,6 +81,7 @@ test("retries an incomplete load and restores the submitted selection", async ({
     page.getByRole("button", { name: /Open photograph/ }),
   ).toHaveCount(0);
   await expect(page.getByText("Your gallery is taking shape.")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/client-gallery-retry.png" });
   failed = false;
   await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(

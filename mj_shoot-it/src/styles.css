@@ -2235,3 +2235,23 @@ dialog.viewer-backdrop:not([open]) {
 .viewer-feedback-trigger:disabled {
   opacity: 0.6;
 }
+
+.gallery-load-state {
+  max-width: 44rem;
+  margin-inline: auto;
+}
+
+.gallery-load-state h1 {
+  margin-block: 0.75rem 1.25rem;
+}
+
+.gallery-load-state .empty-state,
+.delivery-status-notice {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.gallery-load-state .error-box {
+  width: 100%;
+}
