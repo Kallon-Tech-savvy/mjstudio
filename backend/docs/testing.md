@@ -28,8 +28,12 @@ Client image recovery tests simulate expired image URLs, a refreshed URL that al
 
 Run `npm audit --audit-level=high` in both `backend` and `mj_shoot-it`. CI runs these checks for both application packages, including development dependencies, and fails on high/critical advisories or an unavailable audit service. Investigate failures; do not apply forced upgrades without compatibility checks.
 
-On 2026-11-10, the backend moved from Zod 3.25.76 to 4.6.7 and Vitest 2.1.9 to 4.1.12. This removes the seven package entries reported by the backend audit, including the validator and test-tool dependency chains. Both application package audits reported zero known vulnerabilities at verification time. This is a time-bound registry result, not a guarantee that the application is secure, and does not cover the legacy root package or tracked dependencies.
+On 2026-11-10, the backend moved from Zod 3.25.76 to 4.6.7 and Vitest 2.1.9 to 4.1.12. This removes the seven package entries reported by the backend audit, including the validator and test-tool dependency chains. Both application package audits reported zero known vulnerabilities at verification time. This is a time-bound registry result, not a guarantee that the application is secure, and is not a substitute for application security review. The root package now contains only orchestration scripts and has its own audit check; installed dependency files are no longer tracked.
 
 The migration retains the existing schemas and error envelope. HTTP regression coverage accepts 500 valid photo-order IDs and rejects empty, oversized and malformed lists before calling the service, including a 10,000-element invalid list below the JSON body limit. Existing authentication, gallery creation, environment parsing and job tests also run with the new validator. Use Node 22 as in CI; the test runner upgrade does not require a production runtime dependency on Vitest.
 
 Migration references: https://zod.dev/v4/changelog and https://v4.vitest.dev/guide/migration.html. Validator advisory: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5.
+
+## Repository entry point
+
+From the repository root, `npm run install:all` installs both locked application packages. `npm run check` runs the generated-file guard, types/lint, both builds and the unit/HTTP/browser suites; PostgreSQL integration remains explicit through `npm run test:database`. `npm run audit:all` includes the dependency-free root manifest and both applications. CI verifies the root lockfile and rejects tracked dependency, build, coverage and browser-output directories. Git history still contains previously committed files; this cleanup changes the current tree only.
