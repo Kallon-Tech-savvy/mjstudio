@@ -10,12 +10,25 @@ import { type ClientChoice, ClientPicker } from "./ClientPicker";
 type Props = {
   clients: ClientRecord[];
   onCreated: (gallery: GalleryRecord) => void;
+  clientTotal?: number;
+  hasMoreClients?: boolean;
+  loadingClients?: boolean;
+  clientError?: string;
+  onLoadMoreClients?: () => void;
 };
 
 const steps = ["The shoot", "The client", "Review"];
 
 /** Keep one decision in view, then hand the created gallery straight to uploads. */
-export function NewGalleryForm({ clients, onCreated }: Props) {
+export function NewGalleryForm({
+  clients,
+  onCreated,
+  clientTotal = clients.length,
+  hasMoreClients = false,
+  loadingClients = false,
+  clientError = "",
+  onLoadMoreClients,
+}: Props) {
   const [step, setStep] = useState(0);
   const [choice, setChoice] = useState<ClientChoice | null>(null);
   const [name, setName] = useState("");
@@ -144,11 +157,36 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
             </label>
           ) : null}
           <div hidden={step !== 1}>
+            {hasMoreClients ? (
+              <p className="muted">
+                Searching {clients.length} of {clientTotal} clients. Load more
+                before adding someone you have worked with before.
+              </p>
+            ) : null}
             <ClientPicker
               clients={clients}
               value={choice}
               onChange={setChoice}
             />
+            {clientError ? (
+              <p className="error-box" role="alert">
+                {clientError} Your current choice is still here.
+              </p>
+            ) : null}
+            {hasMoreClients ? (
+              <button
+                type="button"
+                className="button-ghost"
+                disabled={loadingClients}
+                onClick={onLoadMoreClients}
+              >
+                {loadingClients
+                  ? "Loading clients…"
+                  : clientError
+                    ? "Retry loading clients"
+                    : "Load more clients"}
+              </button>
+            ) : null}
           </div>
           {step === 2 ? (
             <dl className="creation-review">

@@ -36,6 +36,7 @@ Install the browser once from `mj_shoot-it` with `npx playwright install chromiu
 | `npm run check` | Repository hygiene, backend types, frontend lint/types, both builds, backend and browser tests |
 | `npm test` | Backend unit/HTTP tests and frontend browser workflows |
 | `npm run test:database` | PostgreSQL integration tests; requires explicit isolated test database |
+| `npm run migrate:check --prefix backend` | Read-only check that the target database has all expected migrations |
 | `npm run audit:all` | All three package manifests, including development dependencies; fails on high/critical advisories |
 
 The database suite is intentionally separate: set `TEST_DATABASE_URL` to a migrated database whose name ends in `_test`. It never falls back to `DATABASE_URL`. See [workflow verification](backend/docs/testing.md) for database setup, coverage and test limitations.

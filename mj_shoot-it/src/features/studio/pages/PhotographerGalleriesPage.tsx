@@ -14,6 +14,11 @@ export default function PhotographerGalleriesPage() {
   const navigate = useNavigate();
   const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
   const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [clientPage, setClientPage] = useState(1);
+  const [clientTotal, setClientTotal] = useState(0);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [clientError, setClientError] = useState("");
+  const clientRequest = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -62,6 +67,9 @@ export default function PhotographerGalleriesPage() {
         setLoaded(true);
         setQuery("");
         setClients(clientResponse.items ?? []);
+        setClientPage(1);
+        setClientTotal(clientResponse.total);
+        setClientError("");
       } catch (caught) {
         if (version !== requestVersion.current) return;
         if (caught instanceof ApiError && caught.status === 401) {
@@ -86,6 +94,41 @@ export default function PhotographerGalleriesPage() {
       requestVersion.current += 1;
     };
   }, [load]);
+  const loadMoreClients = async () => {
+    if (clientRequest.current || loading || clientPage * 100 >= clientTotal)
+      return;
+    clientRequest.current = true;
+    const version = requestVersion.current;
+    setLoadingClients(true);
+    setClientError("");
+    try {
+      const response = await listClients(clientPage + 1, 100);
+      if (version !== requestVersion.current) return;
+      setClients((current) =>
+        Array.from(
+          new Map(
+            [...current, ...response.items].map((client) => [
+              client.clientId,
+              client,
+            ]),
+          ).values(),
+        ),
+      );
+      setClientPage((current) => current + 1);
+      setClientTotal(response.total);
+    } catch (caught) {
+      if (version !== requestVersion.current) return;
+      setClientError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to load more clients.",
+      );
+    } finally {
+      clientRequest.current = false;
+      setLoadingClients(false);
+    }
+  };
+
   const visible = galleries.filter((gallery) =>
     `${gallery.name} ${gallery.clientName ?? ""}`
       .toLowerCase()
@@ -165,6 +208,11 @@ export default function PhotographerGalleriesPage() {
           >
             <NewGalleryForm
               clients={clients}
+              clientTotal={clientTotal}
+              hasMoreClients={clientPage * 100 < clientTotal}
+              loadingClients={loadingClients}
+              clientError={clientError}
+              onLoadMoreClients={() => void loadMoreClients()}
               onCreated={(gallery) =>
                 navigate(
                   `/photographer/galleries/${encodeURIComponent(gallery.galleryId)}?created=1#photo-upload`,
