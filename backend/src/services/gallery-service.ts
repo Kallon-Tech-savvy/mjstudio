@@ -1,11 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { PhotographerContext } from '../auth/context.js';
 import { ensureGalleryPermission, type GalleryPermission } from '../application/policies/gallery.policy.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import { assertGalleryCanArchive, assertGalleryCanPublish, inTransaction, resolveGalleryMembership, validateGalleryName, type Database } from './service-common.js';
 
 export type NewClientInput = { name: string; email?: string; phone?: string };
-export type CreateGalleryInput = { clientId?: string; newClient?: NewClientInput; name: string; expiresAt?: Date | null };
+export type CreateGalleryInput = { requestId?: string; clientId?: string; newClient?: NewClientInput; name: string; expiresAt?: Date | null };
 export type UpdateGalleryInput = { name?: string; expiresAt?: Date | null };
 
 export class GalleryService {
@@ -22,6 +22,22 @@ export class GalleryService {
       const membership = await transaction.query<{ role: string }>('SELECT role FROM studio_members WHERE studio_id = $1 AND user_id = $2 FOR SHARE', [actor.studioId, actor.userId]);
       if (!membership.rows[0]) throw new ForbiddenError('Studio membership is required.');
       if (!['owner', 'admin'].includes(membership.rows[0].role)) throw new ForbiddenError('Gallery creation is not permitted for this studio role.');
+      const fingerprint = createHash('sha256').update(JSON.stringify({
+        name, clientId: input.clientId ?? null,
+        newClient: input.newClient ? { name: newClientName, email: input.newClient.email?.trim() || null, phone: input.newClient.phone?.trim() || null } : null,
+        expiresAt: input.expiresAt?.toISOString() ?? null,
+      })).digest('hex');
+      if (input.requestId) {
+        // Serialize matching attempts across processes; the receipt commits with the gallery.
+        await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [JSON.stringify([actor.studioId, actor.userId, input.requestId])]);
+        const previous = await transaction.query('SELECT fingerprint, gallery_id, response FROM gallery_creation_requests WHERE studio_id = $1 AND user_id = $2 AND request_id = $3', [actor.studioId, actor.userId, input.requestId]);
+        if (previous.rows[0]) {
+          if (previous.rows[0].fingerprint !== fingerprint) throw new ConflictError('CREATION_REQUEST_CONFLICT', 'This creation attempt was already used with different details.');
+          const membership = await resolveGalleryMembership(transaction, actor, previous.rows[0].gallery_id);
+          ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.view');
+          return previous.rows[0].response;
+        }
+      }
       let clientId: string;
       if (input.newClient) {
         clientId = this.createId();
@@ -46,7 +62,12 @@ export class GalleryService {
          VALUES ($1, $2, $3, 'owner')`,
         [this.createId(), galleryId, actor.userId],
       );
-      return { id: galleryId, studioId: actor.studioId, clientId, name, workflowStatus: 'draft', publicationStatus: 'unpublished' };
+      const response = { id: galleryId, studioId: actor.studioId, clientId, name, workflowStatus: 'draft', publicationStatus: 'unpublished' };
+      if (input.requestId) await transaction.query(
+        'INSERT INTO gallery_creation_requests (studio_id, user_id, request_id, fingerprint, gallery_id, response) VALUES ($1, $2, $3, $4, $5, $6)',
+        [actor.studioId, actor.userId, input.requestId, fingerprint, galleryId, JSON.stringify(response)],
+      );
+      return response;
     });
   }
 

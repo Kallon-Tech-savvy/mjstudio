@@ -287,6 +287,7 @@ export type NewClientInput = { name: string; email?: string; phone?: string };
 
 /** Provide exactly one of `clientId` (existing client) or `newClient` (created together with the gallery). */
 export async function createGallery(input: {
+  requestId?: string;
   clientId?: string;
   newClient?: NewClientInput;
   name: string;

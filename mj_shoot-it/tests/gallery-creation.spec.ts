@@ -16,11 +16,13 @@ async function studio(
   options: {
     galleries?: object[];
     failCreate?: boolean;
+    loseResponse?: boolean;
     failLoad?: boolean;
   } = {},
 ) {
   const posts: unknown[] = [];
   let failCreate = options.failCreate;
+  let loseResponse = options.loseResponse;
   let failLoad = options.failLoad;
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -33,6 +35,10 @@ async function studio(
     if (path === "/api/clients") return respond(clients);
     if (path === "/api/galleries" && route.request().method() === "POST") {
       posts.push(route.request().postDataJSON());
+      if (loseResponse) {
+        loseResponse = false;
+        return route.abort("failed");
+      }
       if (failCreate) {
         failCreate = false;
         return route.fulfill({
@@ -120,7 +126,12 @@ test("existing client: validate, review, edit, create once and open upload works
     page.getByRole("heading", { name: "Add photographs" }),
   ).toBeInViewport();
   expect(posts).toEqual([
-    { clientId: "client-augusta", name: gallery.name, expiresAt: null },
+    {
+      requestId: expect.any(String),
+      clientId: "client-augusta",
+      name: gallery.name,
+      expiresAt: null,
+    },
   ]);
 });
 
@@ -143,10 +154,13 @@ test("new client: validate email, keep entries on failure, retry successfully", 
     "Your entries are still here",
   );
   await expect(page.locator(".creation-review")).toContainText("Mohamed");
+  await expect(page.getByRole("button", { name: "Edit name" })).toBeDisabled();
   await page.getByRole("button", { name: "Create gallery →" }).click();
   await expect(page).toHaveURL(/gallery-augusta\?created=1#photo-upload$/);
   expect(posts).toHaveLength(2);
+  expect(posts[0]).toEqual(posts[1]);
   expect(posts[1]).toEqual({
+    requestId: expect.any(String),
     newClient: { name: "Mohamed" },
     name: gallery.name,
     expiresAt: null,
@@ -202,3 +216,28 @@ for (const width of [320, 390, 768, 1024, 1440]) {
       });
   });
 }
+
+test("lost creation response retries the same attempt without allowing edits", async ({
+  page,
+}) => {
+  const posts = await studio(page, { loseResponse: true });
+  await nameShoot(page);
+  await chooseAugusta(page);
+  await page.getByRole("button", { name: "Create gallery →" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Retry this same attempt",
+  );
+  await expect(
+    page.getByRole("button", { name: "Edit client" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Back", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Create gallery →" }).click();
+  await expect(page).toHaveURL(/gallery-augusta\?created=1#photo-upload$/);
+  expect(posts).toHaveLength(2);
+  expect(posts[0]).toEqual(posts[1]);
+  expect((posts[0] as { requestId: string }).requestId).toMatch(
+    /^[0-9a-f-]{36}$/,
+  );
+});

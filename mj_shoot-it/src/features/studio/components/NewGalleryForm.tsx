@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   type ClientRecord,
   createGallery,
   type GalleryRecord,
@@ -18,6 +19,8 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
   const [step, setStep] = useState(0);
   const [choice, setChoice] = useState<ClientChoice | null>(null);
   const [name, setName] = useState("");
+  const [uncertain, setUncertain] = useState(false);
+  const attempt = useRef<Parameters<typeof createGallery>[0] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
@@ -45,8 +48,9 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
     setBusy(true);
     setError("");
     try {
-      const gallery = await createGallery(
-        choice.kind === "existing"
+      attempt.current ??= {
+        requestId: crypto.randomUUID(),
+        ...(choice.kind === "existing"
           ? {
               clientId: choice.client.clientId,
               name: name.trim(),
@@ -60,10 +64,14 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
               },
               name: name.trim(),
               expiresAt: null,
-            },
-      );
+            }),
+      };
+      const gallery = await createGallery(attempt.current);
       onCreated(gallery);
     } catch (caught) {
+      const rejected = caught instanceof ApiError && caught.status === 422;
+      if (rejected) attempt.current = null;
+      setUncertain(!rejected);
       setError(
         caught instanceof Error
           ? caught.message
@@ -84,7 +92,7 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
                 <button
                   type="button"
                   aria-current={index === step ? "step" : undefined}
-                  disabled={busy || index > step}
+                  disabled={busy || uncertain || index > step}
                   onClick={() => {
                     setStep(index);
                     setError("");
@@ -149,7 +157,7 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
                 <dd>{name.trim()}</dd>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || uncertain}
                   onClick={() => setStep(0)}
                 >
                   Edit name
@@ -167,7 +175,7 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
                 </dd>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || uncertain}
                   onClick={() => setStep(1)}
                 >
                   Edit client
@@ -187,7 +195,11 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
         {error ? (
           <div className="error-box" role="alert">
             {error}
-            <p>Your entries are still here. You can try again.</p>
+            <p>
+              {uncertain
+                ? "Your entries are still here. We couldn’t confirm creation. Retry this same attempt to open the gallery without creating another. Keep this page open until it is confirmed."
+                : "Your entries are still here. Check the details and try again."}
+            </p>
           </div>
         ) : null}
         <footer className="creation-footer">
@@ -203,7 +215,7 @@ export function NewGalleryForm({ clients, onCreated }: Props) {
               <button
                 className="button-ghost"
                 type="button"
-                disabled={busy}
+                disabled={busy || uncertain}
                 onClick={() => {
                   setStep(step - 1);
                   setError("");

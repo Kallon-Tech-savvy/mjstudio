@@ -83,6 +83,50 @@ afterEach(async () => {
 afterAll(async () => { await pool.end(); });
 
 describe('PostgreSQL gallery journey', () => {
+  it('creates one gallery and client for concurrent attempts and a later lost-response retry', async () => {
+    const { actor } = await fixture();
+    const input = { requestId: randomUUID(), name: 'Retry portraits', newClient: { name: 'Retry client' } };
+    const [first, second] = await Promise.all([galleries.create(actor, input), galleries.create(actor, input)]);
+    expect(second).toEqual(first);
+    expect(await galleries.create(actor, input)).toEqual(first);
+    const count = await pool.query('SELECT COUNT(*)::int AS count FROM galleries WHERE studio_id = $1 AND name = $2', [actor.studioId, input.name]);
+    expect(count.rows[0].count).toBe(1);
+    const clients = await pool.query('SELECT COUNT(*)::int AS count FROM clients WHERE studio_id = $1 AND name = $2', [actor.studioId, input.newClient.name]);
+    expect(clients.rows[0].count).toBe(1);
+  });
+
+  it('rejects changed payloads and rechecks membership before returning a creation receipt', async () => {
+    const { actor } = await fixture();
+    const input = { requestId: randomUUID(), name: 'Original request', newClient: { name: 'Receipt client' } };
+    await galleries.create(actor, input);
+    await expect(galleries.create(actor, { ...input, name: 'Changed request' })).rejects.toMatchObject({ code: 'CREATION_REQUEST_CONFLICT' });
+    await pool.query('DELETE FROM studio_members WHERE studio_id = $1 AND user_id = $2', [actor.studioId, actor.userId]);
+    await expect(galleries.create(actor, input)).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('scopes creation receipts to the authenticated studio and photographer', async () => {
+    const a = await fixture();
+    const b = await fixture();
+    const input = { requestId: randomUUID(), name: 'Shared key', newClient: { name: 'Isolated client' } };
+    const first = await galleries.create(a.actor, input);
+    const second = await galleries.create(b.actor, input);
+    expect(first.id).not.toBe(second.id);
+    expect(first.studioId).toBe(a.actor.studioId);
+    expect(second.studioId).toBe(b.actor.studioId);
+  });
+
+  it('rolls back failed attempts without orphan clients or receipts and allows a corrected retry', async () => {
+    const { actor } = await fixture();
+    const input = { requestId: randomUUID(), name: 'Rollback request', newClient: { name: 'Rollback client' }, expiresAt: new Date('2000-01-01') };
+    await expect(galleries.create(actor, input)).rejects.toMatchObject({ code: 'INVALID_GALLERY_DATA' });
+    const clients = await pool.query('SELECT COUNT(*)::int AS count FROM clients WHERE studio_id = $1 AND name = $2', [actor.studioId, input.newClient.name]);
+    expect(clients.rows[0].count).toBe(0);
+    const receipts = await pool.query('SELECT COUNT(*)::int AS count FROM gallery_creation_requests WHERE studio_id = $1', [actor.studioId]);
+    expect(receipts.rows[0].count).toBe(0);
+    const result = await galleries.create(actor, { ...input, expiresAt: null });
+    expect(result.name).toBe(input.name);
+  });
+
   async function preparedFixture() {
     const f = await publishedFixture();
     const otherId = await readyPhoto(f.galleryId, false, 1);
