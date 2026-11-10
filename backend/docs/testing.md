@@ -23,3 +23,13 @@ Upload race tests pause storage verification while another request confirms, pro
 The Vite frontend runs `npm run lint`, `npm run typecheck`, `npm run build`, and `npm run test:workflow`. Its browser tests use API fixtures and include keyboard focus, route races, recovery states, and responsive layouts. Install Chromium with Playwright before running them locally. The lint configuration targets React/Vite; Next.js-only rules do not apply to this application.
 
 Client image recovery tests simulate expired image URLs, a refreshed URL that also fails, denied/unavailable API responses, and navigation during refresh. Each mounted image attempts one automatic authenticated refresh, then waits for an explicit retry. Gallery thumbnail failures can still open the full viewer. Choices and note drafts stay outside image state. The authenticated photo detail endpoint returns a fresh thumbnail as well as a preview; the real storage integration test verifies the returned thumbnail bytes. Images are refreshed on failure, without background timers or a page reload.
+
+## Dependency security checks
+
+Run `npm audit --audit-level=high` in both `backend` and `mj_shoot-it`. CI runs these checks for both application packages, including development dependencies, and fails on high/critical advisories or an unavailable audit service. Investigate failures; do not apply forced upgrades without compatibility checks.
+
+On 2026-11-10, the backend moved from Zod 3.25.76 to 4.6.7 and Vitest 2.1.9 to 4.1.12. This removes the seven package entries reported by the backend audit, including the validator and test-tool dependency chains. Both application package audits reported zero known vulnerabilities at verification time. This is a time-bound registry result, not a guarantee that the application is secure, and does not cover the legacy root package or tracked dependencies.
+
+The migration retains the existing schemas and error envelope. HTTP regression coverage accepts 500 valid photo-order IDs and rejects empty, oversized and malformed lists before calling the service, including a 10,000-element invalid list below the JSON body limit. Existing authentication, gallery creation, environment parsing and job tests also run with the new validator. Use Node 22 as in CI; the test runner upgrade does not require a production runtime dependency on Vitest.
+
+Migration references: https://zod.dev/v4/changelog and https://v4.vitest.dev/guide/migration.html. Validator advisory: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5.
