@@ -111,6 +111,7 @@ describe('real image, storage and PostgreSQL pipeline', () => {
     expect(await f.jobs.claim('PROCESS_PHOTO_ASSETS')).toBeNull();
     expect(await photoState(f.photoId)).toBe('processing');
     await pool.query("UPDATE application_jobs SET locked_until = NOW() - INTERVAL '1 second' WHERE id = $1", [job.id]);
+    await expect(f.jobs.heartbeat(job)).rejects.toMatchObject({ code: 'JOB_LEASE_LOST' });
     expect(await Promise.all([f.jobs.claim('PROCESS_PHOTO_ASSETS'), f.jobs.claim('PROCESS_PHOTO_ASSETS')])).toEqual([null, null]);
     expect(await processingState(f.photoId)).toEqual([{ status: 'failed', attempts: 1 }]);
     expect(await photoState(f.photoId)).toBe('failed');
@@ -143,19 +144,20 @@ describe('real image, storage and PostgreSQL pipeline', () => {
     const f = await fixture();
     await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
     await pool.query("UPDATE application_jobs SET max_attempts = 1 WHERE payload->>'photoId' = $1", [f.photoId]);
-    const job = await f.jobs.claim('PROCESS_PHOTO_ASSETS');
+    const job = await f.jobs.claim('PROCESS_PHOTO_ASSETS', 2);
     if (!job) throw new Error('Expected a processing job');
     const started = gate();
     const resume = gate();
     const handler = new ProcessPhotoAssetsHandler(f.storage, f.storage);
     const completing = f.jobs.complete(job, async (transaction) => {
-      await transaction.query("UPDATE application_jobs SET locked_until = NOW() - INTERVAL '1 second' WHERE id = $1", [job.id]);
       started.release();
       await resume.promise;
       await handler.execute(job, transaction);
     });
     try {
       await started.promise;
+      // Let the committed lease expire while complete() still holds its row lock.
+      await pool.query('SELECT pg_sleep(2.1)');
       expect(await f.jobs.claim('PROCESS_PHOTO_ASSETS')).toBeNull();
     } finally { resume.release(); await completing; }
     expect(await photoState(f.photoId)).toBe('active');
