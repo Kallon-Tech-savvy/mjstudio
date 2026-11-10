@@ -39,9 +39,9 @@ async function fixture() {
   return { actor, galleryId: gallery.id as string };
 }
 
-async function readyPhoto(galleryId: string, missingThumbnail = false) {
+async function readyPhoto(galleryId: string, missingThumbnail = false, position = 0) {
   const photoId = randomUUID();
-  await pool.query("INSERT INTO photos (id, gallery_id, filename, position, status) VALUES ($1, $2, 'portrait.jpg', 0, 'active')", [photoId, galleryId]);
+  await pool.query("INSERT INTO photos (id, gallery_id, filename, position, status) VALUES ($1, $2, 'portrait.jpg', $3, 'active')", [photoId, galleryId, position]);
   for (const type of missingThumbnail ? ['original', 'preview'] : ['original', 'preview', 'thumbnail']) {
     await pool.query(`INSERT INTO photo_assets (id, photo_id, type, state, storage_key, mime_type, upload_status, processing_status)
       VALUES ($1, $2, $3, 'current', $4, 'image/jpeg', 'uploaded', $5)`,
@@ -85,7 +85,7 @@ afterAll(async () => { await pool.end(); });
 describe('PostgreSQL gallery journey', () => {
   async function preparedFixture() {
     const f = await publishedFixture();
-    const otherId = await readyPhoto(f.galleryId);
+    const otherId = await readyPhoto(f.galleryId, false, 1);
     for (const id of [f.photoId, otherId]) await selections.setSelection(f.client, id, true);
     await selections.submitSelection(f.client);
     for (const id of [f.photoId, otherId]) await proofing.setReview(f.actor, f.galleryId, id, 'approved');
@@ -107,11 +107,22 @@ describe('PostgreSQL gallery journey', () => {
     }
   });
 
-  it('rejects release if any prepared item has been deleted', async () => {
+  it.each(['deleted', 'missing-original'] as const)('rejects release if any prepared item is %s', async (state) => {
     const f = await preparedFixture();
-    await pool.query('UPDATE photos SET deleted_at = NOW() WHERE id = $1', [f.otherId]);
+    if (state === 'deleted') await pool.query('UPDATE photos SET deleted_at = NOW() WHERE id = $1', [f.otherId]);
+    else await pool.query("UPDATE photo_assets SET state = 'superseded' WHERE photo_id = $1 AND type = 'original'", [f.otherId]);
     await expect(deliveries.releaseDelivery(f.actor, f.galleryId)).rejects.toMatchObject({ code: 'DELIVERY_NOT_READY' });
     expect((await deliveries.getClientDelivery(f.client, f.galleryId)).isReleased).toBe(false);
+  });
+
+  it('removes stale items only when the photographer prepares the unreleased delivery again', async () => {
+    const f = await preparedFixture();
+    await pool.query('UPDATE photos SET deleted_at = NOW() WHERE id = $1', [f.otherId]);
+    const prepared = await deliveries.prepareDelivery(f.actor, f.galleryId);
+    expect(prepared.items.map((item) => item.photoId)).toEqual([f.photoId]);
+    expect(prepared.releasedAt).toBeNull();
+    await deliveries.releaseDelivery(f.actor, f.galleryId);
+    expect((await deliveries.getClientDelivery(f.client, f.galleryId)).items).toHaveLength(1);
   });
 
   it('keeps the approval of a released delivery item immutable', async () => {
