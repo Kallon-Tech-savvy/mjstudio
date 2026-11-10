@@ -48,6 +48,13 @@ function ClientAccessPage() {
   const navigate = useNavigate();
   const [hasLinkSecret, setHasLinkSecret] = useState(false);
   const verifying = useRef(false);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const [secret, setSecret] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -76,12 +83,14 @@ function ClientAccessPage() {
 
     try {
       const access = await verifyClientAccess({ secret, pin });
+      if (!active.current) return;
       if (!access.authenticated || !access.galleryId)
         throw new Error("Gallery access was not confirmed. Please try again.");
       navigate(`/client/gallery/${encodeURIComponent(access.galleryId)}`, {
         replace: true,
       });
     } catch (caughtError) {
+      if (!active.current) return;
       setError(
         caughtError instanceof ApiError &&
           caughtError.code === "INVALID_GALLERY_ACCESS"
@@ -92,7 +101,7 @@ function ClientAccessPage() {
       );
     } finally {
       verifying.current = false;
-      setIsSubmitting(false);
+      if (active.current) setIsSubmitting(false);
     }
   };
 

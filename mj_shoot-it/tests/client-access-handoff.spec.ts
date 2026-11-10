@@ -91,3 +91,60 @@ test("an incomplete verification response stays on the access form", async ({
   );
   await expect(page).toHaveURL(/\/client\/access\?galleryId=unverified$/);
 });
+
+for (const accepted of [true, false]) {
+  test(`leaving access ignores a late ${accepted ? "success" : "failure"} and prevents duplicate submissions`, async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    await page.route("**/api/client/access/verify", async (route) => {
+      calls += 1;
+      await gate;
+      await route.fulfill({
+        status: accepted ? 200 : 403,
+        json: accepted
+          ? { data: { authenticated: true, galleryId: "late-gallery" } }
+          : {
+              error: {
+                code: "INVALID_GALLERY_ACCESS",
+                message: "Late failure",
+              },
+            },
+      });
+    });
+    await page.route("**/api/client/galleries/**", (route) =>
+      route.fulfill({ json: { data: {} } }),
+    );
+    await page.goto(
+      "/client/access#secret=synthetic-access-key-for-testing-only",
+    );
+    await page.getByLabel("Six-digit gallery PIN").fill("123456");
+    await page.getByRole("button", { name: "Open gallery" }).click();
+    await expect.poll(() => calls).toBe(1);
+    await expect(
+      page.getByRole("button", { name: "Verifying..." }),
+    ).toBeDisabled();
+    // Programmatic duplicate submit also hits the synchronous guard.
+    await page.locator("form").dispatchEvent("submit");
+    await page.getByRole("link", { name: "Return home" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    const response = page.waitForResponse("**/api/client/access/verify");
+    release();
+    await (await response).finished();
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText("Late failure", { exact: true })).toHaveCount(
+      0,
+    );
+    expect(calls).toBe(1);
+  });
+}
