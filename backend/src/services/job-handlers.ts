@@ -110,33 +110,30 @@ export class ReconcilePhotoAssetHandler implements JobHandler<'RECONCILE_PHOTO_A
 
   async execute(job: ClaimedJob<'RECONCILE_PHOTO_ASSET'>, transaction: Transaction) {
     const { assetId } = job.payload;
-    const result = await transaction.query<{ id: string; photo_id: string; storage_key: string; type: string; upload_status: string; processing_status: string; state: string }>(
-      `SELECT id, photo_id, storage_key, type, upload_status, processing_status, state
-         FROM photo_assets WHERE id = $1 FOR UPDATE`, [assetId]);
+    const result = await transaction.query<{ id: string; photo_id: string; storage_key: string; upload_status: string }>(
+      `SELECT pa.id, pa.photo_id, pa.storage_key, pa.upload_status
+         FROM photos p JOIN photo_assets pa ON pa.photo_id = p.id
+        WHERE pa.id = $1 AND pa.type = 'original' AND pa.state = 'current'
+          AND p.deleted_at IS NULL FOR UPDATE OF p, pa`, [assetId]);
     const asset = result.rows[0];
-    if (!asset || asset.state !== 'current') return;
+    // This job recovers uncertain uploads, not storage health or failed image
+    // processing. A newer confirmation or deletion makes it obsolete.
+    if (!asset || asset.upload_status === 'uploaded') return;
     const object = await this.storage.verifyObject(asset.storage_key);
-    if (!object && asset.upload_status === 'uploaded') {
-      await transaction.query("UPDATE photo_assets SET upload_status = 'failed', processing_status = CASE WHEN type = 'original' THEN 'not_required' ELSE 'failed' END, updated_at = NOW() WHERE id = $1", [assetId]);
-      await transaction.query("UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL", [asset.photo_id]);
-      return;
+    if (!object) throw new TransientJobError('Uploaded original is not yet available.');
+    if (!(object.fileSize > 0 && object.width > 0 && object.height > 0)) {
+      throw new PermanentJobError('Recovered original metadata is invalid.');
     }
-    if (object && asset.type === 'original') {
-      if (!(object.fileSize > 0 && object.width > 0 && object.height > 0)) {
-        throw new PermanentJobError('Recovered original metadata is invalid.');
-      }
-      await transaction.query(
-        "UPDATE photo_assets SET upload_status = 'uploaded', mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1",
-        [assetId, object.mimeType, object.fileSize, object.width, object.height],
-      );
-      await this.jobs.enqueueInTransaction(transaction, {
-        type: 'PROCESS_PHOTO_ASSETS', payload: { photoId: asset.photo_id, sourceAssetId: asset.id },
-      });
-      return;
+    if (asset.upload_status === 'failed') {
+      await transaction.query("UPDATE photo_assets SET upload_status = 'pending', updated_at = NOW() WHERE id = $1", [assetId]);
     }
-    if (object && asset.type !== 'original' && asset.processing_status === 'ready' && object.fileSize > 0) return;
-    if (object && asset.upload_status === 'pending') {
-      await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', updated_at = NOW() WHERE id = $1", [assetId]);
-    }
+    await transaction.query(
+      "UPDATE photo_assets SET upload_status = 'uploaded', mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1",
+      [assetId, object.mimeType, object.fileSize, object.width, object.height],
+    );
+    await transaction.query("UPDATE photos SET status = 'processing', updated_at = NOW() WHERE id = $1", [asset.photo_id]);
+    await this.jobs.enqueueInTransaction(transaction, {
+      type: 'PROCESS_PHOTO_ASSETS', payload: { photoId: asset.photo_id, sourceAssetId: asset.id },
+    });
   }
 }

@@ -7,7 +7,7 @@ const assetId = '22222222-2222-4222-8222-222222222222';
 
 describe('photo job recovery', () => {
   it('queues processing in the same transaction after recovering a verified original', async () => {
-    const query = vi.fn(async (sql: string) => sql.includes('SELECT id, photo_id')
+    const query = vi.fn(async (sql: string) => sql.includes('SELECT pa.id, pa.photo_id')
       ? { rows: [{ id: assetId, photo_id: photoId, storage_key: 'fixture/original', type: 'original', upload_status: 'pending', processing_status: 'not_required', state: 'current' }] }
       : { rows: [] });
     const enqueueInTransaction = vi.fn(async () => undefined);

@@ -185,6 +185,25 @@ describe('real image, storage and PostgreSQL pipeline', () => {
     else expect(await processingState(f.photoId)).toEqual([]);
   });
 
+  it('retries reconciliation when the original is temporarily unavailable', async () => {
+    const f = await fixture();
+    let available = false;
+    const storage = {
+      verifyObject: (key: string) => available ? f.storage.verifyObject(key) : Promise.resolve(null),
+      deleteObject: f.storage.deleteObject.bind(f.storage),
+    };
+    await f.jobs.enqueue({ type: 'RECONCILE_PHOTO_ASSET', payload: { assetId: f.assetId } });
+    const worker = new JobWorker(f.jobs, new ReconcilePhotoAssetHandler(storage, f.jobs));
+    await worker.runOne();
+    const queued = await pool.query("SELECT status, attempts FROM application_jobs WHERE job_type = 'RECONCILE_PHOTO_ASSET' AND payload->>'assetId' = $1", [f.assetId]);
+    expect(queued.rows).toEqual([{ status: 'pending', attempts: 1 }]);
+    expect(await processingState(f.photoId)).toEqual([]);
+    available = true;
+    await pool.query("UPDATE application_jobs SET available_at = NOW() WHERE payload->>'assetId' = $1", [f.assetId]);
+    await worker.runOne();
+    expect(await processingState(f.photoId)).toEqual([{ status: 'pending', attempts: 0 }]);
+  });
+
   it('processes real files, serves client derivatives, releases the original and cleans up deleted assets', async () => {
     const f = await fixture();
     const access = new GalleryAccessService(pool, { deliver: async () => undefined, resend: async () => undefined });

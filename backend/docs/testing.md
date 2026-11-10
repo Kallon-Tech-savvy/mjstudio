@@ -14,4 +14,6 @@ The photo pipeline suite additionally writes synthetic image bytes through signe
 
 These are integration tests of the local development storage adapter. They do not configure or certify a cloud storage provider, email delivery, or production deployment.
 
+Upload race tests pause storage verification while another request confirms, processes, or deletes the photo. A delayed result must return the newer persisted status or reject a deleted photo, without overwriting success or queuing duplicate processing. Both confirmation and reconciliation recover failed originals through the existing `failed → pending → uploaded` transitions. Reconciliation ignores deleted or already verified originals; it retries temporarily unavailable originals within the existing job retry limit. This recovery job is not a storage health monitor and does not restart terminal image-processing failures.
+
 The Vite frontend runs `npm run lint`, `npm run typecheck`, `npm run build`, and `npm run test:workflow`. Its browser tests use API fixtures and include keyboard focus, route races, recovery states, and responsive layouts. Install Chromium with Playwright before running them locally. The lint configuration targets React/Vite; Next.js-only rules do not apply to this application.
