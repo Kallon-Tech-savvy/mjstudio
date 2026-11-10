@@ -1,5 +1,10 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import { db } from './client.js';
+import { env } from '../config/env.js';
+
+if (env.NODE_ENV === 'production') {
+  throw new Error('Demo seeding is disabled in production. Use the controlled owner bootstrap procedure.');
+}
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const STUDIO_ID = '22222222-2222-4222-8222-222222222222';
@@ -72,10 +77,7 @@ async function main() {
   );
 
   // Client access links (token + PIN) are created through the app so that you receive them once.
-  console.log('Seed data inserted.');
-  console.log(`Demo login  ->  ${OWNER_EMAIL}  /  ${OWNER_PASSWORD}   (set SEED_EMAIL / SEED_PASSWORD to change)`);
+  console.log('Development seed data inserted. Credentials were not logged.');
 }
 
-main().finally(() => {
-  void db.end();
-});
+await main().finally(() => db.end());

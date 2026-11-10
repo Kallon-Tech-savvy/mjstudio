@@ -1,5 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 type AppRouterProps = {
   home: ReactNode;
@@ -33,12 +33,24 @@ export default function AppRouter({
         <Route path="/photographer/login" element={photographerLogin} />
         <Route path="/photographer/dashboard" element={photographerDashboard} />
         <Route path="/photographer/galleries" element={photographerGalleries} />
-        <Route path="/photographer/galleries/:galleryId" element={photographerGalleryDetail} />
+        <Route
+          path="/photographer/galleries/:galleryId"
+          element={photographerGalleryDetail}
+        />
         <Route path="/client/access" element={clientAccess} />
         <Route path="/client/gallery/:galleryId" element={clientGallery} />
-        <Route path="/client/gallery/:galleryId/selection" element={clientSelection} />
-        <Route path="/client/gallery/:galleryId/complete" element={clientCompletion} />
-        <Route path="/client/gallery/:galleryId/delivery" element={clientDelivery} />
+        <Route
+          path="/client/gallery/:galleryId/selection"
+          element={clientSelection}
+        />
+        <Route
+          path="/client/gallery/:galleryId/complete"
+          element={clientCompletion}
+        />
+        <Route
+          path="/client/gallery/:galleryId/delivery"
+          element={clientDelivery}
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

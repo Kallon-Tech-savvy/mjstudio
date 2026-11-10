@@ -65,6 +65,7 @@ export type ClientPhotoDetail = {
   position: number;
   recommended: boolean;
   preview: PhotoRepresentation;
+  thumbnail?: PhotoRepresentation;
 };
 
 export type StudioFeedback = {
@@ -142,7 +143,10 @@ export class ApiError extends Error {
   }
 }
 
-async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: Record<string, unknown> }> {
+async function apiRequestWithMeta<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<{ data: T; meta?: Record<string, unknown> }> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -155,9 +159,10 @@ async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Prom
       },
     });
   } catch (cause) {
-    const message = cause instanceof Error && cause.name === "AbortError"
-      ? "The request was cancelled."
-      : "Cannot reach MJ Studio. Check your connection and try again.";
+    const message =
+      cause instanceof Error && cause.name === "AbortError"
+        ? "The request was cancelled."
+        : "Cannot reach MJ Studio. Check your connection and try again.";
     throw new ApiError(message, "NETWORK_ERROR", 0);
   }
 
@@ -169,11 +174,14 @@ async function apiRequestWithMeta<T>(path: string, init: RequestInit = {}): Prom
 
   if (!response.ok) {
     const error = payload?.error;
-    const message = typeof error?.message === "string" ? error.message : "Request failed";
-    const code = typeof error?.code === "string" ? error.code : "REQUEST_FAILED";
-    const requestId = typeof error?.request_id === "string"
-      ? error.request_id
-      : response.headers.get("X-Request-ID") ?? undefined;
+    const message =
+      typeof error?.message === "string" ? error.message : "Request failed";
+    const code =
+      typeof error?.code === "string" ? error.code : "REQUEST_FAILED";
+    const requestId =
+      typeof error?.request_id === "string"
+        ? error.request_id
+        : (response.headers.get("X-Request-ID") ?? undefined);
     throw new ApiError(message, code, response.status, requestId);
   }
 
@@ -187,8 +195,12 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await apiRequestWithMeta<T>(path, init)).data;
 }
 
-async function apiCollectionRequest<T>(path: string, normalize: (item: Record<string, unknown>) => T): Promise<{ items: T[]; total: number }> {
-  const { data, meta } = await apiRequestWithMeta<Record<string, unknown>[]>(path);
+async function apiCollectionRequest<T>(
+  path: string,
+  normalize: (item: Record<string, unknown>) => T,
+): Promise<{ items: T[]; total: number }> {
+  const { data, meta } =
+    await apiRequestWithMeta<Record<string, unknown>[]>(path);
   return {
     items: data.map(normalize),
     total: typeof meta?.total === "number" ? meta.total : data.length,
@@ -200,7 +212,9 @@ function normalizeGallery(item: Record<string, unknown>): GalleryRecord {
     ...item,
     galleryId: String(item.galleryId ?? item.id ?? ""),
     clientId: String(item.clientId ?? ""),
-    status: String(item.status ?? item.publicationStatus ?? item.workflowStatus ?? "draft"),
+    status: String(
+      item.status ?? item.publicationStatus ?? item.workflowStatus ?? "draft",
+    ),
   } as GalleryRecord;
 }
 
@@ -211,7 +225,10 @@ function normalizeClient(item: Record<string, unknown>): ClientRecord {
   } as ClientRecord;
 }
 
-function normalizePhoto(item: Record<string, unknown>, galleryId = ""): PhotoRecord {
+function normalizePhoto(
+  item: Record<string, unknown>,
+  galleryId = "",
+): PhotoRecord {
   return {
     ...item,
     photoId: String(item.photoId ?? item.id ?? ""),
@@ -219,7 +236,9 @@ function normalizePhoto(item: Record<string, unknown>, galleryId = ""): PhotoRec
   } as PhotoRecord;
 }
 
-export async function getPhotographerMe(): Promise<{ user: PhotographerUser | null } | null> {
+export async function getPhotographerMe(): Promise<{
+  user: PhotographerUser | null;
+} | null> {
   return apiRequest<{ user: PhotographerUser | null }>("/auth/me");
 }
 
@@ -227,10 +246,13 @@ export async function photographerLogin(input: {
   email: string;
   password: string;
 }): Promise<{ user: PhotographerUser; authenticated: boolean }> {
-  return apiRequest<{ user: PhotographerUser; authenticated: boolean }>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return apiRequest<{ user: PhotographerUser; authenticated: boolean }>(
+    "/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function photographerLogout(): Promise<void> {
@@ -241,48 +263,90 @@ export async function getStudioSummary(): Promise<StudioSummary> {
   return apiRequest<StudioSummary>("/studio");
 }
 
-export async function listClients(page = 1, limit = 20): Promise<{ items: ClientRecord[]; total: number }> {
-  return apiCollectionRequest(`/clients?page=${page}&limit=${limit}`, normalizeClient);
+export async function listClients(
+  page = 1,
+  limit = 20,
+): Promise<{ items: ClientRecord[]; total: number }> {
+  return apiCollectionRequest(
+    `/clients?page=${page}&limit=${limit}`,
+    normalizeClient,
+  );
 }
 
-export async function listGalleries(page = 1, limit = 20): Promise<{ items: GalleryRecord[]; total: number }> {
-  return apiCollectionRequest(`/galleries?page=${page}&limit=${limit}`, normalizeGallery);
+export async function listGalleries(
+  page = 1,
+  limit = 20,
+): Promise<{ items: GalleryRecord[]; total: number }> {
+  return apiCollectionRequest(
+    `/galleries?page=${page}&limit=${limit}`,
+    normalizeGallery,
+  );
 }
 
 export type NewClientInput = { name: string; email?: string; phone?: string };
 
 /** Provide exactly one of `clientId` (existing client) or `newClient` (created together with the gallery). */
 export async function createGallery(input: {
+  requestId?: string;
   clientId?: string;
   newClient?: NewClientInput;
   name: string;
   expiresAt?: string | null;
 }): Promise<GalleryRecord> {
-  return apiRequest<GalleryRecord>("/galleries", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return normalizeGallery(
+    await apiRequest<Record<string, unknown>>("/galleries", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  );
 }
 
 export async function getGallery(galleryId: string): Promise<GalleryRecord> {
-  return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`));
+  return normalizeGallery(
+    await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`),
+  );
 }
 
-export async function getStudioSelection(galleryId: string): Promise<StudioSelection> {
+/** Publishing explicitly makes a prepared gallery available for client review. */
+export async function publishGallery(
+  galleryId: string,
+): Promise<Partial<GalleryRecord>> {
+  return apiRequest<Partial<GalleryRecord>>(`/galleries/${galleryId}/publish`, {
+    method: "POST",
+  });
+}
+
+export async function getStudioSelection(
+  galleryId: string,
+): Promise<StudioSelection> {
   return apiRequest<StudioSelection>(`/galleries/${galleryId}/selection`);
 }
 
-export async function listGalleryPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: PhotoRecord[]; total: number }> {
-  return apiCollectionRequest(`/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => normalizePhoto(item, galleryId));
+export async function listGalleryPhotos(
+  galleryId: string,
+  page = 1,
+  limit = 20,
+): Promise<{ items: PhotoRecord[]; total: number }> {
+  return apiCollectionRequest(
+    `/galleries/${galleryId}/photos?page=${page}&limit=${limit}`,
+    (item) => normalizePhoto(item, galleryId),
+  );
 }
 
-export async function getStudioPhotoStatus(photoId: string): Promise<{ status: string }> {
+export async function getStudioPhotoStatus(
+  photoId: string,
+): Promise<{ status: string }> {
   return apiRequest<{ status: string }>(`/photos/${photoId}`);
 }
 
 type PhotoUploadCapability = {
   photo: { id: string; position: number; status: string };
-  upload: { method: "PUT" | "POST"; url: string; headers?: Record<string, string>; expiresAt: string };
+  upload: {
+    method: "PUT" | "POST";
+    url: string;
+    headers?: Record<string, string>;
+    expiresAt: string;
+  };
 };
 
 export async function createPhotoUpload(
@@ -304,23 +368,35 @@ export function uploadPhotoFile(
     const request = new XMLHttpRequest();
     request.open(capability.method, capability.url);
     request.withCredentials = false;
+    request.timeout = 120_000;
     request.setRequestHeader("Content-Type", file.type);
     for (const [name, value] of Object.entries(capability.headers ?? {})) {
       request.setRequestHeader(name, value);
     }
     request.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+      if (event.lengthComputable)
+        onProgress(Math.round((event.loaded / event.total) * 100));
     };
     request.onload = () => {
       if (request.status >= 200 && request.status < 300) {
         onProgress(100);
         resolve();
       } else {
-        reject(new Error(`Photo storage rejected the upload (HTTP ${request.status}). Try selecting the photo again.`));
+        reject(
+          new Error(
+            `Photo storage rejected the upload (HTTP ${request.status}). Try selecting the photo again.`,
+          ),
+        );
       }
     };
-    request.onerror = () => reject(new Error("Photo upload failed. Check your connection and try again."));
-    request.ontimeout = () => reject(new Error("Photo upload timed out. Try selecting the photo again."));
+    request.onerror = () =>
+      reject(
+        new Error("Photo upload failed. Check your connection and try again."),
+      );
+    request.ontimeout = () =>
+      reject(
+        new Error("Photo upload timed out. Try selecting the photo again."),
+      );
     request.onabort = () => reject(new Error("Photo upload was cancelled."));
     request.send(file);
   });
@@ -334,12 +410,18 @@ export async function deletePhoto(photoId: string): Promise<void> {
   await apiRequest(`/photos/${photoId}`, { method: "DELETE" });
 }
 
-export async function listStudioFeedback(galleryId: string): Promise<StudioFeedback[]> {
+export async function listStudioFeedback(
+  galleryId: string,
+): Promise<StudioFeedback[]> {
   return apiRequest<StudioFeedback[]>(`/galleries/${galleryId}/feedback`);
 }
 
-export async function listSelectedPhotos(galleryId: string): Promise<StudioSelectedPhoto[]> {
-  return apiRequest<StudioSelectedPhoto[]>(`/galleries/${galleryId}/selected-photos`);
+export async function listSelectedPhotos(
+  galleryId: string,
+): Promise<StudioSelectedPhoto[]> {
+  return apiRequest<StudioSelectedPhoto[]>(
+    `/galleries/${galleryId}/selected-photos`,
+  );
 }
 
 export async function setStudioPhotoReview(
@@ -387,12 +469,15 @@ export type GalleryAccessSummary = {
   revokedAt: string | null;
 };
 
-export async function getGalleryAccess(galleryId: string): Promise<GalleryAccessSummary[]> {
+export async function getGalleryAccess(
+  galleryId: string,
+): Promise<GalleryAccessSummary[]> {
   const { items } = await apiCollectionRequest<GalleryAccessSummary>(
     `/galleries/${galleryId}/access`,
     (item) => ({
       id: String(item.id ?? ""),
-      permission: item.permission === "view_download" ? "view_download" : "view",
+      permission:
+        item.permission === "view_download" ? "view_download" : "view",
       expiresAt: typeof item.expiresAt === "string" ? item.expiresAt : null,
       revokedAt: typeof item.revokedAt === "string" ? item.revokedAt : null,
     }),
@@ -417,41 +502,68 @@ export async function resetGalleryAccess(
   galleryId: string,
   input: { permission: "view" | "view_download"; expiresAt?: string | null },
 ): Promise<GalleryAccessCredentials> {
-  return apiRequest<GalleryAccessCredentials>(`/galleries/${galleryId}/access/reset`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return apiRequest<GalleryAccessCredentials>(
+    `/galleries/${galleryId}/access/reset`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function verifyClientAccess(input: {
   secret: string;
   pin: string;
 }): Promise<{ authenticated: boolean; galleryId: string; expiresAt?: string }> {
-  return apiRequest<{ authenticated: boolean; galleryId: string; expiresAt?: string }>("/client/access/verify", {
+  return apiRequest<{
+    authenticated: boolean;
+    galleryId: string;
+    expiresAt?: string;
+  }>("/client/access/verify", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export async function getClientGallery(galleryId: string): Promise<GalleryRecord> {
-  return normalizeGallery(await apiRequest<Record<string, unknown>>(`/client/galleries/${galleryId}`));
+export async function getClientGallery(
+  galleryId: string,
+): Promise<GalleryRecord> {
+  return normalizeGallery(
+    await apiRequest<Record<string, unknown>>(`/client/galleries/${galleryId}`),
+  );
 }
 
-export async function listClientPhotos(galleryId: string, page = 1, limit = 20): Promise<{ items: ClientPhoto[]; total: number }> {
-  return apiCollectionRequest<ClientPhoto>(`/client/galleries/${galleryId}/photos?page=${page}&limit=${limit}`, (item) => ({
-    photoId: String(item.photoId ?? item.id ?? ""),
-    position: Number(item.position ?? 0),
-    recommended: Boolean(item.recommended),
-    thumbnail: item.thumbnail as PhotoRepresentation,
-  }));
+export async function listClientPhotos(
+  galleryId: string,
+  page = 1,
+  limit = 20,
+): Promise<{ items: ClientPhoto[]; total: number }> {
+  return apiCollectionRequest<ClientPhoto>(
+    `/client/galleries/${galleryId}/photos?page=${page}&limit=${limit}`,
+    (item) => ({
+      photoId: String(item.photoId ?? item.id ?? ""),
+      position: Number(item.position ?? 0),
+      recommended: Boolean(item.recommended),
+      thumbnail: item.thumbnail as PhotoRepresentation,
+    }),
+  );
 }
 
-export async function getClientPhoto(galleryId: string, photoId: string): Promise<ClientPhotoDetail> {
-  return apiRequest<ClientPhotoDetail>(`/client/galleries/${galleryId}/photos/${photoId}`);
+export async function getClientPhoto(
+  galleryId: string,
+  photoId: string,
+): Promise<ClientPhotoDetail> {
+  return apiRequest<ClientPhotoDetail>(
+    `/client/galleries/${galleryId}/photos/${photoId}`,
+  );
 }
 
-export async function getClientSelection(galleryId: string): Promise<ClientSelection> {
-  return apiRequest<ClientSelection>(`/client/galleries/${galleryId}/selection`);
+export async function getClientSelection(
+  galleryId: string,
+): Promise<ClientSelection> {
+  return apiRequest<ClientSelection>(
+    `/client/galleries/${galleryId}/selection`,
+  );
 }
 
 export async function setSelection(
@@ -488,16 +600,25 @@ export async function createDownload(
   galleryId: string,
   photoId: string,
 ): Promise<{ download_url: string; expires_at?: string }> {
-  return apiRequest<{ download_url: string; expires_at?: string }>(`/client/galleries/${galleryId}/photos/${photoId}/download`, {
-    method: "POST",
-  });
+  return apiRequest<{ download_url: string; expires_at?: string }>(
+    `/client/galleries/${galleryId}/photos/${photoId}/download`,
+    {
+      method: "POST",
+    },
+  );
 }
 
-export async function createGalleryFeedback(galleryId: string, message: string): Promise<{ message: string }> {
-  return apiRequest<{ message: string }>(`/client/galleries/${galleryId}/feedback`, {
-    method: "POST",
-    body: JSON.stringify({ message }),
-  });
+export async function createGalleryFeedback(
+  galleryId: string,
+  message: string,
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(
+    `/client/galleries/${galleryId}/feedback`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    },
+  );
 }
 
 export async function createPhotoFeedback(
@@ -505,12 +626,14 @@ export async function createPhotoFeedback(
   photoId: string,
   message: string,
 ): Promise<{ message: string }> {
-  return apiRequest<{ message: string }>(`/client/galleries/${galleryId}/photos/${photoId}/feedback`, {
-    method: "POST",
-    body: JSON.stringify({ message }),
-  });
+  return apiRequest<{ message: string }>(
+    `/client/galleries/${galleryId}/photos/${photoId}/feedback`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    },
+  );
 }
-
 
 export interface ClientDeliveryItem {
   id: string;
@@ -526,16 +649,25 @@ export interface ClientDeliveryResponse {
   items: ClientDeliveryItem[];
 }
 
-export async function getClientDelivery(galleryId: string): Promise<ClientDeliveryResponse> {
-  return apiRequest<ClientDeliveryResponse>(`/client/galleries/${galleryId}/delivery`);
+export async function getClientDelivery(
+  galleryId: string,
+): Promise<ClientDeliveryResponse> {
+  return apiRequest<ClientDeliveryResponse>(
+    `/client/galleries/${galleryId}/delivery`,
+  );
 }
 
-export async function downloadDeliveryPhoto(galleryId: string, photoId: string): Promise<{ download_url: string; expires_at?: string }> {
-  return apiRequest<{ download_url: string; expires_at?: string }>(`/client/galleries/${galleryId}/photos/${photoId}/download`, {
-    method: "POST",
-  });
+export async function downloadDeliveryPhoto(
+  galleryId: string,
+  photoId: string,
+): Promise<{ download_url: string; expires_at?: string }> {
+  return apiRequest<{ download_url: string; expires_at?: string }>(
+    `/client/galleries/${galleryId}/photos/${photoId}/download`,
+    {
+      method: "POST",
+    },
+  );
 }
-
 
 export interface StudioDeliveryDetails {
   id: string;
@@ -561,14 +693,26 @@ export interface StudioDeliveryDetails {
   canPrepare: boolean;
 }
 
-export async function getStudioDelivery(galleryId: string): Promise<StudioDeliveryDetails> {
+export async function getStudioDelivery(
+  galleryId: string,
+): Promise<StudioDeliveryDetails> {
   return apiRequest<StudioDeliveryDetails>(`/galleries/${galleryId}/delivery`);
 }
 
-export async function prepareStudioDelivery(galleryId: string): Promise<StudioDeliveryDetails> {
-  return apiRequest<StudioDeliveryDetails>(`/galleries/${galleryId}/delivery/prepare`, { method: "POST" });
+export async function prepareStudioDelivery(
+  galleryId: string,
+): Promise<StudioDeliveryDetails> {
+  return apiRequest<StudioDeliveryDetails>(
+    `/galleries/${galleryId}/delivery/prepare`,
+    { method: "POST" },
+  );
 }
 
-export async function releaseStudioDelivery(galleryId: string): Promise<StudioDeliveryDetails> {
-  return apiRequest<StudioDeliveryDetails>(`/galleries/${galleryId}/delivery/release`, { method: "POST" });
+export async function releaseStudioDelivery(
+  galleryId: string,
+): Promise<StudioDeliveryDetails> {
+  return apiRequest<StudioDeliveryDetails>(
+    `/galleries/${galleryId}/delivery/release`,
+    { method: "POST" },
+  );
 }

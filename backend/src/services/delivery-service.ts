@@ -2,8 +2,8 @@ import type { ClientContext } from '../auth/context.js';
 import { canReadClientGallery } from '../application/policies/client-gallery.policy.js';
 import type { PhotographerContext } from '../auth/context.js';
 import { ensureGalleryPermission } from '../application/policies/gallery.policy.js';
-import { AppError, NotFoundError, ValidationError } from '../errors.js';
-import { resolveGalleryMembership, type Database } from './service-common.js';
+import { NotFoundError, ValidationError } from '../errors.js';
+import { inTransaction, resolveGalleryMembership, type Database } from './service-common.js';
 
 export interface DeliveryRecord {
   id: string;
@@ -101,7 +101,7 @@ export class DeliveryService {
       items,
       approvedCount,
       totalSelectedCount,
-      canPrepare,
+      canPrepare: canPrepare && !delivery?.releasedAt,
     };
   }
 
@@ -109,53 +109,54 @@ export class DeliveryService {
     const membership = await resolveGalleryMembership(this.database, actor, galleryId);
     ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.update');
 
-    // Verify all selected photos are approved
-    const unapprovedRes = await this.database.query(
-      `SELECT p.id, p.filename, COALESCE(pr.status, 'pending') AS status
-         FROM gallery_access a
-         JOIN gallery_selections s ON s.gallery_access_id = a.id AND s.status = 'submitted'
-         JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
-         JOIN photos p ON p.id = si.photo_id AND p.deleted_at IS NULL AND p.status = 'active'
-         LEFT JOIN gallery_proofing_reviews pr ON pr.gallery_id = p.gallery_id AND pr.photo_id = p.id
-        WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
-          AND (a.expires_at IS NULL OR a.expires_at > NOW())
-          AND (pr.status IS NULL OR pr.status != 'approved')`,
-      [galleryId],
-    );
-
-    if (unapprovedRes.rows.length > 0) {
-      throw new ValidationError(
-        'UNAPPROVED_PHOTOS_EXIST',
-        'All selected photographs must be approved in proofing before delivery can be prepared.',
+    await inTransaction(this.database, async (client) => {
+      await client.query('SELECT id FROM galleries WHERE id = $1 FOR UPDATE', [galleryId]);
+      const existing = await client.query('SELECT released_at FROM gallery_deliveries WHERE gallery_id = $1', [galleryId]);
+      if (existing.rows[0]?.released_at) return;
+      // Keep selected photos stable while constructing the prepared set.
+      await client.query('SELECT id FROM photos WHERE gallery_id = $1 ORDER BY id FOR SHARE', [galleryId]);
+      // Verify all selected photos are approved
+      const unapprovedRes = await client.query(
+        `SELECT p.id, p.filename, COALESCE(pr.status, 'pending') AS status
+           FROM gallery_access a
+           JOIN gallery_selections s ON s.gallery_access_id = a.id AND s.status = 'submitted'
+           JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
+           JOIN photos p ON p.id = si.photo_id AND p.deleted_at IS NULL AND p.status = 'active'
+           LEFT JOIN gallery_proofing_reviews pr ON pr.gallery_id = p.gallery_id AND pr.photo_id = p.id
+          WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
+            AND (a.expires_at IS NULL OR a.expires_at > NOW())
+            AND (pr.status IS NULL OR pr.status != 'approved')`,
+        [galleryId],
       );
-    }
 
-    // Fetch approved photos
-    const approvedPhotosRes = await this.database.query(
-      `SELECT p.id AS photo_id, g.client_id, pa.id AS asset_id
-         FROM gallery_access a
-         JOIN gallery_selections s ON s.gallery_access_id = a.id AND s.status = 'submitted'
-         JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
-         JOIN photos p ON p.id = si.photo_id AND p.deleted_at IS NULL AND p.status = 'active'
-         JOIN galleries g ON g.id = p.gallery_id
-         JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'original' AND pa.state = 'current'
-           AND pa.upload_status = 'uploaded' AND pa.processing_status = 'not_required'
-         JOIN gallery_proofing_reviews pr ON pr.gallery_id = p.gallery_id AND pr.photo_id = p.id AND pr.status = 'approved'
-        WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
-          AND (a.expires_at IS NULL OR a.expires_at > NOW())`,
-      [galleryId],
-    );
+      if (unapprovedRes.rows.length > 0) {
+        throw new ValidationError(
+          'UNAPPROVED_PHOTOS_EXIST',
+          'All selected photographs must be approved in proofing before delivery can be prepared.',
+        );
+      }
 
-    if (approvedPhotosRes.rows.length === 0) {
-      throw new ValidationError('NO_APPROVED_PHOTOS', 'No approved selected photographs found for delivery.');
-    }
+      // Fetch approved photos
+      const approvedPhotosRes = await client.query(
+        `SELECT p.id AS photo_id, g.client_id, pa.id AS asset_id
+           FROM gallery_access a
+           JOIN gallery_selections s ON s.gallery_access_id = a.id AND s.status = 'submitted'
+           JOIN gallery_selection_items si ON si.gallery_selection_id = s.id AND si.selected = TRUE
+           JOIN photos p ON p.id = si.photo_id AND p.deleted_at IS NULL AND p.status = 'active'
+           JOIN galleries g ON g.id = p.gallery_id
+           JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'original' AND pa.state = 'current'
+             AND pa.upload_status = 'uploaded' AND pa.processing_status = 'not_required'
+           JOIN gallery_proofing_reviews pr ON pr.gallery_id = p.gallery_id AND pr.photo_id = p.id AND pr.status = 'approved'
+          WHERE a.gallery_id = $1 AND a.revoked_at IS NULL
+            AND (a.expires_at IS NULL OR a.expires_at > NOW())`,
+        [galleryId],
+      );
 
-    const clientId = approvedPhotosRes.rows[0].client_id;
+      if (approvedPhotosRes.rows.length === 0) {
+        throw new ValidationError('NO_APPROVED_PHOTOS', 'No approved selected photographs found for delivery.');
+      }
 
-    // Execute upsert in transaction
-    const client = await this.database.connect();
-    try {
-      await client.query('BEGIN');
+      const clientId = approvedPhotosRes.rows[0].client_id;
 
       // Create or update delivery record
       const deliveryUpsert = await client.query(
@@ -169,6 +170,10 @@ export class DeliveryService {
 
       const deliveryId = deliveryUpsert.rows[0].id;
 
+      // Rebuilding an unreleased delivery must remove stale items as well.
+      await client.query('DELETE FROM gallery_delivery_items WHERE delivery_id = $1 AND NOT (photo_id = ANY($2::uuid[]))',
+        [deliveryId, approvedPhotosRes.rows.map((row) => row.photo_id)]);
+
       // Upsert delivery items for all approved photos
       for (const row of approvedPhotosRes.rows) {
         await client.query(
@@ -180,23 +185,16 @@ export class DeliveryService {
         );
       }
 
-      // Mark delivery as ready
+      // Prepared items remain private until explicit release
       await client.query(
         `UPDATE gallery_deliveries
-            SET status = CASE WHEN released_at IS NOT NULL THEN 'ready' ELSE 'preparing' END,
+            SET status = 'preparing',
                 ready_at = NOW(),
                 updated_at = NOW()
           WHERE id = $1`,
         [deliveryId],
       );
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
 
     return this.getDelivery(actor, galleryId);
   }
@@ -205,54 +203,63 @@ export class DeliveryService {
     const membership = await resolveGalleryMembership(this.database, actor, galleryId);
     ensureGalleryPermission(actor, membership, membership.galleryRole, 'gallery.update');
 
-    const deliveryRes = await this.database.query(
-      `SELECT id, status FROM gallery_deliveries WHERE gallery_id = $1`,
-      [galleryId],
-    );
-
-    if (!deliveryRes.rows[0]) {
-      throw new NotFoundError('DELIVERY_NOT_PREPARED', 'Delivery must be prepared before it can be released.');
-    }
-
-    const deliveryId = deliveryRes.rows[0].id;
-
-    const releaseCheck = await this.database.query(
-      `SELECT
-         COUNT(*)::int AS item_count,
-         COUNT(*) FILTER (WHERE di.status = 'ready')::int AS ready_item_count,
-         COUNT(*) FILTER (WHERE pr.status = 'approved')::int AS approved_item_count
-       FROM gallery_delivery_items di
-       JOIN photos p ON p.id = di.photo_id
-       LEFT JOIN gallery_proofing_reviews pr
-         ON pr.gallery_id = p.gallery_id
-        AND pr.photo_id = p.id
-      WHERE di.delivery_id = $1
-        AND p.deleted_at IS NULL
-        AND p.status = 'active'`,
-      [deliveryId],
-    );
-
-    const releaseState = releaseCheck.rows[0];
-    const itemCount = Number(releaseState?.item_count ?? 0);
-    const readyItemCount = Number(releaseState?.ready_item_count ?? 0);
-    const approvedItemCount = Number(releaseState?.approved_item_count ?? 0);
-
-    if (itemCount === 0 || readyItemCount !== itemCount || approvedItemCount !== itemCount) {
-      throw new ValidationError(
-        'DELIVERY_NOT_READY',
-        'Every delivery photograph must be ready and approved before delivery can be released.',
+    await inTransaction(this.database, async (transaction) => {
+      await transaction.query('SELECT id FROM galleries WHERE id = $1 FOR UPDATE', [galleryId]);
+      const deliveryRes = await transaction.query(
+        `SELECT id, status, released_at FROM gallery_deliveries WHERE gallery_id = $1`,
+        [galleryId],
       );
-    }
 
-    await this.database.query(
-      `UPDATE gallery_deliveries
-          SET status = 'ready',
-              released_at = COALESCE(released_at, NOW()),
-              ready_at = COALESCE(ready_at, NOW()),
-              updated_at = NOW()
-        WHERE id = $1`,
-      [deliveryId],
-    );
+      if (!deliveryRes.rows[0]) {
+        throw new NotFoundError('DELIVERY_NOT_PREPARED', 'Delivery must be prepared before it can be released.');
+      }
+
+      if (deliveryRes.rows[0].released_at) return;
+      const deliveryId = deliveryRes.rows[0].id;
+      await transaction.query(`SELECT p.id FROM gallery_delivery_items di
+        JOIN photos p ON p.id = di.photo_id
+        JOIN photo_assets pa ON pa.id = di.asset_id
+        WHERE di.delivery_id = $1 ORDER BY p.id FOR SHARE OF p, pa`, [deliveryId]);
+
+      const releaseCheck = await transaction.query(
+        `SELECT
+           COUNT(*)::int AS item_count,
+           COUNT(*) FILTER (WHERE di.status = 'ready' AND p.deleted_at IS NULL AND p.status = 'active'
+             AND pa.photo_id = p.id AND pa.type = 'original' AND pa.state = 'current'
+             AND pa.upload_status = 'uploaded' AND pa.processing_status = 'not_required')::int AS ready_item_count,
+           COUNT(*) FILTER (WHERE pr.status = 'approved')::int AS approved_item_count
+         FROM gallery_delivery_items di
+         JOIN photos p ON p.id = di.photo_id
+         LEFT JOIN photo_assets pa ON pa.id = di.asset_id
+         LEFT JOIN gallery_proofing_reviews pr
+           ON pr.gallery_id = p.gallery_id
+          AND pr.photo_id = p.id
+        WHERE di.delivery_id = $1`,
+        [deliveryId],
+      );
+
+      const releaseState = releaseCheck.rows[0];
+      const itemCount = Number(releaseState?.item_count ?? 0);
+      const readyItemCount = Number(releaseState?.ready_item_count ?? 0);
+      const approvedItemCount = Number(releaseState?.approved_item_count ?? 0);
+
+      if (itemCount === 0 || readyItemCount !== itemCount || approvedItemCount !== itemCount) {
+        throw new ValidationError(
+          'DELIVERY_NOT_READY',
+          'Every delivery photograph must be ready and approved before delivery can be released.',
+        );
+      }
+
+      await transaction.query(
+        `UPDATE gallery_deliveries
+            SET status = 'ready',
+                released_at = COALESCE(released_at, NOW()),
+                ready_at = COALESCE(ready_at, NOW()),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [deliveryId],
+      );
+    });
 
     return this.getDelivery(actor, galleryId);
   }

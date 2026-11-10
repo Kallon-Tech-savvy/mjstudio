@@ -1,29 +1,16 @@
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { NewGalleryForm } from "@/features/studio/components/NewGalleryForm";
-import { useEffect, useState, type FormEvent } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import PhotographerGalleriesPage from "@/features/studio/pages/PhotographerGalleriesPage";
 import {
-  createGallery,
-  createGalleryAccess,
-  getGallery,
-  getPhotographerMe,
-  getStudioSummary,
-  listSelectedPhotos,
-  listStudioFeedback,
-  getStudioDelivery,
-  prepareStudioDelivery,
-  releaseStudioDelivery,
-  type StudioDeliveryDetails,
-  listClients,
-  listGalleryPhotos,
-  listGalleries,
-  photographerLogin,
-  photographerLogout,
   type ClientRecord,
   type GalleryRecord,
-  type PhotoRecord,
+  getPhotographerMe,
+  getStudioSummary,
+  listClients,
+  listGalleries,
   type PhotographerUser,
-  type StudioSelectedPhoto,
-  type StudioFeedback,
+  photographerLogin,
+  photographerLogout,
 } from "@/lib/api";
 
 function HomePage() {
@@ -33,7 +20,8 @@ function HomePage() {
         <p className="eyebrow">MJ Studio</p>
         <h1>Thoughtful galleries, beautifully delivered.</h1>
         <p className="lead">
-          Prepare private client galleries, review selections, and share polished imagery without the usual back-and-forth.
+          Prepare private client galleries, review selections, and share
+          polished imagery without the usual back-and-forth.
         </p>
 
         <div className="cta-row">
@@ -50,7 +38,10 @@ function HomePage() {
         <article className="panel card">
           <p className="eyebrow">For photographers</p>
           <h2>Prepare with clarity</h2>
-          <p>Create galleries, issue access, and keep each delivery moving with a calm, purposeful workspace.</p>
+          <p>
+            Create galleries, issue access, and keep each delivery moving with a
+            calm, purposeful workspace.
+          </p>
           <Link to="/photographer/dashboard" className="tiny-link">
             Open dashboard
           </Link>
@@ -59,7 +50,10 @@ function HomePage() {
         <article className="panel card">
           <p className="eyebrow">For clients</p>
           <h2>Review with ease</h2>
-          <p>Open the gallery securely, browse imagery, leave notes, and choose favourites without friction.</p>
+          <p>
+            Open the gallery securely, browse imagery, leave notes, and choose
+            favourites without friction.
+          </p>
           <Link to="/client/access" className="tiny-link">
             Open client access
           </Link>
@@ -68,7 +62,10 @@ function HomePage() {
         <article className="panel card">
           <p className="eyebrow">Built for trust</p>
           <h2>Secure by default</h2>
-          <p>Permissions remain server-side so every gallery action is enforced, and the browser only presents the experience.</p>
+          <p>
+            Permissions remain server-side so every gallery action is enforced,
+            and the browser only presents the experience.
+          </p>
           <Link to="/photographer/login" className="tiny-link">
             Sign in
           </Link>
@@ -80,8 +77,8 @@ function HomePage() {
 
 function PhotographerLoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("photographer@example.com");
-  const [password, setPassword] = useState("Password123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -94,7 +91,11 @@ function PhotographerLoginPage() {
       await photographerLogin({ email, password });
       navigate("/photographer/dashboard", { replace: true });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to sign in.");
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to sign in.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -106,23 +107,42 @@ function PhotographerLoginPage() {
         <div className="panel-header">
           <p className="eyebrow">Photographer workspace</p>
           <h1>Welcome back.</h1>
-          <p className="muted">Sign in to prepare galleries, follow client selections, and keep each delivery moving.</p>
+          <p className="muted">
+            Sign in to prepare galleries, follow client selections, and keep
+            each delivery moving.
+          </p>
         </div>
 
         <form className="stack" onSubmit={handleSubmit}>
           <label className="field">
             <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="photographer@studio.com" required />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="photographer@studio.com"
+              required
+            />
           </label>
 
           <label className="field">
             <span>Password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required />
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              required
+            />
           </label>
 
           {error ? <div className="error-box">{error}</div> : null}
 
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </form>
@@ -165,7 +185,11 @@ function PhotographerDashboardPage() {
         setClients(clientList.items ?? []);
         setGalleries(galleryList.items ?? []);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "Unable to load dashboard.");
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Unable to load dashboard.",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -179,7 +203,11 @@ function PhotographerDashboardPage() {
       await photographerLogout();
       navigate("/photographer/login", { replace: true });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to sign out.");
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to sign out.",
+      );
     }
   };
 
@@ -208,7 +236,6 @@ function PhotographerDashboardPage() {
             Log out
           </button>
         </div>
-
       </header>
 
       {error ? <div className="error-box">{error}</div> : null}
@@ -243,21 +270,40 @@ function PhotographerDashboardPage() {
               <p className="eyebrow">Needs attention</p>
               <h2>Selection received</h2>
             </div>
-            <span className="tag">{galleries.filter((gallery) => gallery.selectionStatus === "submitted").length}</span>
+            <span className="tag">
+              {
+                galleries.filter(
+                  (gallery) => gallery.selectionStatus === "submitted",
+                ).length
+              }
+            </span>
           </div>
           <ul className="list-stack">
-            {galleries.filter((gallery) => gallery.selectionStatus === "submitted").length === 0 ? (
-              <li className="empty-state">You’re all caught up. New client selections will appear here.</li>
+            {galleries.filter(
+              (gallery) => gallery.selectionStatus === "submitted",
+            ).length === 0 ? (
+              <li className="empty-state">
+                You’re all caught up. New client selections will appear here.
+              </li>
             ) : (
               galleries
                 .filter((gallery) => gallery.selectionStatus === "submitted")
                 .map((gallery) => (
-                  <li key={gallery.galleryId} className="list-row interactive-row">
+                  <li
+                    key={gallery.galleryId}
+                    className="list-row interactive-row"
+                  >
                     <div>
                       <strong>{gallery.clientName ?? gallery.name}</strong>
-                      <small>{gallery.selectedCount ?? 0} photographs selected · {gallery.name}</small>
+                      <small>
+                        {gallery.selectedCount ?? 0} photographs selected ·{" "}
+                        {gallery.name}
+                      </small>
                     </div>
-                    <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
+                    <Link
+                      to={`/photographer/galleries/${gallery.galleryId}`}
+                      className="tiny-link"
+                    >
                       Review →
                     </Link>
                   </li>
@@ -277,17 +323,29 @@ function PhotographerDashboardPage() {
             {galleries.length === 0 ? (
               <li className="empty-state">
                 <strong>Your first gallery starts here.</strong>
-                <span>Set up a private space for clients to review their photographs.</span>
-                <Link to="/photographer/galleries" className="tiny-link">Create a gallery</Link>
+                <span>
+                  Set up a private space for clients to review their
+                  photographs.
+                </span>
+                <Link to="/photographer/galleries" className="tiny-link">
+                  Create a gallery
+                </Link>
               </li>
             ) : (
               galleries.map((gallery) => (
                 <li key={gallery.galleryId} className="list-row">
                   <div>
                     <strong>{gallery.name}</strong>
-                    <small>{gallery.selectionStatus === "submitted" ? "Selection received" : gallery.status ?? "draft"}</small>
+                    <small>
+                      {gallery.selectionStatus === "submitted"
+                        ? "Selection received"
+                        : (gallery.status ?? "draft")}
+                    </small>
                   </div>
-                  <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
+                  <Link
+                    to={`/photographer/galleries/${gallery.galleryId}`}
+                    className="tiny-link"
+                  >
                     Open
                   </Link>
                 </li>
@@ -300,84 +358,15 @@ function PhotographerDashboardPage() {
   );
 }
 
-function PhotographerGalleriesPage() {
-  const navigate = useNavigate();
-  const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const ensureAccess = async () => {
-      try {
-        const me = await getPhotographerMe();
-        if (!me?.user) {
-          navigate("/photographer/login", { replace: true });
-          return;
-        }
-
-        const [response, clientResponse] = await Promise.all([listGalleries(1, 20), listClients(1, 100)]);
-        setGalleries(response.items ?? []);
-        setClients(clientResponse.items ?? []);
-      } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "Unable to load galleries.");
-      }
-    };
-
-    void ensureAccess();
-  }, [navigate]);
-
-  const reload = async () => {
-    const [response, clientResponse] = await Promise.all([listGalleries(1, 20), listClients(1, 100)]);
-    setGalleries(response.items ?? []);
-    setClients(clientResponse.items ?? []);
-  };
-
-  return (
-    <main className="page-shell">
-      <div className="panel">
-        <div className="panel-header compact-header">
-          <div>
-            <p className="eyebrow">Photographer</p>
-            <h1>Galleries</h1>
-          </div>
-          <Link to="/photographer/dashboard" className="secondary-button">
-            Back to dashboard
-          </Link>
-        </div>
-
-        <NewGalleryForm clients={clients} onCreated={reload} />
-
-        {error ? <div className="error-box">{error}</div> : null}
-
-        <ul className="list-stack spaced-list">
-          {galleries.length === 0 ? (
-            <li className="empty-state">No galleries are available for this studio yet.</li>
-          ) : (
-            galleries.map((gallery) => (
-              <li key={gallery.galleryId} className="list-row interactive-row">
-                <div>
-                  <strong>{gallery.clientName ?? gallery.name}</strong>
-                  <small>
-                    {gallery.selectionStatus === "submitted"
-                      ? `${gallery.selectedCount ?? 0} photographs selected · Selection received`
-                      : gallery.status ?? "draft"}
-                  </small>
-                </div>
-                <Link to={`/photographer/galleries/${gallery.galleryId}`} className="tiny-link">
-                  {gallery.selectionStatus === "submitted" ? "Review →" : "Open"}
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      </div>
-    </main>
-  );
-}
-
 import AppRouter from "@/app/router";
+import {
+  ClientAccessPage,
+  ClientDeliveryPage,
+  ClientGalleryPage,
+  ClientSelectionCompletionPage,
+  ClientSelectionReviewPage,
+} from "@/features/client-gallery/ClientGalleryPages";
 import PhotographerGalleryDetailPage from "@/features/studio/pages/PhotographerGalleryDetailPage";
-import { ClientAccessPage, ClientGalleryPage, ClientSelectionReviewPage, ClientSelectionCompletionPage, ClientDeliveryPage } from "@/features/client-gallery/ClientGalleryPages";
 
 export default function App() {
   return (

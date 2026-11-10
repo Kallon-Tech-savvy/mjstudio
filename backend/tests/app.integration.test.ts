@@ -21,6 +21,29 @@ const baseServices = () => ({
 }) as unknown as ApplicationServices;
 
 describe('API foundation', () => {
+  it('preserves photo-order validation boundaries after validator upgrades', async () => {
+    const reorder = vi.fn(async (_actor: unknown, _galleryId: string, photoIds: string[]) => photoIds);
+    const services = { ...baseServices(), photos: { reorder } } as unknown as ApplicationServices;
+    const app = createApp(services, { allowedOrigins: ['http://localhost:3000'] });
+    const send = (photoIds: unknown[]) => request(app)
+      .put('/api/galleries/55555555-5555-4555-8555-555555555555/photos/reorder')
+      .set('Origin', 'http://localhost:3000')
+      .set('Cookie', '__Host-mj_session=valid')
+      .send({ photoIds });
+    const validIds = Array.from({ length: 500 }, (_, i) =>
+      `66666666-6666-4666-8666-${String(i).padStart(12, '0')}`);
+
+    expect((await send(validIds)).status).toBe(200);
+    expect(reorder).toHaveBeenCalledWith(expect.anything(), '55555555-5555-4555-8555-555555555555', validIds);
+    for (const invalid of [[], [...validIds, validIds[0]], ['not-a-uuid'], Array(10_000).fill(null)]) {
+      const response = await send(invalid);
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe('INVALID_PHOTO_ORDER');
+      expect(response.body.error.request_id).toMatch(/^req_/);
+    }
+    expect(reorder).toHaveBeenCalledOnce();
+  });
+
   it('creates a photo upload capability for an image and rejects non-image uploads', async () => {
     const createPhoto = vi.fn(async (_actor: unknown, _galleryId: string, _input: unknown) => ({
       photo: { id: '66666666-6666-4666-8666-666666666666', position: 0, status: 'processing' },

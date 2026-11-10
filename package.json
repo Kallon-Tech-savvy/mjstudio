@@ -1,16 +1,20 @@
 {
-  "name": "mj shoot_it",
+  "name": "mjstudio",
   "version": "0.0.1",
-  "description": "a studio delivery application for MJ shoot_it studio",
+  "private": true,
+  "description": "MJ Studio development and verification commands",
   "license": "ISC",
   "author": "Alhaji C M Kallon",
-  "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "dependencies": {
-    "dotenv": "^18.0.5",
-    "express": "^5.2.1",
-    "pg": "^8.23.1"
+    "install:all": "npm ci --prefix backend && npm ci --prefix mj_shoot-it",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix mj_shoot-it",
+    "check:repository": "node scripts/check-repository.mjs",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix mj_shoot-it && npm run typecheck --prefix mj_shoot-it",
+    "build": "npm run build --prefix backend && npm run build --prefix mj_shoot-it",
+    "test": "npm test --prefix backend && npm run test:workflow --prefix mj_shoot-it",
+    "test:database": "npm run test:database --prefix backend",
+    "audit:all": "npm audit --audit-level=high && npm audit --prefix backend --audit-level=high && npm audit --prefix mj_shoot-it --audit-level=high",
+    "check": "npm run check:repository && npm run lint && npm run build && npm test"
   }
 }
