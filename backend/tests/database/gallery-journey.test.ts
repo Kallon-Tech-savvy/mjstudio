@@ -83,6 +83,67 @@ afterEach(async () => {
 afterAll(async () => { await pool.end(); });
 
 describe('PostgreSQL gallery journey', () => {
+  async function preparedFixture() {
+    const f = await publishedFixture();
+    const otherId = await readyPhoto(f.galleryId);
+    for (const id of [f.photoId, otherId]) await selections.setSelection(f.client, id, true);
+    await selections.submitSelection(f.client);
+    for (const id of [f.photoId, otherId]) await proofing.setReview(f.actor, f.galleryId, id, 'approved');
+    await deliveries.prepareDelivery(f.actor, f.galleryId);
+    return { ...f, otherId };
+  }
+
+  it('preserves a released delivery when preparation and release are retried together', async () => {
+    const f = await preparedFixture();
+    const released = await deliveries.releaseDelivery(f.actor, f.galleryId);
+    const results = await Promise.all([
+      deliveries.prepareDelivery(f.actor, f.galleryId),
+      deliveries.releaseDelivery(f.actor, f.galleryId),
+    ]);
+    for (const result of results) {
+      expect(result.releasedAt).toEqual(released.releasedAt);
+      expect(result.items).toEqual(released.items);
+      expect(result.status).toBe('ready');
+    }
+  });
+
+  it('rejects release if any prepared item has been deleted', async () => {
+    const f = await preparedFixture();
+    await pool.query('UPDATE photos SET deleted_at = NOW() WHERE id = $1', [f.otherId]);
+    await expect(deliveries.releaseDelivery(f.actor, f.galleryId)).rejects.toMatchObject({ code: 'DELIVERY_NOT_READY' });
+    expect((await deliveries.getClientDelivery(f.client, f.galleryId)).isReleased).toBe(false);
+  });
+
+  it('keeps the approval of a released delivery item immutable', async () => {
+    const f = await preparedFixture();
+    await deliveries.releaseDelivery(f.actor, f.galleryId);
+    await expect(proofing.setReview(f.actor, f.galleryId, f.photoId, 'needs_revision', 'Check the crop'))
+      .rejects.toMatchObject({ code: 'DELIVERY_ALREADY_RELEASED' });
+    const review = await pool.query('SELECT status FROM gallery_proofing_reviews WHERE photo_id = $1', [f.photoId]);
+    expect(review.rows[0].status).toBe('approved');
+  });
+
+  it('waits for an overlapping proofing change before validating release', async () => {
+    const f = await preparedFixture();
+    const reviewing = await pool.connect();
+    let release: Promise<unknown> | undefined;
+    try {
+      await reviewing.query('BEGIN');
+      const { rows: [{ pid }] } = await reviewing.query('SELECT pg_backend_pid() AS pid');
+      await reviewing.query('SELECT id FROM galleries WHERE id = $1 FOR UPDATE', [f.galleryId]);
+      await reviewing.query("UPDATE gallery_proofing_reviews SET status = 'needs_revision', note = 'Check the crop' WHERE photo_id = $1", [f.photoId]);
+      let settled = false;
+      release = deliveries.releaseDelivery(f.actor, f.galleryId).then(
+        (value) => { settled = true; return value; },
+        (error: unknown) => { settled = true; return error; },
+      );
+      expect(await waitForBlockedRequest(pid, () => settled)).toBe(true);
+      await reviewing.query('COMMIT');
+      expect(await release).toMatchObject({ code: 'DELIVERY_NOT_READY' });
+      expect((await deliveries.getClientDelivery(f.client, f.galleryId)).isReleased).toBe(false);
+    } finally { await reviewing.query('ROLLBACK'); reviewing.release(); await release; }
+  });
+
   it('rejects an edit that overlaps a submission and preserves both selection records', async () => {
     const { client, photoId } = await publishedFixture();
     await selections.setSelection(client, photoId, true);
