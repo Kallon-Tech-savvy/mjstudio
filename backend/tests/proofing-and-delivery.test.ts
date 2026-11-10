@@ -27,7 +27,7 @@ describe('Proofing & Delivery Domain Invariants', () => {
         }
         return { rows: [] };
       },
-      connect: async () => ({} as any),
+      connect: async () => ({ query: mockDb.query, release: () => undefined }),
     };
 
     const proofingService = new ProofingService(mockDb as any);
@@ -50,7 +50,7 @@ describe('Proofing & Delivery Domain Invariants', () => {
         }
         return { rows: [] };
       },
-      connect: async () => ({} as any),
+      connect: async () => ({ query: mockDb.query, release: () => undefined }),
     };
 
     const deliveryService = new DeliveryService(mockDb as any);
@@ -63,7 +63,7 @@ describe('Proofing & Delivery Domain Invariants', () => {
   it('returns empty/unreleased delivery if not yet explicitly released to client', async () => {
     const mockDb = {
       query: async () => ({ rows: [] }),
-      connect: async () => ({} as any),
+      connect: async () => ({ query: mockDb.query, release: () => undefined }),
     };
 
     const deliveryService = new DeliveryService(mockDb as any);
