@@ -268,6 +268,16 @@ export async function getGallery(galleryId: string): Promise<GalleryRecord> {
   return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`));
 }
 
+export async function updateGallery(
+  galleryId: string,
+  input: { name?: string; expiresAt?: string | null },
+): Promise<GalleryRecord> {
+  return normalizeGallery(await apiRequest<Record<string, unknown>>(`/galleries/${galleryId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }));
+}
+
 export async function getStudioSelection(galleryId: string): Promise<StudioSelection> {
   return apiRequest<StudioSelection>(`/galleries/${galleryId}/selection`);
 }

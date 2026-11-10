@@ -362,6 +362,7 @@ function ClientPhotoViewer({
 
 function ClientSelectionReviewPage() {
   const { galleryId } = useParams();
+  const navigate = useNavigate();
   const [galleryName, setGalleryName] = useState("Gallery");
   const [photos, setPhotos] = useState<ClientPhoto[]>([]);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
@@ -635,29 +636,46 @@ function ClientDeliveryPage() {
   const [downloadingPhotoId, setDownloadingPhotoId] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [error, setError] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
       if (!galleryId) return;
+      setLoading(true);
+      setError("");
+      setPreviewError("");
       setCanDownload(false);
+      setDelivery(null);
+      setPhotos([]);
       try {
-        const [galleryRes, deliveryRes, photoRes] = await Promise.all([
+        const [galleryRes, deliveryRes] = await Promise.all([
           getClientGallery(galleryId),
           getClientDelivery(galleryId),
-          listClientPhotos(galleryId, 1, 100),
         ]);
+        if (!active) return;
         setGalleryName(String(galleryRes.name ?? "Gallery"));
         setCanDownload(galleryRes.permission === "view_download");
         setDelivery(deliveryRes);
-        setPhotos(photoRes.items ?? []);
+        void listClientPhotos(galleryId, 1, 100)
+          .then((response) => {
+            if (active) setPhotos(response.items ?? []);
+          })
+          .catch(() => {
+            if (active) setPreviewError("Previews could not be loaded. You can still download your final photographs.");
+          });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load delivery.");
+        if (active) setError(err instanceof Error ? err.message : "Unable to load delivery.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
     void load();
-  }, [galleryId]);
+    return () => {
+      active = false;
+    };
+  }, [galleryId, retryCount]);
 
   const handleDownloadSingle = async (photoId: string) => {
     if (!galleryId || downloadingPhotoId || isDownloadingAll) return;
@@ -708,7 +726,25 @@ function ClientDeliveryPage() {
     );
   }
 
-  if (!delivery || !delivery.isReleased) {
+  if (!delivery) {
+    return (
+      <main className="page-shell">
+        <div className="panel">
+          <p className="eyebrow">{galleryName}</p>
+          <h1>Your delivery could not be loaded</h1>
+          <div className="error-box">{error || "The delivery is unavailable right now. Please try again."}</div>
+          <div className="inline-actions">
+            <button type="button" className="secondary-button" onClick={() => setRetryCount((count) => count + 1)}>
+              Try again
+            </button>
+            <Link to={`/client/gallery/${galleryId}`} className="secondary-button">Return to gallery</Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (delivery && !delivery.isReleased) {
     return (
       <main className="page-shell">
         <div className="panel">
@@ -723,12 +759,14 @@ function ClientDeliveryPage() {
     );
   }
 
+  if (!delivery) return null;
+
   // Match delivery items with loaded photos to get preview URLs
   const deliveredItems = delivery.items.map((item) => {
     const match = photos.find((p) => p.photoId === item.photoId);
     return {
       ...item,
-      preview: match?.preview,
+      preview: match?.thumbnail,
     };
   });
 
@@ -755,6 +793,14 @@ function ClientDeliveryPage() {
         </div>
 
         {error ? <div className="error-box">{error}</div> : null}
+        {previewError ? (
+          <div className="muted" role="status">
+            {previewError}{" "}
+            <button type="button" className="secondary-button compact-button" onClick={() => setRetryCount((count) => count + 1)}>
+              Retry
+            </button>
+          </div>
+        ) : null}
         {!canDownload ? <output className="muted" aria-live="polite">This gallery link allows viewing only. Contact the studio if you need download access.</output> : null}
         {canDownload && deliveredItems.length > 1 ? <p className="muted">Download all starts one file per photograph. Your browser may ask to allow multiple downloads.</p> : null}
 

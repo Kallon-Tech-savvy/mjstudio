@@ -1,5 +1,5 @@
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { StudioDeliverySection, StudioFeedbackReview, StudioPhotoList, StudioSelectionReview } from "@/features/studio/components/GalleryWorkspaceSections";
 import {
   ApiError,
@@ -19,6 +19,7 @@ import {
   releaseStudioDelivery,
   resetGalleryAccess,
   setStudioPhotoReview,
+  updateGallery,
   type GalleryAccessCredentials,
   type PhotoRecord,
   type StudioDeliveryDetails,
@@ -29,7 +30,9 @@ import {
 
 type GalleryDetail = Record<string, unknown> & {
   name?: string;
-  selectionStatus?: string;
+  expiresAt?: string | null;
+  archivedAt?: string | null;
+  selectionStatus?: "draft" | "submitted" | null;
   selectionSubmittedAt?: string | null;
 };
 
@@ -40,6 +43,18 @@ type PhotoUploadItem = {
   progress: number;
   error?: string;
 };
+
+function toLocalDateTimeInput(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+}
+
+function localDateTimeToIso(value: string): string | null {
+  return value ? new Date(value).toISOString() : null;
+}
 
 async function waitForPhotoProcessing(photoId: string): Promise<"active" | "failed" | "timeout"> {
   const deadline = Date.now() + 60_000;
@@ -183,6 +198,12 @@ export default function PhotographerGalleryDetailPage() {
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [selection, setSelection] = useState<StudioSelectedPhoto[]>([]);
   const [feedback, setFeedback] = useState<StudioFeedback[]>([]);
+  const [settingsName, setSettingsName] = useState("");
+  const [galleryExpiry, setGalleryExpiry] = useState("");
+  const [linkExpiry, setLinkExpiry] = useState("");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState("");
+  const [settingsError, setSettingsError] = useState("");
   const [permission, setPermission] = useState<"view" | "view_download">("view_download");
   const [accessCredentials, setAccessCredentials] = useState<GalleryAccessCredentials | null>(null);
   const [hasActiveAccess, setHasActiveAccess] = useState(false);
@@ -348,15 +369,20 @@ export default function PhotographerGalleryDetailPage() {
         ]);
         if (!active) return;
         setGallery(galleryResponse as GalleryDetail);
+        setSettingsName(String(galleryResponse.name ?? ""));
+        setGalleryExpiry(toLocalDateTimeInput(galleryResponse.expiresAt));
         setPhotos(photoResponse.items ?? []);
         setSelection(selectionResponse);
         setFeedback(feedbackResponse);
         setDelivery(deliveryResponse);
         if ("items" in accessResult) {
           const now = Date.now();
-          setHasActiveAccess(accessResult.items.some((access) =>
+          const activeAccess = accessResult.items.find((access) =>
             !access.revokedAt && (!access.expiresAt || Date.parse(access.expiresAt) > now),
-          ));
+          );
+          setHasActiveAccess(Boolean(activeAccess));
+          setPermission(activeAccess?.permission ?? "view_download");
+          setLinkExpiry(toLocalDateTimeInput(activeAccess?.expiresAt));
           setAccessStatus("available");
         } else if (accessResult.error instanceof ApiError && accessResult.error.status === 403) {
           setAccessStatus("forbidden");
@@ -376,6 +402,28 @@ export default function PhotographerGalleryDetailPage() {
     return () => { active = false; };
   }, [galleryId, navigate]);
 
+  const handleSaveSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!galleryId || isSavingSettings) return;
+    setIsSavingSettings(true);
+    setSettingsError("");
+    setSettingsStatus("");
+    try {
+      const updated = await updateGallery(galleryId, {
+        name: settingsName.trim(),
+        expiresAt: localDateTimeToIso(galleryExpiry),
+      });
+      setGallery((current) => current ? { ...current, ...updated } : current);
+      setSettingsName(updated.name ?? settingsName.trim());
+      setGalleryExpiry(toLocalDateTimeInput(updated.expiresAt));
+      setSettingsStatus("Gallery settings saved.");
+    } catch (caughtError) {
+      setSettingsError(caughtError instanceof Error ? caughtError.message : "Unable to save gallery settings.");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const handleAccessGrant = async () => {
     if (!galleryId || isIssuingAccess) return;
 
@@ -383,7 +431,7 @@ export default function PhotographerGalleryDetailPage() {
     setError("");
     setAccessCopyStatus("");
     try {
-      const input = { permission, expiresAt: null };
+      const input = { permission, expiresAt: localDateTimeToIso(linkExpiry) };
       const credentials = hasActiveAccess
         ? await resetGalleryAccess(galleryId, input)
         : await createGalleryAccess(galleryId, input);
@@ -437,17 +485,66 @@ export default function PhotographerGalleryDetailPage() {
           <Link to="/photographer/galleries" className="secondary-button">Back to galleries</Link>
         </div>
 
+        <details className="panel gallery-settings-panel">
+          <summary className="gallery-settings-summary">
+            <span>
+              <span className="eyebrow">Gallery settings</span>
+              <span className="muted">Name and gallery-wide access expiry</span>
+            </span>
+          </summary>
+          <form className="toolbar-stack gallery-settings-form" onSubmit={(event) => void handleSaveSettings(event)}>
+            <label className="field">
+              <span>Gallery name</span>
+              <input
+                value={settingsName}
+                onChange={(event) => setSettingsName(event.target.value)}
+                maxLength={200}
+                required
+                disabled={Boolean(gallery?.archivedAt)}
+              />
+            </label>
+            <label className="field">
+              <span>Gallery expires (optional)</span>
+              <input
+                type="datetime-local"
+                value={galleryExpiry}
+                onChange={(event) => setGalleryExpiry(event.target.value)}
+                disabled={Boolean(gallery?.archivedAt)}
+              />
+              <small className="muted">After this time, the client can no longer access the gallery, even with an active share link. Leave blank for no gallery-wide expiry.</small>
+            </label>
+            {settingsError ? <div className="error-box">{settingsError}</div> : null}
+            {settingsStatus ? <output className="muted" aria-live="polite">{settingsStatus}</output> : null}
+            {!gallery?.archivedAt ? (
+              <button type="submit" className="secondary-button" disabled={isSavingSettings || !settingsName.trim()}>
+                {isSavingSettings ? "Saving settings…" : "Save settings"}
+              </button>
+            ) : <p className="muted">Archived galleries cannot be edited.</p>}
+          </form>
+        </details>
+
         {accessStatus === "loading" ? <p className="muted">Checking client access…</p> : null}
         {accessStatus === "forbidden" ? <p className="muted">You do not have permission to manage client access for this gallery.</p> : null}
         {accessStatus === "error" ? <div className="error-box">{accessError}</div> : null}
         {accessStatus === "available" ? (
           <div className="toolbar-stack">
+            <p className="eyebrow">Client share settings</p>
             <label className="field compact-field">
               <span>What the client can do</span>
               <select value={permission} onChange={(event) => setPermission(event.target.value as "view" | "view_download")}>
                 <option value="view">View</option>
                 <option value="view_download">View + download</option>
               </select>
+            </label>
+            <label className="field compact-field">
+              <span>Share link expires (optional)</span>
+              <input
+                type="datetime-local"
+                value={linkExpiry}
+                onChange={(event) => setLinkExpiry(event.target.value)}
+                min={toLocalDateTimeInput(new Date(Date.now() + 5 * 60_000).toISOString())}
+              />
+              <small className="muted">Applies to the new link only. An earlier gallery expiry still takes precedence. Leave blank for no link-specific expiry.</small>
             </label>
             <button type="button" className="primary-button" disabled={isIssuingAccess} onClick={handleAccessGrant}>
               {isIssuingAccess ? (hasActiveAccess ? "Creating new link…" : "Issuing…") : (hasActiveAccess ? "Create new share link" : "Issue access link")}

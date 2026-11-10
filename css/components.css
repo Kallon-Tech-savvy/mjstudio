@@ -1,0 +1,280 @@
+/*
+  Ma design system: components and base
+  ------------------------------------------------------------------
+  Replaces the component, base, and effect sections of globals.css.
+  Existing class names (ui-primary, ui-field, ui-panel, page-title,
+  section-title, page-intro, editorial-kicker, editorial-link) are
+  kept, so pages do not break while you migrate.
+
+  Import order in globals.css:
+    @import "tailwindcss";
+    @import "../../ma/tokens.css";
+    @import "../../ma/components.css";
+*/
+
+/* ── Base ────────────────────────────────────────────────────────── */
+@layer base {
+  html { background: var(--ui-background); }
+  body {
+    background: var(--ui-background);
+    color: var(--ui-text);
+    font-family: var(--font-sans-stack);
+    font-size: 1rem;
+    line-height: 1.65;
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3, h4 { text-wrap: balance; overflow-wrap: break-word; font-weight: 600; }
+  p, li { max-width: 65ch; }
+  ::selection { background: var(--ui-accent); color: var(--ui-on-accent); }
+  :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
+  :where(pre, code, kbd) { font-family: var(--font-mono-stack); }
+  :where(section[id], h2[id], h3[id]) { scroll-margin-top: 7rem; }
+  :where(a, button, summary) { -webkit-tap-highlight-color: transparent; }
+}
+
+/* ── Layout ──────────────────────────────────────────────────────── */
+@utility site-gutter { padding-inline: var(--page-gutter); }
+@utility site-container {
+  width: min(calc(100% - var(--page-gutter) - var(--page-gutter)), var(--layout-max));
+  margin-inline: auto;
+}
+@utility section-space { padding-block: var(--section-space); }
+@utility section-space-lg { padding-block: var(--section-space-lg); }
+@utility reading-width { max-width: var(--reading-max); }
+
+/* 12-column grid. Standard splits: 3 / 6 / 3, 4 / 8, 12. */
+@utility grid-12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: var(--grid-gap);
+}
+
+.page-intro {
+  padding-top: clamp(8rem, 12vw, 10rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+/* ── Type roles ──────────────────────────────────────────────────── */
+.type-label, .editorial-kicker {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.type-display { font-size: var(--text-display); line-height: 1.02; letter-spacing: -0.045em; font-weight: 600; }
+.type-headline, .page-title { font-size: var(--text-headline); line-height: 1.05; letter-spacing: -0.035em; font-weight: 600; }
+.type-heading, .section-title { font-size: var(--text-heading); line-height: 1.15; letter-spacing: -0.025em; font-weight: 600; }
+.type-title { font-size: 1.5rem; line-height: 1.3; letter-spacing: -0.015em; font-weight: 600; }
+.type-lead { font-size: 1.25rem; line-height: 1.55; letter-spacing: -0.01em; }
+.type-reading { font-size: 1.0625rem; line-height: 1.8; }
+.type-quote {
+  font-family: var(--font-mincho-stack);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  line-height: 1.5;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.type-mono { font-family: var(--font-mono-stack); font-size: 0.875rem; letter-spacing: 0; }
+.type-numeric { font-variant-numeric: tabular-nums; }
+
+/* ── Rule ────────────────────────────────────────────────────────── */
+.ui-rule { border-top: 1px solid var(--ui-rule); }
+.ui-rule-strong { border-top: 1px solid var(--ui-text); }
+
+/* ── Buttons: pill, sentence case, one primary per view ──────────── */
+.ui-primary, .ui-secondary {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-base) var(--ease-in-out),
+    color var(--dur-base) var(--ease-in-out),
+    border-color var(--dur-base) var(--ease-in-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.ui-primary { background: var(--ui-accent); border-color: var(--ui-accent); color: var(--ui-on-accent); }
+.ui-primary:hover { background: var(--ui-text); border-color: var(--ui-text); color: var(--ui-background); }
+.ui-secondary { background: transparent; border-color: var(--ui-text); color: var(--ui-text); }
+.ui-secondary:hover { background: var(--ui-surface); }
+.ui-primary:active, .ui-secondary:active { transform: scale(0.98); }
+.ui-primary:disabled, .ui-secondary:disabled,
+.ui-primary[aria-disabled="true"], .ui-secondary[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Link: underlined text, indigo ───────────────────────────────── */
+.ui-link, .editorial-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  color: var(--ui-accent);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.3em;
+  transition: color var(--dur-fast) var(--ease-in-out);
+}
+.ui-link:hover, .editorial-link:hover { color: var(--ui-text); }
+
+/* ── Field ───────────────────────────────────────────────────────── */
+.ui-label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500; }
+.ui-hint { margin-top: 0.5rem; font-size: 0.875rem; color: var(--ui-muted); }
+.ui-field {
+  min-height: 3rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  background: var(--ui-background);
+  color: var(--ui-text);
+  font: inherit;
+  transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
+}
+.ui-field::placeholder { color: var(--ui-muted); opacity: 1; }
+.ui-field:hover { border-color: var(--ui-text); }
+.ui-field:focus-visible { border-color: var(--ui-accent); box-shadow: 0 0 0 2px var(--ui-accent); outline: none; }
+.ui-field[aria-invalid="true"] { border-color: var(--ui-danger); }
+.ui-error { margin-top: 0.5rem; font-size: 0.875rem; color: var(--ui-danger); }
+
+/* ── Panel: surface, hairline, soft corners ──────────────────────── */
+.ui-panel {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--radius-card);
+  padding: clamp(1.5rem, 3vw, 2rem);
+}
+.ui-raised { box-shadow: var(--shadow-raised); }
+
+/* Figures: photographs and screenshots stay square in a hairline frame. */
+.ui-figure {
+  overflow: hidden;
+  border: 1px solid var(--ui-rule);
+  background: var(--ui-surface);
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+  border-radius: 0;
+}
+/* Existing class name, same rules as .ui-figure. */
+.editorial-project-image {
+  overflow: hidden;
+  border: 1px solid var(--ui-rule);
+  background: var(--ui-surface);
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+  border-radius: 0;
+}
+
+/* ── Chip: non-interactive tag ───────────────────────────────────── */
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--radius-pill);
+  color: var(--ui-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* ── Status: border, tint, icon-free word label. Never colour alone. */
+.ui-status {
+  --tone: var(--ui-accent);
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--tone);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--tone) 8%, var(--ui-background));
+  color: var(--ui-text);
+}
+.ui-status[data-tone="success"] { --tone: var(--ui-success); }
+.ui-status[data-tone="warning"] { --tone: var(--ui-warning); }
+.ui-status[data-tone="danger"] { --tone: var(--ui-danger); }
+.ui-status > strong { color: var(--tone); font-weight: 600; }
+
+/* ── Seal: the one vermilion mark. Max one per view. ─────────────── */
+.ui-seal {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1.5px solid var(--ui-seal);
+  border-radius: var(--radius-seal);
+  color: var(--ui-seal);
+  font-family: var(--font-mincho-stack);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── Overlay: the only place translucency and blur are allowed ───── */
+.ui-overlay {
+  background: color-mix(in srgb, var(--ui-background) 86%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid var(--ui-rule);
+}
+.ui-scrim { background: var(--ui-scrim); }
+.ui-dialog {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* ── Motion: arrivals only. No loops, no glitch, no cursor tricks. ─ */
+@keyframes ma-arrive {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.reveal-in { animation: ma-arrive var(--dur-slow) var(--ease-out) both; }
+.reveal-up {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+  transition-delay: var(--d, 0ms);
+}
+.reveal-fade { opacity: 0; transition: opacity var(--dur-slow) var(--ease-out); transition-delay: var(--d, 0ms); }
+.reveal-up.is-visible, .reveal-fade.is-visible { opacity: 1; transform: none; }
+.underline-grow { position: relative; }
+.underline-grow::after {
+  content: ""; position: absolute; left: 0; bottom: -2px; width: 0; height: 1px;
+  background: currentColor; transition: width var(--dur-base) var(--ease-out);
+}
+.underline-grow:hover::after { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal-up, .reveal-fade { opacity: 1 !important; transform: none !important; }
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--ui-background); }
+::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 4px; }
+
+/*
+  Removed on purpose (see docs/DESIGN_SYSTEM.md, "Retire"):
+  .terminal-panel, .glass, .glass-frost, .glass-frost-light,
+  .glass-frost-bar, .text-gradient, .scanlines, .glitch-entry,
+  .glitch-ambient, .typewriter-line, .cursor-blink, .cursor-text-blink,
+  .glow-pulse, .float, .hover-lift, the staggered .gallery-grid offsets,
+  and the .editorial-page palette scope.
+*/

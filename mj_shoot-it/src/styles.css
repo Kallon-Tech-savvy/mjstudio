@@ -506,6 +506,34 @@ textarea:focus-visible {
   min-width: min(280px, 100%);
 }
 
+.gallery-settings-panel {
+  margin: 20px 0;
+  padding: 18px;
+}
+
+.gallery-settings-summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.gallery-settings-summary > span {
+  display: inline-grid;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.gallery-settings-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  align-items: end;
+}
+
+.gallery-settings-form .field small,
+.toolbar-stack .field small {
+  display: block;
+  line-height: 1.5;
+}
+
 .spaced-list {
   margin-top: 24px;
 }
