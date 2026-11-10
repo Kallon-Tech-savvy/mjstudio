@@ -13,6 +13,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { ClientPhotoImage } from "@/components/ClientPhotoImage";
 import { ModalDialog } from "@/components/ModalDialog";
 import {
   ApiError,
@@ -387,12 +388,13 @@ function ClientPhotoViewer({
           onTouchEnd={handleTouchEnd}
         >
           {photo ? (
-            <img
-              src={photo.preview.url}
+            <ClientPhotoImage
+              key={`${galleryId}:${photoId}:${photo.preview.url}`}
+              galleryId={galleryId}
+              photoId={photoId}
+              representation={photo.preview}
+              variant="preview"
               alt={`Photograph ${photo.position + 1} from this gallery`}
-              width={photo.preview.width}
-              height={photo.preview.height}
-              decoding="async"
             />
           ) : (
             <div className="viewer-loading">Loading photograph…</div>
@@ -717,13 +719,14 @@ function ClientSelectionReviewPage() {
                 className="photo-card panel is-selected"
               >
                 <div className="photo-thumb">
-                  <img
-                    src={photo.thumbnail.url}
+                  <ClientPhotoImage
+                    key={`${galleryId}:${photo.photoId}:${photo.thumbnail.url}`}
+                    galleryId={galleryId}
+                    photoId={photo.photoId}
+                    representation={photo.thumbnail}
+                    variant="thumbnail"
                     alt={`Selected photograph ${photo.position + 1}`}
-                    width={photo.thumbnail.width}
-                    height={photo.thumbnail.height}
                     loading="lazy"
-                    decoding="async"
                   />
                   <span className="photo-selected-badge">Selected</span>
                 </div>
@@ -981,6 +984,8 @@ function ClientDeliveryPage() {
     }
   };
 
+  if (!galleryId) return <Navigate to="/client/access" replace />;
+
   if (loading) {
     return (
       <main className="page-shell">
@@ -1098,11 +1103,13 @@ function ClientDeliveryPage() {
             <article key={item.id} className="photo-card client-delivery-card">
               <div className="photo-thumb">
                 {item.preview ? (
-                  <img
-                    src={item.preview.url}
+                  <ClientPhotoImage
+                    key={`${galleryId}:${item.photoId}:${item.preview.url}`}
+                    galleryId={galleryId}
+                    photoId={item.photoId}
+                    representation={item.preview}
+                    variant="preview"
                     alt={item.filename}
-                    width={item.preview.width}
-                    height={item.preview.height}
                     loading="lazy"
                   />
                 ) : (
@@ -1458,13 +1465,15 @@ function ClientGalleryWorkspace() {
                     onClick={() => setViewerPhotoId(photo.photoId)}
                     aria-label={`Open photograph ${photo.position + 1}${selected ? ", selected" : ""}`}
                   >
-                    <img
-                      src={photo.thumbnail.url}
+                    <ClientPhotoImage
+                      key={`${galleryId}:${photo.photoId}:${photo.thumbnail.url}`}
+                      galleryId={galleryId}
+                      photoId={photo.photoId}
+                      representation={photo.thumbnail}
+                      variant="thumbnail"
+                      insideButton
                       alt={`Photograph ${photo.position + 1} from this gallery`}
-                      width={photo.thumbnail.width}
-                      height={photo.thumbnail.height}
                       loading="lazy"
-                      decoding="async"
                     />
                     {selected ? (
                       <span className="photo-selected-badge">Selected</span>

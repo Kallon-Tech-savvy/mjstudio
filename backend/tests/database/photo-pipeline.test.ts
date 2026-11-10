@@ -304,6 +304,10 @@ describe('real image, storage and PostgreSQL pipeline', () => {
     expect(thumbnail.status).toBe(200);
     expect(await sharp(thumbnail.body).metadata()).toMatchObject({ format: 'webp', width: 480, height: 320 });
     const detail = await catalog.getClientPhoto(client, f.galleryId, f.photoId);
+    expect(detail.thumbnail).toMatchObject({ mimeType: 'image/webp', width: 480, height: 320 });
+    const refreshedThumbnail = await binaryResponse(f.app, detail.thumbnail!.url);
+    expect(refreshedThumbnail.status).toBe(200);
+    expect(await sharp(refreshedThumbnail.body).metadata()).toMatchObject({ format: 'webp', width: 480, height: 320 });
     const preview = await binaryResponse(f.app, detail.preview.url);
     expect(preview.status).toBe(200);
     expect(await sharp(preview.body).metadata()).toMatchObject({ format: 'webp', width: 1200, height: 800 });

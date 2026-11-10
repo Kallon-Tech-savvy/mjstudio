@@ -186,11 +186,15 @@ export class CatalogService {
     const result = await this.database.query(
       `SELECT p.id, p.position, r.photo_id IS NOT NULL AS recommended,
               pa.storage_key AS "previewStorageKey", pa.width AS "previewWidth",
-              pa.height AS "previewHeight", pa.mime_type AS "previewMimeType"
+              pa.height AS "previewHeight", pa.mime_type AS "previewMimeType",
+              thumbnail.storage_key AS "thumbnailStorageKey", thumbnail.width AS "thumbnailWidth",
+              thumbnail.height AS "thumbnailHeight", thumbnail.mime_type AS "thumbnailMimeType"
          FROM photos p
          LEFT JOIN recommendations r ON r.photo_id = p.id AND r.gallery_id = p.gallery_id
          JOIN photo_assets pa ON pa.photo_id = p.id AND pa.type = 'preview' AND pa.state = 'current'
            AND pa.upload_status = 'uploaded' AND pa.processing_status = 'ready'
+         LEFT JOIN photo_assets thumbnail ON thumbnail.photo_id = p.id AND thumbnail.type = 'thumbnail'
+           AND thumbnail.state = 'current' AND thumbnail.upload_status = 'uploaded' AND thumbnail.processing_status = 'ready'
         WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL AND p.status = 'active'
           AND EXISTS (
             SELECT 1 FROM client_sessions cs
@@ -212,6 +216,12 @@ export class CatalogService {
       photoId: item.id,
       position: item.position,
       recommended: item.recommended,
+      thumbnail: item.thumbnailStorageKey ? await this.photoRepresentations.createView({
+        storageKey: item.thumbnailStorageKey,
+        width: item.thumbnailWidth,
+        height: item.thumbnailHeight,
+        mimeType: item.thumbnailMimeType,
+      }, 600) : undefined,
       preview: await this.photoRepresentations.createView({
         storageKey: item.previewStorageKey,
         width: item.previewWidth,

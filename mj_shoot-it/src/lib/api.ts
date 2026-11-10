@@ -65,6 +65,7 @@ export type ClientPhotoDetail = {
   position: number;
   recommended: boolean;
   preview: PhotoRepresentation;
+  thumbnail?: PhotoRepresentation;
 };
 
 export type StudioFeedback = {

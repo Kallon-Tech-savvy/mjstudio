@@ -2255,3 +2255,21 @@ dialog.viewer-backdrop:not([open]) {
 .gallery-load-state .error-box {
   width: 100%;
 }
+
+.photo-image-status {
+  display: grid;
+  place-content: center;
+  gap: 0.75rem;
+  min-height: 8rem;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.viewer-image-wrap .photo-image-status {
+  color: #fff;
+}
+.viewer-image-wrap .photo-image-status button {
+  color: #fff;
+  border: 1px solid #999;
+}
