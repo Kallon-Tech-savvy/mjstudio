@@ -163,7 +163,7 @@ test("recent galleries: filter, empty results, and focus the new gallery form", 
   await page.getByRole("searchbox").fill("Paul");
   await expect(
     page.getByText(
-      "No matches in your recent galleries. Try a different name.",
+      "No matches on this page. Try another name or browse another page.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "+ New gallery" }).click();

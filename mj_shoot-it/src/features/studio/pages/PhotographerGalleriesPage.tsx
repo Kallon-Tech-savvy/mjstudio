@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ApiError,
@@ -16,6 +16,11 @@ export default function PhotographerGalleriesPage() {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const requestVersion = useRef(0);
+  const retryPage = useRef(1);
   const [creating, setCreating] = useState(false);
 
   const startGallery = () => {
@@ -28,36 +33,58 @@ export default function PhotographerGalleriesPage() {
   };
   const [query, setQuery] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const me = await getPhotographerMe();
-      if (!me?.user) {
-        navigate("/photographer/login", { replace: true });
-        return;
+  const load = useCallback(
+    async (targetPage = 1) => {
+      const version = ++requestVersion.current;
+      retryPage.current = targetPage;
+      setLoading(true);
+      setError("");
+      try {
+        const me = await getPhotographerMe();
+        if (version !== requestVersion.current) return;
+        if (!me?.user) {
+          navigate("/photographer/login", { replace: true });
+          return;
+        }
+        const [response, clientResponse] = await Promise.all([
+          listGalleries(targetPage, 20),
+          listClients(1, 100),
+        ]);
+        if (version !== requestVersion.current) return;
+        const lastPage = Math.max(1, Math.ceil(response.total / 20));
+        if (targetPage > lastPage) {
+          void load(lastPage);
+          return;
+        }
+        setGalleries(response.items ?? []);
+        setTotal(response.total);
+        setPage(targetPage);
+        setLoaded(true);
+        setQuery("");
+        setClients(clientResponse.items ?? []);
+      } catch (caught) {
+        if (version !== requestVersion.current) return;
+        if (caught instanceof ApiError && caught.status === 401) {
+          navigate("/photographer/login", { replace: true });
+          return;
+        }
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Unable to load galleries.",
+        );
+      } finally {
+        if (version === requestVersion.current) setLoading(false);
       }
-      const [response, clientResponse] = await Promise.all([
-        listGalleries(1, 20),
-        listClients(1, 100),
-      ]);
-      setGalleries(response.items ?? []);
-      setClients(clientResponse.items ?? []);
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 401) {
-        navigate("/photographer/login", { replace: true });
-        return;
-      }
-      setError(
-        caught instanceof Error ? caught.message : "Unable to load galleries.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [navigate]);
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     void load();
+    return () => {
+      requestVersion.current += 1;
+    };
   }, [load]);
   const visible = galleries.filter((gallery) =>
     `${gallery.name} ${gallery.clientName ?? ""}`
@@ -65,8 +92,7 @@ export default function PhotographerGalleriesPage() {
       .includes(query.trim().toLowerCase()),
   );
 
-  const showCreator =
-    creating || (!loading && !error && galleries.length === 0);
+  const showCreator = creating || (loaded && total === 0);
 
   return (
     <main className="page-shell studio-library">
@@ -112,22 +138,24 @@ export default function PhotographerGalleriesPage() {
         ) : null}
       </header>
 
-      {loading ? (
+      {loading && !loaded ? (
         <output className="panel library-message">
           Getting your studio ready…
         </output>
-      ) : error ? (
+      ) : null}
+      {error ? (
         <div className="error-box" role="alert">
           {error}
           <button
             className="secondary-button"
             type="button"
-            onClick={() => void load()}
+            onClick={() => void load(retryPage.current)}
           >
             Try again
           </button>
         </div>
-      ) : (
+      ) : null}
+      {loaded ? (
         <>
           <section
             id="gallery-creator"
@@ -153,13 +181,12 @@ export default function PhotographerGalleriesPage() {
               <div>
                 <p className="eyebrow">The collection</p>
                 <h2 id="gallery-library-title">
-                  Recent galleries{" "}
-                  <span className="library-count">{galleries.length}</span>
+                  Galleries <span className="library-count">{total}</span>
                 </h2>
               </div>
               {galleries.length > 0 ? (
                 <label className="field library-search">
-                  <span>Find in recent galleries</span>
+                  <span>Find on this page</span>
                   <input
                     type="search"
                     placeholder="Gallery or client name"
@@ -182,7 +209,8 @@ export default function PhotographerGalleriesPage() {
               </div>
             ) : visible.length === 0 ? (
               <output className="library-message">
-                No matches in your recent galleries. Try a different name.
+                No matches on this page. Try another name or browse another
+                page.
               </output>
             ) : (
               <ul className="gallery-card-grid">
@@ -217,12 +245,43 @@ export default function PhotographerGalleriesPage() {
                 ))}
               </ul>
             )}
-            {galleries.length === 20 ? (
-              <p className="muted">Showing the 20 most recent galleries.</p>
-            ) : null}
+            <nav
+              className="photo-library-pagination"
+              aria-label="Gallery pages"
+            >
+              <button
+                type="button"
+                className="button-ghost"
+                disabled={loading || page <= 1}
+                onClick={() => void load(page - 1)}
+              >
+                Previous page
+              </button>
+              <output aria-live="polite">
+                {loading
+                  ? "Loading galleries…"
+                  : `Page ${page} of ${Math.max(1, Math.ceil(total / 20))} · ${total} galleries`}
+              </output>
+              <button
+                type="button"
+                className="button-ghost"
+                disabled={loading || page * 20 >= total}
+                onClick={() => void load(page + 1)}
+              >
+                Next page
+              </button>
+              <button
+                type="button"
+                className="button-ghost"
+                disabled={loading}
+                onClick={() => void load(page)}
+              >
+                Refresh
+              </button>
+            </nav>
           </section>
         </>
-      )}
+      ) : null}
     </main>
   );
 }
