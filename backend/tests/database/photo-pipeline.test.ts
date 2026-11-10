@@ -102,6 +102,81 @@ function gate() {
 }
 
 describe('real image, storage and PostgreSQL pipeline', () => {
+  it('fails an abandoned final attempt once and rejects every stale lease operation', async () => {
+    const f = await fixture();
+    await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
+    await pool.query("UPDATE application_jobs SET max_attempts = 1 WHERE payload->>'photoId' = $1", [f.photoId]);
+    const job = await f.jobs.claim('PROCESS_PHOTO_ASSETS');
+    if (!job) throw new Error('Expected a processing job');
+    expect(await f.jobs.claim('PROCESS_PHOTO_ASSETS')).toBeNull();
+    expect(await photoState(f.photoId)).toBe('processing');
+    await pool.query("UPDATE application_jobs SET locked_until = NOW() - INTERVAL '1 second' WHERE id = $1", [job.id]);
+    expect(await Promise.all([f.jobs.claim('PROCESS_PHOTO_ASSETS'), f.jobs.claim('PROCESS_PHOTO_ASSETS')])).toEqual([null, null]);
+    expect(await processingState(f.photoId)).toEqual([{ status: 'failed', attempts: 1 }]);
+    expect(await photoState(f.photoId)).toBe('failed');
+    expect(await f.storage.verifyObject(f.sourceKey)).not.toBeNull();
+    let touched = false;
+    await expect(f.jobs.complete(job, async () => { touched = true; })).rejects.toMatchObject({ code: 'JOB_LEASE_LOST' });
+    await expect(f.jobs.heartbeat(job)).rejects.toMatchObject({ code: 'JOB_LEASE_LOST' });
+    await expect(f.jobs.fail(job, new Error('Stale attempt'))).rejects.toMatchObject({ code: 'JOB_LEASE_LOST' });
+    expect(touched).toBe(false);
+    const failed = await pool.query('SELECT failed_at, locked_until, lock_token, last_error FROM application_jobs WHERE id = $1', [job.id]);
+    expect(failed.rows[0]).toMatchObject({ locked_until: null, lock_token: null, last_error: 'Worker lease expired on the final attempt.' });
+    expect(failed.rows[0].failed_at).not.toBeNull();
+  });
+
+  it('honours the stored attempt limit when a worker reports a transient failure', async () => {
+    const f = await fixture();
+    await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
+    await pool.query("UPDATE application_jobs SET max_attempts = 2 WHERE payload->>'photoId' = $1", [f.photoId]);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const job = await f.jobs.claim('PROCESS_PHOTO_ASSETS');
+      if (!job) throw new Error('Expected a processing job');
+      await f.jobs.fail(job, new Error('Temporary processor outage'));
+      expect(await processingState(f.photoId)).toEqual([{ status: attempt === 2 ? 'failed' : 'pending', attempts: attempt }]);
+      await pool.query('UPDATE application_jobs SET available_at = NOW() WHERE id = $1', [job.id]);
+    }
+    expect(await photoState(f.photoId)).toBe('failed');
+  });
+
+  it('does not reap an executing transaction even when its final lease expires', async () => {
+    const f = await fixture();
+    await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
+    await pool.query("UPDATE application_jobs SET max_attempts = 1 WHERE payload->>'photoId' = $1", [f.photoId]);
+    const job = await f.jobs.claim('PROCESS_PHOTO_ASSETS');
+    if (!job) throw new Error('Expected a processing job');
+    const started = gate();
+    const resume = gate();
+    const handler = new ProcessPhotoAssetsHandler(f.storage, f.storage);
+    const completing = f.jobs.complete(job, async (transaction) => {
+      await transaction.query("UPDATE application_jobs SET locked_until = NOW() - INTERVAL '1 second' WHERE id = $1", [job.id]);
+      started.release();
+      await resume.promise;
+      await handler.execute(job, transaction);
+    });
+    try {
+      await started.promise;
+      expect(await f.jobs.claim('PROCESS_PHOTO_ASSETS')).toBeNull();
+    } finally { resume.release(); await completing; }
+    expect(await photoState(f.photoId)).toBe('active');
+    expect(await processingState(f.photoId)).toEqual([{ status: 'completed', attempts: 1 }]);
+  });
+
+  it.each(['active', 'deleted', 'superseded'] as const)('preserves newer %s photo state when expiring an abandoned job', async (state) => {
+    const f = await fixture();
+    await f.photos.uploadComplete(f.actor, f.galleryId, f.photoId);
+    await pool.query("UPDATE application_jobs SET max_attempts = 1 WHERE payload->>'photoId' = $1", [f.photoId]);
+    const job = await f.jobs.claim('PROCESS_PHOTO_ASSETS');
+    if (!job) throw new Error('Expected a processing job');
+    if (state === 'active') await pool.query("UPDATE photos SET status = 'active' WHERE id = $1", [f.photoId]);
+    if (state === 'deleted') await pool.query('UPDATE photos SET deleted_at = NOW() WHERE id = $1', [f.photoId]);
+    if (state === 'superseded') await pool.query("UPDATE photo_assets SET state = 'superseded' WHERE id = $1", [f.assetId]);
+    await pool.query("UPDATE application_jobs SET locked_until = NOW() - INTERVAL '1 second' WHERE id = $1", [job.id]);
+    await f.jobs.claim('PROCESS_PHOTO_ASSETS');
+    expect(await processingState(f.photoId)).toEqual([{ status: 'failed', attempts: 1 }]);
+    expect(await photoState(f.photoId)).toBe(state === 'active' ? 'active' : 'processing');
+  });
+
   it.each([false, true])('returns the current state after a newer confirmation finishes (delayed verification succeeds: %s)', async (valid) => {
     const f = await fixture();
     const started = gate();
