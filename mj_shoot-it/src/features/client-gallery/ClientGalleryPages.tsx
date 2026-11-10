@@ -6,13 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Link,
-  Navigate,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ClientPhotoImage } from "@/components/ClientPhotoImage";
 import { ModalDialog } from "@/components/ModalDialog";
 import {
@@ -52,8 +46,8 @@ function startPhotoDownload(url: string, filename: string) {
 
 function ClientAccessPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const galleryId = searchParams.get("galleryId") ?? "";
+  const [hasLinkSecret, setHasLinkSecret] = useState(false);
+  const verifying = useRef(false);
   const [secret, setSecret] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -65,6 +59,7 @@ function ClientAccessPage() {
     if (!linkSecret) return;
 
     setSecret(linkSecret);
+    setHasLinkSecret(true);
     window.history.replaceState(
       null,
       "",
@@ -74,12 +69,16 @@ function ClientAccessPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (verifying.current) return;
+    verifying.current = true;
     setError("");
     setIsSubmitting(true);
 
     try {
       const access = await verifyClientAccess({ secret, pin });
-      navigate(`/client/gallery/${galleryId || access.galleryId}`, {
+      if (!access.authenticated || !access.galleryId)
+        throw new Error("Gallery access was not confirmed. Please try again.");
+      navigate(`/client/gallery/${encodeURIComponent(access.galleryId)}`, {
         replace: true,
       });
     } catch (caughtError) {
@@ -92,6 +91,7 @@ function ClientAccessPage() {
             : "Gallery access could not be verified.",
       );
     } finally {
+      verifying.current = false;
       setIsSubmitting(false);
     }
   };
@@ -109,7 +109,7 @@ function ClientAccessPage() {
         </div>
 
         <form className="stack" onSubmit={handleSubmit}>
-          {secret ? (
+          {hasLinkSecret ? (
             <p className="muted">
               Your private gallery link is ready. Enter the matching PIN to
               continue.
@@ -142,7 +142,11 @@ function ClientAccessPage() {
             />
           </label>
 
-          {error ? <div className="error-box">{error}</div> : null}
+          {error ? (
+            <div className="error-box" role="alert">
+              {error}
+            </div>
+          ) : null}
 
           <button
             className="primary-button"
