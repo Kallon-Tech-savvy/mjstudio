@@ -19,6 +19,7 @@ export function GalleryPublicationPanel({
 }: Props) {
   return (
     <section
+      id="gallery-publication"
       className="gallery-publication-panel"
       aria-labelledby="publication-title"
       aria-busy={busy}
@@ -57,7 +58,11 @@ export function GalleryPublicationPanel({
           {busy ? "Publishing…" : "Publish for client review"}
         </button>
       ) : (
-        <output>Published · ready to share your link and PIN.</output>
+        <output>
+          {hasAccess
+            ? "Published · ready to share your link and PIN."
+            : "Published · active client access still needs confirmation."}
+        </output>
       )}
     </section>
   );

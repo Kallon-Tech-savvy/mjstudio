@@ -7,6 +7,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { ModalDialog } from "@/components/ModalDialog";
+import { GalleryJourney } from "@/features/studio/components/GalleryJourney";
 import {
   StudioDeliverySection,
   StudioFeedbackReview,
@@ -84,7 +85,9 @@ function StudioPhotoViewerModal({
   onClose,
   onNavigate,
   onReviewUpdate,
+  released,
 }: {
+  released: boolean;
   galleryId: string;
   selectedPhoto: StudioSelectedPhoto;
   selectedPhotoIndex: number;
@@ -94,7 +97,7 @@ function StudioPhotoViewerModal({
   onNavigate: (index: number) => void;
   onReviewUpdate: (
     updated: Awaited<ReturnType<typeof setStudioPhotoReview>>,
-  ) => void;
+  ) => Promise<void>;
 }) {
   const [status, setStatus] = useState<"approved" | "needs_revision">(
     selectedPhoto.reviewStatus === "needs_revision"
@@ -116,6 +119,7 @@ function StudioPhotoViewerModal({
   }, [selectedPhoto.reviewStatus, selectedPhoto.reviewNote]);
 
   const saveReview = async () => {
+    if (released || isSaving) return;
     if (status === "needs_revision" && !note.trim()) {
       setError("Add a revision note before requesting changes.");
       return;
@@ -130,7 +134,7 @@ function StudioPhotoViewerModal({
         status,
         note.trim() || null,
       );
-      onReviewUpdate(updated);
+      await onReviewUpdate(updated);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -188,12 +192,17 @@ function StudioPhotoViewerModal({
         </div>
       ) : null}
 
+      {released ? (
+        <p className="muted">
+          Released photographs are locked to preserve the client’s delivery.
+        </p>
+      ) : null}
       <div className="toolbar-stack">
         <label className="field">
           <span>Review decision</span>
           <select
             value={status}
-            disabled={isSaving}
+            disabled={isSaving || released}
             onChange={(event) => setStatus(event.target.value as typeof status)}
           >
             <option value="approved">Approved</option>
@@ -229,7 +238,7 @@ function StudioPhotoViewerModal({
         <button
           type="button"
           className="primary-button"
-          disabled={isSaving}
+          disabled={isSaving || released}
           onClick={saveReview}
         >
           {isSaving ? "Saving..." : "Save review"}
@@ -290,6 +299,33 @@ function PhotographerGalleryWorkspace() {
     null,
   );
   const [delivery, setDelivery] = useState<StudioDeliveryDetails | null>(null);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [isRefreshingDelivery, setIsRefreshingDelivery] = useState(false);
+  const deliveryRequest = useRef(0);
+  useEffect(() => {
+    if (!galleryId) return;
+    return () => {
+      deliveryRequest.current += 1;
+    };
+  }, [galleryId]);
+  const refreshDelivery = async () => {
+    if (!galleryId) return;
+    const request = ++deliveryRequest.current;
+    setIsRefreshingDelivery(true);
+    setDeliveryError("");
+    setDelivery(null);
+    try {
+      const latest = await getStudioDelivery(galleryId);
+      if (request === deliveryRequest.current) setDelivery(latest);
+    } catch {
+      if (request === deliveryRequest.current)
+        setDeliveryError(
+          "Your review is saved. Delivery readiness could not be checked. Try again before preparing or releasing photographs.",
+        );
+    } finally {
+      if (request === deliveryRequest.current) setIsRefreshingDelivery(false);
+    }
+  };
   const [isProcessingDelivery, setIsProcessingDelivery] = useState(false);
   const [photoUploads, setPhotoUploads] = useState<PhotoUploadItem[]>([]);
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
@@ -942,7 +978,9 @@ function PhotographerGalleryWorkspace() {
 
   return (
     <main className="page-shell">
-      {searchParams.get("created") === "1" && !hasActiveAccess ? (
+      {searchParams.get("created") === "1" &&
+      photoTotal === 0 &&
+      !hasActiveAccess ? (
         <section className="gallery-setup-banner" aria-label="Gallery created">
           <p className="eyebrow">
             01 Created / 02 Photographs / 03 Access / 04 Publish
@@ -957,7 +995,7 @@ function PhotographerGalleryWorkspace() {
           </a>
         </section>
       ) : null}
-      <div className="panel">
+      <div className="panel gallery-workspace">
         <div className="panel-header compact-header gallery-workspace-header">
           <div>
             <p className="eyebrow">Gallery workspace</p>
@@ -974,6 +1012,17 @@ function PhotographerGalleryWorkspace() {
             Back to galleries
           </button>
         </div>
+
+        <GalleryJourney
+          published={gallery.publicationStatus === "published"}
+          hasPhotos={photoTotal > 0}
+          waitingForPhotos={waitingForPhotos}
+          accessAvailable={accessStatus === "available"}
+          hasAccess={hasActiveAccess}
+          submitted={gallery.selectionStatus === "submitted"}
+          delivery={delivery}
+          checkingDelivery={isRefreshingDelivery || Boolean(deliveryError)}
+        />
 
         <section
           id="photo-upload"
@@ -1173,6 +1222,7 @@ function PhotographerGalleryWorkspace() {
         ) : null}
         {accessStatus === "available" ? (
           <section
+            id="client-access"
             className="gallery-access-setup"
             aria-label="Prepare client access"
           >
@@ -1314,6 +1364,9 @@ function PhotographerGalleryWorkspace() {
         {gallery.selectionStatus === "submitted" || delivery ? (
           <StudioDeliverySection
             delivery={delivery}
+            error={deliveryError}
+            checking={isRefreshingDelivery}
+            onRetry={() => void refreshDelivery()}
             isProcessing={isProcessingDelivery}
             onPrepare={() => void handlePrepareDelivery()}
             onRelease={() => void handleReleaseDelivery()}
@@ -1328,13 +1381,14 @@ function PhotographerGalleryWorkspace() {
           <StudioPhotoViewerModal
             key={selectedPhoto.photoId}
             galleryId={galleryId}
+            released={Boolean(delivery?.releasedAt)}
             selectedPhoto={selectedPhoto}
             selectedPhotoIndex={selectedPhotoIndex ?? 0}
             totalPhotos={selection.length}
             feedbackList={feedback}
             onClose={() => setSelectedPhotoIndex(null)}
             onNavigate={(index) => setSelectedPhotoIndex(index)}
-            onReviewUpdate={(updated) => {
+            onReviewUpdate={async (updated) => {
               setSelection((prev) =>
                 prev.map((item) =>
                   item.photoId === updated.photoId
@@ -1347,6 +1401,7 @@ function PhotographerGalleryWorkspace() {
                     : item,
                 ),
               );
+              await refreshDelivery();
             }}
           />
         ) : null}
