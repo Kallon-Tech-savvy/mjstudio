@@ -47,7 +47,7 @@ const app = createApp(services, {
 });
 
 app.listen(env.PORT, () => {
-  logger.info({ port: env.PORT }, 'MJ Creative Art backend started');
+  logger.info({ port: env.PORT }, 'Riven backend started');
 });
 
 if (localPhotoStorage) {

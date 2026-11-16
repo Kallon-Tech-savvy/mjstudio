@@ -1,7 +1,7 @@
 # Agent operating guide
 
 ## Product purpose
-MJ Studio is a local photography studio that wants to deliver client photos faster, collect feedback with less manual coordination, improve its productivity, and sometimes involve clients more closely in the experience. The product is a mobile- and web-accessible application for both studio staff and clients.
+Riven is a local photography studio that wants to deliver client photos faster, collect feedback with less manual coordination, improve its productivity, and sometimes involve clients more closely in the experience. The product is a mobile- and web-accessible application for both studio staff and clients.
 
 Optimize for the complete service, not just a gallery viewer:
 - **Studio side:** prepare and share galleries, understand client responses, manage requested changes or selections, and know what needs attention next.
@@ -32,7 +32,7 @@ Treat these as product goals, not proof that any specific feature is required. I
 - Ground product claims in repository evidence or user research. Mark assumptions as assumptions.
 
 ## Routing
-Use `.agents/skills/mjstudio-workflow/SKILL.md` as the project-specific entry point. It coordinates the Matt Pocock-inspired discovery guide and Addy Osmani-inspired engineering guide. Choose the lightest process that controls the actual risk.
+Use `.agents/skills/riven-workflow/SKILL.md` as the project-specific entry point. It coordinates the Matt Pocock-inspired discovery guide and Addy Osmani-inspired engineering guide. Choose the lightest process that controls the actual risk.
 
 ## Completion report
 Include the outcome, important files changed, checks actually run and results, and unresolved risks. For UX work, identify which user journey and actor were affected. If blocked, state the blocker and next action.

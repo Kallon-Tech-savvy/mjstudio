@@ -1,6 +1,6 @@
 ---
 name: mattpocock-methods
-description: Apply clarification, Socratic grilling, Wayfinder-style exploration, and evidence-led product framing before MJ Studio implementation. Use for ambiguous requirements, user journeys, architecture decisions, and learning.
+description: Apply clarification, Socratic grilling, Wayfinder-style exploration, and evidence-led product framing before Riven implementation. Use for ambiguous requirements, user journeys, architecture decisions, and learning.
 ---
 
 # Matt Pocock-inspired methods
@@ -8,7 +8,7 @@ description: Apply clarification, Socratic grilling, Wayfinder-style exploration
 This is a project integration guide, not a verbatim distribution of an upstream skill pack. Consult the upstream project's own installation and license instructions for its full skills.
 
 ## Start with the service problem
-MJ Studio is a local photography studio seeking faster photo delivery, easier client feedback, improved productivity, and sometimes a closer client role in the experience. Both studio staff and clients use the mobile/web product.
+Riven is a local photography studio seeking faster photo delivery, easier client feedback, improved productivity, and sometimes a closer client role in the experience. Both studio staff and clients use the mobile/web product.
 
 Before designing a feature, clarify:
 - Who is experiencing the problem: studio staff, client, or both?

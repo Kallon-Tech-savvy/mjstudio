@@ -26,7 +26,7 @@ Client image recovery tests simulate expired image URLs, a refreshed URL that al
 
 ## Dependency security checks
 
-Run `npm audit --audit-level=high` in both `backend` and `mj_shoot-it`. CI runs these checks for both application packages, including development dependencies, and fails on high/critical advisories or an unavailable audit service. Investigate failures; do not apply forced upgrades without compatibility checks.
+Run `npm audit --audit-level=high` in both `backend` and `riven`. CI runs these checks for both application packages, including development dependencies, and fails on high/critical advisories or an unavailable audit service. Investigate failures; do not apply forced upgrades without compatibility checks.
 
 On 2026-11-10, the backend moved from Zod 3.25.76 to 4.6.7 and Vitest 2.1.9 to 4.1.12. This removes the seven package entries reported by the backend audit, including the validator and test-tool dependency chains. Both application package audits reported zero known vulnerabilities at verification time. This is a time-bound registry result, not a guarantee that the application is secure, and is not a substitute for application security review. The root package now contains only orchestration scripts and has its own audit check; installed dependency files are no longer tracked.
 

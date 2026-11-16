@@ -141,7 +141,7 @@ export default function PhotographerGalleriesPage() {
     <main className="page-shell studio-library">
       <nav className="studio-masthead" aria-label="Studio navigation">
         <Link to="/photographer/dashboard" className="studio-wordmark">
-          mj<span>studio / workspace</span>
+          Riven<span>photographer / workspace</span>
         </Link>
         <Link to="/photographer/dashboard" className="tiny-link">
           ← Dashboard

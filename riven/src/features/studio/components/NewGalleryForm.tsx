@@ -281,7 +281,7 @@ export function NewGalleryForm({
       </form>
       <aside className="creation-summary" aria-label="Gallery summary">
         <div className="summary-topline">
-          <span>MJ / STUDIO</span>
+          <span>Riven</span>
           <span>PRIVATE DRAFT</span>
         </div>
         <div className="contact-sheet-mark" aria-hidden="true">

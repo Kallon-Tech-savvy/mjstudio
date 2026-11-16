@@ -1,6 +1,6 @@
 ---
 name: addy-osmani-engineering
-description: Apply production-oriented specification, incremental implementation, testing, debugging, review, and shipping practices to MJ Studio's studio and client workflows across mobile and web.
+description: Apply production-oriented specification, incremental implementation, testing, debugging, review, and shipping practices to Riven's studio and client workflows across mobile and web.
 ---
 
 # Addy Osmani-inspired engineering methods
@@ -28,7 +28,7 @@ This is a project integration guide, not a verbatim copy of the upstream skill p
 5. **Review:** inspect the diff and assess the quality dimensions relevant to the change.
 6. **Ship:** report evidence, residual risks, and rollback considerations. Shipping actions require authorization where applicable.
 
-## MJ Studio quality gates
+## Riven quality gates
 - **Studio productivity:** avoid unnecessary manual coordination; make gallery and feedback status actionable and unambiguous where those capabilities exist.
 - **Client confidence:** make access, review actions, feedback acknowledgement, and download permissions understandable.
 - **Feedback integrity:** bind feedback/selections to the correct gallery/photo, persist reliably, and handle retry and duplicate submission.
@@ -42,4 +42,4 @@ This is a project integration guide, not a verbatim copy of the upstream skill p
 
 ## Upstream
 - Official Addy Osmani Agent Skills: https://github.com/addyosmani/agent-skills
-- Use the full or selected upstream skills in the agent environment when their complete workflows are needed. This guide defines the project-specific integration and quality gates for MJ Studio.
+- Use the full or selected upstream skills in the agent environment when their complete workflows are needed. This guide defines the project-specific integration and quality gates for Riven.

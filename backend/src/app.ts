@@ -91,7 +91,7 @@ export function createApp(
   app.use(requireTrustedOrigin(allowedOrigins));
 
   app.get('/api', (_req, res) => {
-    res.json({ data: { name: 'MJ Creative Art API', status: 'ready' } });
+    res.json({ data: { name: 'Riven API', status: 'ready' } });
   });
 
   app.use('/api', healthRouter);

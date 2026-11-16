@@ -17,7 +17,7 @@ function HomePage() {
   return (
     <main className="page-shell landing-shell">
       <section className="panel hero-panel">
-        <p className="eyebrow">MJ Studio</p>
+        <p className="eyebrow">Riven</p>
         <h1>Thoughtful galleries, beautifully delivered.</h1>
         <p className="lead">
           Prepare private client galleries, review selections, and share
@@ -243,7 +243,7 @@ function PhotographerDashboardPage() {
       <section className="stats-grid">
         <article className="panel metric-card">
           <span>Studio</span>
-          <strong>{String(studio?.name ?? "MJ Studio")}</strong>
+          <strong>{String(studio?.name ?? "Riven")}</strong>
           <small>Authorized studio context</small>
         </article>
         <article className="panel metric-card">

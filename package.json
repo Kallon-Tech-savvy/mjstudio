@@ -1,20 +1,20 @@
 {
-  "name": "mjstudio",
+  "name": "riven",
   "version": "0.0.1",
   "private": true,
-  "description": "MJ Studio development and verification commands",
+  "description": "Riven development and verification commands",
   "license": "ISC",
   "author": "Alhaji C M Kallon",
   "scripts": {
-    "install:all": "npm ci --prefix backend && npm ci --prefix mj_shoot-it",
+    "install:all": "npm ci --prefix backend && npm ci --prefix riven",
     "dev:backend": "npm run dev --prefix backend",
-    "dev:frontend": "npm run dev --prefix mj_shoot-it",
+    "dev:frontend": "npm run dev --prefix riven",
     "check:repository": "node scripts/check-repository.mjs",
-    "lint": "npm run lint --prefix backend && npm run lint --prefix mj_shoot-it && npm run typecheck --prefix mj_shoot-it",
-    "build": "npm run build --prefix backend && npm run build --prefix mj_shoot-it",
-    "test": "npm test --prefix backend && npm run test:workflow --prefix mj_shoot-it",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix riven && npm run typecheck --prefix riven",
+    "build": "npm run build --prefix backend && npm run build --prefix riven",
+    "test": "npm test --prefix backend && npm run test:workflow --prefix riven",
     "test:database": "npm run test:database --prefix backend",
-    "audit:all": "npm audit --audit-level=high && npm audit --prefix backend --audit-level=high && npm audit --prefix mj_shoot-it --audit-level=high",
+    "audit:all": "npm audit --audit-level=high && npm audit --prefix backend --audit-level=high && npm audit --prefix riven --audit-level=high",
     "check": "npm run check:repository && npm run lint && npm run build && npm test"
   }
 }

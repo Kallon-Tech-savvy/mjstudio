@@ -1,4 +1,4 @@
-MJ Studio's frontend is a React single-page application built with Vite. It consumes the backend HTTP API; authentication, authorization, gallery state, and download policy remain server-owned.
+Riven's frontend is a React single-page application built with Vite. It consumes the backend HTTP API; authentication, authorization, gallery state, and download policy remain server-owned.
 
 ## Getting Started
 

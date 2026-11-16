@@ -19,7 +19,7 @@
 - Continue to prefer explicit typed domain boundaries over framework-driven code
 
 ### RECOMMENDED
-- Keep the current backend in a dedicated `backend/` folder while the Next.js app remains in `mj_shoot-it/`
+- Keep the current backend in a dedicated `backend/` folder while the Next.js app remains in `riven/`
 - Continue using Express routes, services, and middleware in a modular structure
 
 ## 2. Current application structure
@@ -177,7 +177,7 @@
 
 ## 13. Files that must not be touched
 
-- `mj_shoot-it/` frontend app visuals and UI files
+- `riven/` frontend app visuals and UI files
 - existing Next.js workspace unless required for backend integration documentation
 - security-critical real auth and session logic should not be relaxed for convenience
 
