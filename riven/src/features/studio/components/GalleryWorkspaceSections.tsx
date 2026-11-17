@@ -14,11 +14,14 @@ export function StudioSelectionReview({
   onSelect: (index: number) => void;
 }) {
   return (
-    <section className="studio-selection-review">
+    <section id="selection-review" className="studio-selection-review">
       <div className="panel-header compact-header">
         <div>
           <p className="eyebrow">Client decision</p>
-          <h2>{selection.length} photographs selected</h2>
+          <h2>
+            {selection.length}{" "}
+            {selection.length === 1 ? "photograph" : "photographs"} selected
+          </h2>
           <p className="muted">
             Received
             {submittedAt ? ` · ${new Date(submittedAt).toLocaleString()}` : ""}.
@@ -80,60 +83,97 @@ export function StudioDeliverySection({
   isProcessing,
   onPrepare,
   onRelease,
+  error,
+  checking,
+  onRetry,
 }: {
+  error: string;
+  checking: boolean;
+  onRetry: () => void;
   delivery: StudioDeliveryDetails | null;
   isProcessing: boolean;
   onPrepare: () => void;
   onRelease: () => void;
 }) {
+  const prepared = Boolean(
+    delivery?.canPrepare &&
+      delivery.items.length === delivery.totalSelectedCount &&
+      delivery.items.length > 0 &&
+      delivery.items.every((item) => item.status === "ready"),
+  );
   return (
-    <section className="studio-delivery-section panel">
+    <section
+      id="final-delivery"
+      className="studio-delivery-section panel"
+      aria-busy={checking || isProcessing}
+    >
       <div className="panel-header compact-header">
         <div>
           <p className="eyebrow">Final delivery</p>
-          <h2>Prepare the client’s photographs</h2>
+          <h2>
+            {delivery?.releasedAt
+              ? "Client delivery"
+              : "Prepare the client’s photographs"}
+          </h2>
           <p className="muted">
-            {delivery?.approvedCount ?? 0} of{" "}
-            {delivery?.totalSelectedCount ?? 0} selected photographs approved.
+            {delivery
+              ? `${delivery.approvedCount} of ${delivery.totalSelectedCount} selected photographs approved.`
+              : "Delivery readiness has not been confirmed."}
           </p>
         </div>
         <span className={`tag status-${delivery?.status || "pending"}`}>
-          {delivery?.releasedAt
-            ? "Released"
-            : delivery?.status === "ready"
-              ? "Ready for release"
-              : "Pending proofing"}
+          {!delivery
+            ? "Not confirmed"
+            : delivery.releasedAt
+              ? "Released"
+              : prepared
+                ? "Ready for release"
+                : "Pending proofing"}
         </span>
       </div>
 
       <div className="studio-delivery-controls">
-        {delivery?.releasedAt ? (
+        {checking ? (
+          <output>Checking delivery readiness…</output>
+        ) : error ? (
+          <div role="alert" className="error-box">
+            <p>{error}</p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onRetry}
+            >
+              Check delivery again
+            </button>
+          </div>
+        ) : delivery?.releasedAt ? (
           <div className="success-box delivery-success">
-            <strong>Delivered to client</strong>
+            <strong>Released to client</strong>
             <span>
-              Released on {new Date(delivery.releasedAt).toLocaleString()}.
+              Available through the client gallery since{" "}
+              {new Date(delivery.releasedAt).toLocaleString()}. This does not
+              confirm that the client has downloaded them.
             </span>
           </div>
         ) : delivery?.canPrepare ? (
           <div className="studio-delivery-actions">
+            <p className="muted">
+              {prepared
+                ? "Prepared photographs stay private until you release them. Downloads follow the client’s access permission."
+                : "Preparation checks the approved originals. You will release them in a separate step."}
+            </p>
             <button
               type="button"
               className="primary-button"
               disabled={isProcessing}
-              onClick={onPrepare}
+              onClick={prepared ? onRelease : onPrepare}
             >
-              {isProcessing ? "Preparing…" : "Prepare final photographs"}
+              {isProcessing
+                ? "Saving delivery…"
+                : prepared
+                  ? "Release to client"
+                  : "Prepare final photographs"}
             </button>
-            {delivery.status === "ready" || delivery.items.length ? (
-              <button
-                type="button"
-                className="primary-button"
-                disabled={isProcessing}
-                onClick={onRelease}
-              >
-                {isProcessing ? "Releasing…" : "Release to client"}
-              </button>
-            ) : null}
           </div>
         ) : (
           <p className="muted">
@@ -151,7 +191,15 @@ export function StudioDeliverySection({
                 <strong>Photograph {item.position + 1}</strong>
                 <small>{item.filename}</small>
               </div>
-              <span className="tag status-approved">Ready for download</span>
+              <span className="tag status-approved">
+                {delivery.releasedAt
+                  ? "Released"
+                  : item.status === "ready"
+                    ? "Prepared · private"
+                    : item.status === "failed"
+                      ? "Needs attention"
+                      : "Preparing"}
+              </span>
             </li>
           ))}
         </ul>

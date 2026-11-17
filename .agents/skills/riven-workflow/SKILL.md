@@ -1,14 +1,14 @@
 ---
-name: mjstudio-workflow
-description: Route MJ Studio product and engineering work through a coherent discovery-to-shipping workflow grounded in the photography studio's and its clients' journeys. Use for product, UX, bugs, architecture, security, performance, and release readiness.
+name: riven-workflow
+description: Route Riven product and engineering work through a coherent discovery-to-shipping workflow grounded in the photography studio's and its clients' journeys. Use for product, UX, bugs, architecture, security, performance, and release readiness.
 ---
 
-# MJ Studio workflow
+# Riven workflow
 
 This is the project-specific orchestrator. Follow the repository's `AGENTS.md` first.
 
 ## Product outcome
-MJ Studio serves a local photography studio that wants to deliver photos faster, collect client feedback with less manual coordination, improve productivity, and sometimes bring clients closer to the service experience. The application must work for both studio staff and clients across mobile and web.
+Riven serves a local photography studio that wants to deliver photos faster, collect client feedback with less manual coordination, improve productivity, and sometimes bring clients closer to the service experience. The application must work for both studio staff and clients across mobile and web.
 
 For each task, identify which outcome it supports:
 - faster, clearer photo delivery;

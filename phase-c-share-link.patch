@@ -119,10 +119,10 @@ index 0000000..1e4f169
 +    expect(res.body.data.pin).toBe('654321');
 +  });
 +});
-diff --git a/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx b/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx
+diff --git a/riven/src/features/client-gallery/ClientGalleryPages.tsx b/riven/src/features/client-gallery/ClientGalleryPages.tsx
 index 6aa483b..27d6af5 100644
---- a/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx
-+++ b/mj_shoot-it/src/features/client-gallery/ClientGalleryPages.tsx
+--- a/riven/src/features/client-gallery/ClientGalleryPages.tsx
++++ b/riven/src/features/client-gallery/ClientGalleryPages.tsx
 @@ -1,4 +1,5 @@
  import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 +import { readSecretFromHash } from "@/lib/access-link";
@@ -173,10 +173,10 @@ index 6aa483b..27d6af5 100644
            </label>
  
            {error ? <div className="error-box">{error}</div> : null}
-diff --git a/mj_shoot-it/src/features/studio/components/ClientPicker.tsx b/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
+diff --git a/riven/src/features/studio/components/ClientPicker.tsx b/riven/src/features/studio/components/ClientPicker.tsx
 index 3d277fb..8ab8414 100644
---- a/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
-+++ b/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
+--- a/riven/src/features/studio/components/ClientPicker.tsx
++++ b/riven/src/features/studio/components/ClientPicker.tsx
 @@ -114,7 +114,7 @@ export function ClientPicker({ clients, value, onChange }: Props) {
                <input className={field} type="email" aria-label="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" />
                {emailBad ? <p className="mt-1 text-xs text-red-300">That does not look like an email address.</p> : null}
@@ -186,11 +186,11 @@ index 3d277fb..8ab8414 100644
            </div>
          </div>
          <div className="mt-4 flex gap-2">
-diff --git a/mj_shoot-it/src/features/studio/components/SharePanel.tsx b/mj_shoot-it/src/features/studio/components/SharePanel.tsx
+diff --git a/riven/src/features/studio/components/SharePanel.tsx b/riven/src/features/studio/components/SharePanel.tsx
 new file mode 100644
 index 0000000..514f6df
 --- /dev/null
-+++ b/mj_shoot-it/src/features/studio/components/SharePanel.tsx
++++ b/riven/src/features/studio/components/SharePanel.tsx
 @@ -0,0 +1,87 @@
 +import { useState } from "react";
 +import type { GalleryAccessCredentials } from "@/lib/api";
@@ -279,11 +279,11 @@ index 0000000..514f6df
 +    </section>
 +  );
 +}
-diff --git a/mj_shoot-it/src/features/studio/lib/share.ts b/mj_shoot-it/src/features/studio/lib/share.ts
+diff --git a/riven/src/features/studio/lib/share.ts b/riven/src/features/studio/lib/share.ts
 new file mode 100644
 index 0000000..0ec2e78
 --- /dev/null
-+++ b/mj_shoot-it/src/features/studio/lib/share.ts
++++ b/riven/src/features/studio/lib/share.ts
 @@ -0,0 +1,49 @@
 +/** Helpers for sharing a gallery link and PIN by hand (WhatsApp, SMS, any messenger). */
 +
@@ -334,10 +334,10 @@ index 0000000..0ec2e78
 +    return false;
 +  }
 +}
-diff --git a/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx b/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
+diff --git a/riven/src/features/studio/pages/PhotographerGalleryDetailPage.tsx b/riven/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
 index 349862a..472592f 100644
---- a/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
-+++ b/mj_shoot-it/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
+--- a/riven/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
++++ b/riven/src/features/studio/pages/PhotographerGalleryDetailPage.tsx
 @@ -1,9 +1,15 @@
  import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
  import { useEffect, useState } from "react";
@@ -469,11 +469,11 @@ index 349862a..472592f 100644
          {error ? <div className="error-box">{error}</div> : null}
  
          {gallery?.selectionStatus === "submitted" ? (
-diff --git a/mj_shoot-it/src/lib/access-link.ts b/mj_shoot-it/src/lib/access-link.ts
+diff --git a/riven/src/lib/access-link.ts b/riven/src/lib/access-link.ts
 new file mode 100644
 index 0000000..107cc8d
 --- /dev/null
-+++ b/mj_shoot-it/src/lib/access-link.ts
++++ b/riven/src/lib/access-link.ts
 @@ -0,0 +1,12 @@
 +/**
 + * The secret travels in the URL fragment (#secret=...). Browsers never send the fragment to a server,
@@ -487,10 +487,10 @@ index 0000000..107cc8d
 +export function readSecretFromHash(hash: string): string {
 +  return new URLSearchParams(hash.replace(/^#/, "")).get("secret") ?? "";
 +}
-diff --git a/mj_shoot-it/src/lib/api.ts b/mj_shoot-it/src/lib/api.ts
+diff --git a/riven/src/lib/api.ts b/riven/src/lib/api.ts
 index 7ee5c3a..f39566a 100644
---- a/mj_shoot-it/src/lib/api.ts
-+++ b/mj_shoot-it/src/lib/api.ts
+--- a/riven/src/lib/api.ts
++++ b/riven/src/lib/api.ts
 @@ -295,17 +295,39 @@ export async function setStudioPhotoReview(
    });
  }

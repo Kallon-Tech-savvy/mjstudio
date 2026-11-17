@@ -162,7 +162,7 @@ async function apiRequestWithMeta<T>(
     const message =
       cause instanceof Error && cause.name === "AbortError"
         ? "The request was cancelled."
-        : "Cannot reach MJ Studio. Check your connection and try again.";
+        : "Cannot reach Riven. Check your connection and try again.";
     throw new ApiError(message, "NETWORK_ERROR", 0);
   }
 

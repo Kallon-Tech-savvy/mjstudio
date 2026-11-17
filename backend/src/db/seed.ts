@@ -27,7 +27,7 @@ async function main() {
     [OWNER_ID, OWNER_EMAIL, hashPassword(OWNER_PASSWORD)],
   );
 
-  await db.query(`INSERT INTO studios (id, name) VALUES ($1, 'MJ Creative Art') ON CONFLICT (id) DO NOTHING`, [STUDIO_ID]);
+  await db.query(`INSERT INTO studios (id, name) VALUES ($1, 'Riven') ON CONFLICT (id) DO NOTHING`, [STUDIO_ID]);
   await db.query(
     `INSERT INTO studio_members (id, studio_id, user_id, role)
      VALUES ('33333333-3333-4333-8333-333333333333', $1, $2, 'owner')

@@ -16,7 +16,7 @@ index c7a85e6..b95e437 100644
 -
 -  await db.query(`
 -    INSERT INTO studios (id, name)
--    VALUES ('22222222-2222-4222-8222-222222222222', 'MJ Creative Art')
+-    VALUES ('22222222-2222-4222-8222-222222222222', 'Riven')
 -    ON CONFLICT (id) DO NOTHING;
 -  `);
 -
@@ -72,7 +72,7 @@ index c7a85e6..b95e437 100644
 -      ('88888888-8888-4888-8888-888888888888', '55555555-5555-4555-8555-555555555555', 2, 'active')
 -    ON CONFLICT (id) DO NOTHING;
 -  `);
-+  await db.query(`INSERT INTO studios (id, name) VALUES ($1, 'MJ Creative Art') ON CONFLICT (id) DO NOTHING`, [STUDIO_ID]);
++  await db.query(`INSERT INTO studios (id, name) VALUES ($1, 'Riven') ON CONFLICT (id) DO NOTHING`, [STUDIO_ID]);
 +  await db.query(
 +    `INSERT INTO studio_members (id, studio_id, user_id, role)
 +     VALUES ('33333333-3333-4333-8333-333333333333', $1, $2, 'owner')
@@ -305,10 +305,10 @@ index 0000000..a0e6325
 +    expect(seen).toHaveLength(0);
 +  });
 +});
-diff --git a/mj_shoot-it/package.json b/mj_shoot-it/package.json
+diff --git a/riven/package.json b/riven/package.json
 index e8b32d0..b6e5654 100644
---- a/mj_shoot-it/package.json
-+++ b/mj_shoot-it/package.json
+--- a/riven/package.json
++++ b/riven/package.json
 @@ -16,10 +16,12 @@
    },
    "devDependencies": {
@@ -322,10 +322,10 @@ index e8b32d0..b6e5654 100644
      "typescript": "^5",
      "vite": "^7.1.1"
    }
-diff --git a/mj_shoot-it/src/App.tsx b/mj_shoot-it/src/App.tsx
+diff --git a/riven/src/App.tsx b/riven/src/App.tsx
 index 82419df..4042dc0 100644
---- a/mj_shoot-it/src/App.tsx
-+++ b/mj_shoot-it/src/App.tsx
+--- a/riven/src/App.tsx
++++ b/riven/src/App.tsx
 @@ -1,4 +1,5 @@
  import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 +import { NewGalleryForm } from "@/features/studio/components/NewGalleryForm";
@@ -398,11 +398,11 @@ index 82419df..4042dc0 100644
  
          {error ? <div className="error-box">{error}</div> : null}
  
-diff --git a/mj_shoot-it/src/features/studio/components/ClientPicker.tsx b/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
+diff --git a/riven/src/features/studio/components/ClientPicker.tsx b/riven/src/features/studio/components/ClientPicker.tsx
 new file mode 100644
 index 0000000..3d277fb
 --- /dev/null
-+++ b/mj_shoot-it/src/features/studio/components/ClientPicker.tsx
++++ b/riven/src/features/studio/components/ClientPicker.tsx
 @@ -0,0 +1,198 @@
 +import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 +import type { ClientRecord } from "@/lib/api";
@@ -602,11 +602,11 @@ index 0000000..3d277fb
 +    </div>
 +  );
 +}
-diff --git a/mj_shoot-it/src/features/studio/components/NewGalleryForm.tsx b/mj_shoot-it/src/features/studio/components/NewGalleryForm.tsx
+diff --git a/riven/src/features/studio/components/NewGalleryForm.tsx b/riven/src/features/studio/components/NewGalleryForm.tsx
 new file mode 100644
 index 0000000..bf2cb2f
 --- /dev/null
-+++ b/mj_shoot-it/src/features/studio/components/NewGalleryForm.tsx
++++ b/riven/src/features/studio/components/NewGalleryForm.tsx
 @@ -0,0 +1,62 @@
 +import { useState, type FormEvent } from "react";
 +import { createGallery, type ClientRecord } from "@/lib/api";
@@ -670,10 +670,10 @@ index 0000000..bf2cb2f
 +    </form>
 +  );
 +}
-diff --git a/mj_shoot-it/src/lib/api.ts b/mj_shoot-it/src/lib/api.ts
+diff --git a/riven/src/lib/api.ts b/riven/src/lib/api.ts
 index e0f930d..7ee5c3a 100644
---- a/mj_shoot-it/src/lib/api.ts
-+++ b/mj_shoot-it/src/lib/api.ts
+--- a/riven/src/lib/api.ts
++++ b/riven/src/lib/api.ts
 @@ -239,8 +239,12 @@ export async function listGalleries(page = 1, limit = 20): Promise<{ items: Gall
    return apiCollectionRequest(`/galleries?page=${page}&limit=${limit}`, normalizeGallery);
  }
@@ -688,10 +688,10 @@ index e0f930d..7ee5c3a 100644
    name: string;
    expiresAt?: string | null;
  }): Promise<GalleryRecord> {
-diff --git a/mj_shoot-it/src/main.tsx b/mj_shoot-it/src/main.tsx
+diff --git a/riven/src/main.tsx b/riven/src/main.tsx
 index 3589701..abf04ab 100644
---- a/mj_shoot-it/src/main.tsx
-+++ b/mj_shoot-it/src/main.tsx
+--- a/riven/src/main.tsx
++++ b/riven/src/main.tsx
 @@ -2,6 +2,7 @@ import React from "react";
  import ReactDOM from "react-dom/client";
  import App from "./App";
@@ -700,11 +700,11 @@ index 3589701..abf04ab 100644
  
  ReactDOM.createRoot(document.getElementById("root")!).render(
    <React.StrictMode>
-diff --git a/mj_shoot-it/src/tailwind.css b/mj_shoot-it/src/tailwind.css
+diff --git a/riven/src/tailwind.css b/riven/src/tailwind.css
 new file mode 100644
 index 0000000..896f20f
 --- /dev/null
-+++ b/mj_shoot-it/src/tailwind.css
++++ b/riven/src/tailwind.css
 @@ -0,0 +1,6 @@
 +/* Tailwind theme + utilities WITHOUT preflight and WITHOUT cascade layers, on purpose:
 +   the existing hand-written stylesheet is unlayered and sets `font: inherit` on form controls,
@@ -712,10 +712,10 @@ index 0000000..896f20f
 +   old stylesheet is gone, switch to the standard `@import "tailwindcss";`. */
 +@import "tailwindcss/theme.css";
 +@import "tailwindcss/utilities.css";
-diff --git a/mj_shoot-it/vite.config.ts b/mj_shoot-it/vite.config.ts
+diff --git a/riven/vite.config.ts b/riven/vite.config.ts
 index b805999..f746613 100644
---- a/mj_shoot-it/vite.config.ts
-+++ b/mj_shoot-it/vite.config.ts
+--- a/riven/vite.config.ts
++++ b/riven/vite.config.ts
 @@ -1,8 +1,9 @@
  import { defineConfig } from "vite";
  import react from "@vitejs/plugin-react";

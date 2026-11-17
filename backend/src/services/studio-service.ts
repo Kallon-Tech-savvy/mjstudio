@@ -23,7 +23,7 @@ export class StudioService {
 
     return {
       id: user.studioId,
-      name: 'MJ Creative Art',
+      name: 'Riven',
       owner: {
         id: user.userId,
         email: user.email,

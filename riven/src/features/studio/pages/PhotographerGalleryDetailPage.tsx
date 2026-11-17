@@ -7,6 +7,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { ModalDialog } from "@/components/ModalDialog";
+import { GalleryJourney } from "@/features/studio/components/GalleryJourney";
 import {
   StudioDeliverySection,
   StudioFeedbackReview,
@@ -84,7 +85,9 @@ function StudioPhotoViewerModal({
   onClose,
   onNavigate,
   onReviewUpdate,
+  released,
 }: {
+  released: boolean;
   galleryId: string;
   selectedPhoto: StudioSelectedPhoto;
   selectedPhotoIndex: number;
@@ -94,7 +97,7 @@ function StudioPhotoViewerModal({
   onNavigate: (index: number) => void;
   onReviewUpdate: (
     updated: Awaited<ReturnType<typeof setStudioPhotoReview>>,
-  ) => void;
+  ) => Promise<void>;
 }) {
   const [status, setStatus] = useState<"approved" | "needs_revision">(
     selectedPhoto.reviewStatus === "needs_revision"
@@ -116,6 +119,7 @@ function StudioPhotoViewerModal({
   }, [selectedPhoto.reviewStatus, selectedPhoto.reviewNote]);
 
   const saveReview = async () => {
+    if (released || isSaving) return;
     if (status === "needs_revision" && !note.trim()) {
       setError("Add a revision note before requesting changes.");
       return;
@@ -130,7 +134,7 @@ function StudioPhotoViewerModal({
         status,
         note.trim() || null,
       );
-      onReviewUpdate(updated);
+      await onReviewUpdate(updated);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -188,12 +192,17 @@ function StudioPhotoViewerModal({
         </div>
       ) : null}
 
+      {released ? (
+        <p className="muted">
+          Released photographs are locked to preserve the client’s delivery.
+        </p>
+      ) : null}
       <div className="toolbar-stack">
         <label className="field">
           <span>Review decision</span>
           <select
             value={status}
-            disabled={isSaving}
+            disabled={isSaving || released}
             onChange={(event) => setStatus(event.target.value as typeof status)}
           >
             <option value="approved">Approved</option>
@@ -229,7 +238,7 @@ function StudioPhotoViewerModal({
         <button
           type="button"
           className="primary-button"
-          disabled={isSaving}
+          disabled={isSaving || released}
           onClick={saveReview}
         >
           {isSaving ? "Saving..." : "Save review"}
@@ -290,6 +299,93 @@ function PhotographerGalleryWorkspace() {
     null,
   );
   const [delivery, setDelivery] = useState<StudioDeliveryDetails | null>(null);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [isRefreshingDelivery, setIsRefreshingDelivery] = useState(false);
+  const deliveryRequest = useRef(0);
+  useEffect(() => {
+    if (!galleryId) return;
+    return () => {
+      deliveryRequest.current += 1;
+    };
+  }, [galleryId]);
+  const refreshDelivery = async () => {
+    if (!galleryId) return;
+    const request = ++deliveryRequest.current;
+    setIsRefreshingDelivery(true);
+    setDeliveryError("");
+    setDelivery(null);
+    try {
+      const latest = await getStudioDelivery(galleryId);
+      if (request === deliveryRequest.current) setDelivery(latest);
+    } catch {
+      if (request === deliveryRequest.current)
+        setDeliveryError(
+          "Your review is saved. Delivery readiness could not be checked. Try again before preparing or releasing photographs.",
+        );
+    } finally {
+      if (request === deliveryRequest.current) setIsRefreshingDelivery(false);
+    }
+  };
+  const [checkingClient, setCheckingClient] = useState(false);
+  const [clientCheckError, setClientCheckError] = useState("");
+  const [clientCheckMessage, setClientCheckMessage] = useState("");
+  const clientCheckLock = useRef(false);
+  const clientCheckRequest = useRef(0);
+  useEffect(
+    () => () => {
+      clientCheckRequest.current += 1;
+    },
+    [],
+  );
+
+  const checkClientResponse = async () => {
+    if (!galleryId || clientCheckLock.current) return;
+    clientCheckLock.current = true;
+    const request = ++clientCheckRequest.current;
+    setCheckingClient(true);
+    setClientCheckError("");
+    setClientCheckMessage("");
+    try {
+      const [latest, selected, notes, latestDelivery] = await Promise.all([
+        getGallery(galleryId),
+        listSelectedPhotos(galleryId),
+        listStudioFeedback(galleryId),
+        getStudioDelivery(galleryId).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
+      ]);
+      if (request !== clientCheckRequest.current) return;
+      const detail = latest as GalleryDetail;
+      setGallery((current) =>
+        current
+          ? {
+              ...current,
+              selectionStatus: detail.selectionStatus,
+              selectionSubmittedAt: detail.selectionSubmittedAt,
+            }
+          : current,
+      );
+      setSelection(selected);
+      setFeedback(notes);
+      setDelivery(latestDelivery);
+      setClientCheckMessage(
+        detail.selectionStatus === "submitted"
+          ? "Client selection received. You can now review their photographs."
+          : "Checked just now. No submitted selection yet.",
+      );
+    } catch {
+      if (request === clientCheckRequest.current)
+        setClientCheckError(
+          "Could not check the client’s response. Your uploads and access details are still here. Try again.",
+        );
+    } finally {
+      if (request === clientCheckRequest.current) {
+        clientCheckLock.current = false;
+        setCheckingClient(false);
+      }
+    }
+  };
   const [isProcessingDelivery, setIsProcessingDelivery] = useState(false);
   const [photoUploads, setPhotoUploads] = useState<PhotoUploadItem[]>([]);
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
@@ -942,7 +1038,9 @@ function PhotographerGalleryWorkspace() {
 
   return (
     <main className="page-shell">
-      {searchParams.get("created") === "1" && !hasActiveAccess ? (
+      {searchParams.get("created") === "1" &&
+      photoTotal === 0 &&
+      !hasActiveAccess ? (
         <section className="gallery-setup-banner" aria-label="Gallery created">
           <p className="eyebrow">
             01 Created / 02 Photographs / 03 Access / 04 Publish
@@ -957,7 +1055,7 @@ function PhotographerGalleryWorkspace() {
           </a>
         </section>
       ) : null}
-      <div className="panel">
+      <div className="panel gallery-workspace">
         <div className="panel-header compact-header gallery-workspace-header">
           <div>
             <p className="eyebrow">Gallery workspace</p>
@@ -974,6 +1072,43 @@ function PhotographerGalleryWorkspace() {
             Back to galleries
           </button>
         </div>
+
+        <GalleryJourney
+          published={gallery.publicationStatus === "published"}
+          hasPhotos={photoTotal > 0}
+          waitingForPhotos={waitingForPhotos}
+          accessAvailable={accessStatus === "available"}
+          hasAccess={hasActiveAccess}
+          submitted={gallery.selectionStatus === "submitted"}
+          delivery={delivery}
+          checkingDelivery={isRefreshingDelivery || Boolean(deliveryError)}
+        />
+
+        {gallery.publicationStatus === "published" &&
+        gallery.selectionStatus !== "submitted" ? (
+          <div className="client-response-check" aria-busy={checkingClient}>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={checkingClient}
+              onClick={() => void checkClientResponse()}
+            >
+              {checkingClient
+                ? "Checking client response…"
+                : "Check client response"}
+            </button>
+            <p className="muted">
+              Check for submitted choices and new notes without leaving this
+              workspace.
+            </p>
+          </div>
+        ) : null}
+        {clientCheckError ? (
+          <p className="error-box" role="alert">
+            {clientCheckError}
+          </p>
+        ) : null}
+        {clientCheckMessage ? <output>{clientCheckMessage}</output> : null}
 
         <section
           id="photo-upload"
@@ -1173,6 +1308,7 @@ function PhotographerGalleryWorkspace() {
         ) : null}
         {accessStatus === "available" ? (
           <section
+            id="client-access"
             className="gallery-access-setup"
             aria-label="Prepare client access"
           >
@@ -1314,6 +1450,9 @@ function PhotographerGalleryWorkspace() {
         {gallery.selectionStatus === "submitted" || delivery ? (
           <StudioDeliverySection
             delivery={delivery}
+            error={deliveryError}
+            checking={isRefreshingDelivery}
+            onRetry={() => void refreshDelivery()}
             isProcessing={isProcessingDelivery}
             onPrepare={() => void handlePrepareDelivery()}
             onRelease={() => void handleReleaseDelivery()}
@@ -1328,13 +1467,14 @@ function PhotographerGalleryWorkspace() {
           <StudioPhotoViewerModal
             key={selectedPhoto.photoId}
             galleryId={galleryId}
+            released={Boolean(delivery?.releasedAt)}
             selectedPhoto={selectedPhoto}
             selectedPhotoIndex={selectedPhotoIndex ?? 0}
             totalPhotos={selection.length}
             feedbackList={feedback}
             onClose={() => setSelectedPhotoIndex(null)}
             onNavigate={(index) => setSelectedPhotoIndex(index)}
-            onReviewUpdate={(updated) => {
+            onReviewUpdate={async (updated) => {
               setSelection((prev) =>
                 prev.map((item) =>
                   item.photoId === updated.photoId
@@ -1347,6 +1487,7 @@ function PhotographerGalleryWorkspace() {
                     : item,
                 ),
               );
+              await refreshDelivery();
             }}
           />
         ) : null}
