@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { JourneyIllustration } from "@/components/JourneyIllustration";
 import PhotographerGalleriesPage from "@/features/studio/pages/PhotographerGalleriesPage";
 import {
   type ClientRecord,
@@ -108,6 +109,7 @@ function HomePage() {
         </div>
         <div className="experience-steps">
           <article>
+            <JourneyIllustration kind="discover" />
             <span className="journey-number">01 / DISCOVER</span>
             <h3>Settle into your story.</h3>
             <p>
@@ -119,6 +121,7 @@ function HomePage() {
             </Link>
           </article>
           <article>
+            <JourneyIllustration kind="connect" />
             <span className="journey-number">02 / CONNECT</span>
             <h3>Tell us what you love.</h3>
             <p>
@@ -128,6 +131,7 @@ function HomePage() {
             <span className="journey-detail">Your eye. Our care.</span>
           </article>
           <article>
+            <JourneyIllustration kind="keep" />
             <span className="journey-number">03 / KEEP</span>
             <h3>Yours to come back to.</h3>
             <p>

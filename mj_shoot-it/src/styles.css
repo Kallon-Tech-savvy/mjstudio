@@ -2880,3 +2880,193 @@ button,
     height: 23px;
   }
 }
+
+/* Physical paper and dimensional graphics: no animation or rendering dependency. */
+.atelier-home {
+  background: radial-gradient(ellipse at 85% 25%, #e4e8d980, transparent 46%);
+}
+.atelier-nav {
+  position: relative;
+}
+.atelier-nav::after {
+  content: "";
+  position: absolute;
+  width: 52px;
+  height: 3px;
+  background: #a15437;
+  bottom: -2px;
+  left: 0;
+}
+.print-scene {
+  isolation: isolate;
+}
+.print-scene::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 18% 5% 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #7a8c6322, transparent 65%);
+  transform: rotate(-15deg);
+}
+.photo-print {
+  border: 1px solid #fff;
+  border-bottom-color: #d9d6cc;
+}
+.print-main::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 4px -4px -5px 5px;
+  background: #e8e5db;
+  border: 1px solid #d8d5c9;
+  border-radius: 2px;
+  transform: rotate(-2deg);
+}
+.scene-orbit::before,
+.scene-orbit::after {
+  content: "+";
+  position: absolute;
+  color: #8c977d;
+  font: 22px var(--font-mono);
+}
+.scene-orbit::before {
+  left: 20px;
+  top: 35px;
+}
+.scene-orbit::after {
+  right: 0;
+  bottom: 45px;
+}
+.journey-illustration {
+  width: 140px;
+  height: 88px;
+  margin-bottom: 18px;
+  color: var(--brand);
+}
+.journey-illustration svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.illustration-front {
+  transition: transform 240ms ease;
+}
+.experience-steps article {
+  position: relative;
+}
+.experience-steps article:hover .illustration-front {
+  transform: translateY(-4px);
+}
+.experience-steps article:first-child:hover .illustration-front {
+  transform: translateY(-4px) rotate(7deg);
+  transform-origin: 90px 49px;
+}
+.gallery-library-card {
+  position: relative;
+  overflow: hidden;
+}
+.gallery-library-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  pointer-events: none;
+  background: linear-gradient(225deg, #dce3d24d, transparent 70%);
+}
+.gallery-journey [aria-current="step"] > span {
+  box-shadow:
+    inset 0 1px 1px #ffffff40,
+    0 3px 0 #1d372b,
+    0 5px 9px #243c3215;
+}
+.photo-select-button {
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.photo-select-button.is-selected {
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+.field input:focus,
+.field textarea:focus,
+.textarea:focus {
+  background: var(--panel-bg);
+  box-shadow: 0 0 0 4px #355b4710;
+}
+.primary-button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 #213e32,
+    0 3px 8px #24433515;
+}
+.primary-button,
+.secondary-button,
+.button-ghost,
+.gallery-library-card {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+.atelier-nav a:focus-visible,
+.atelier-text-link:focus-visible,
+.experience-steps a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 5px;
+  border-radius: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .primary-button:hover:not(:disabled) {
+    box-shadow:
+      0 5px 0 #213e32,
+      0 14px 24px #24433524;
+  }
+  .gallery-library-card:hover {
+    transform: perspective(900px) translateY(-4px) rotateX(1deg);
+    box-shadow: 0 16px 30px #243c3215;
+  }
+  .atelier-nav-link:hover,
+  .atelier-studio-link:hover {
+    color: #a15437;
+  }
+  .photo-thumb:focus-visible {
+    outline-offset: -4px;
+  }
+}
+@media (max-width: 640px) {
+  .journey-illustration {
+    float: right;
+    width: 105px;
+    height: 68px;
+    margin: 0 0 10px 15px;
+  }
+  .experience-steps article {
+    display: flow-root;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .illustration-front,
+  .photo-select-button,
+  .primary-button,
+  .secondary-button,
+  .button-ghost,
+  .gallery-library-card,
+  .field input,
+  .field textarea,
+  .textarea {
+    transition: none;
+  }
+  .experience-steps article:hover .illustration-front,
+  .experience-steps article:first-child:hover .illustration-front,
+  .gallery-library-card:hover,
+  .primary-button:hover,
+  .primary-button:active:not(:disabled),
+  .secondary-button:hover,
+  .button-ghost:hover {
+    transform: none;
+  }
+}
