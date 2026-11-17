@@ -2367,3 +2367,13 @@ dialog.viewer-backdrop:not([open]) {
 .gallery-workspace .studio-delivery-section {
   margin-top: var(--space-6);
 }
+.client-response-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.client-response-check p {
+  flex: 1 1 240px;
+}

@@ -326,6 +326,66 @@ function PhotographerGalleryWorkspace() {
       if (request === deliveryRequest.current) setIsRefreshingDelivery(false);
     }
   };
+  const [checkingClient, setCheckingClient] = useState(false);
+  const [clientCheckError, setClientCheckError] = useState("");
+  const [clientCheckMessage, setClientCheckMessage] = useState("");
+  const clientCheckLock = useRef(false);
+  const clientCheckRequest = useRef(0);
+  useEffect(
+    () => () => {
+      clientCheckRequest.current += 1;
+    },
+    [],
+  );
+
+  const checkClientResponse = async () => {
+    if (!galleryId || clientCheckLock.current) return;
+    clientCheckLock.current = true;
+    const request = ++clientCheckRequest.current;
+    setCheckingClient(true);
+    setClientCheckError("");
+    setClientCheckMessage("");
+    try {
+      const [latest, selected, notes, latestDelivery] = await Promise.all([
+        getGallery(galleryId),
+        listSelectedPhotos(galleryId),
+        listStudioFeedback(galleryId),
+        getStudioDelivery(galleryId).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
+      ]);
+      if (request !== clientCheckRequest.current) return;
+      const detail = latest as GalleryDetail;
+      setGallery((current) =>
+        current
+          ? {
+              ...current,
+              selectionStatus: detail.selectionStatus,
+              selectionSubmittedAt: detail.selectionSubmittedAt,
+            }
+          : current,
+      );
+      setSelection(selected);
+      setFeedback(notes);
+      setDelivery(latestDelivery);
+      setClientCheckMessage(
+        detail.selectionStatus === "submitted"
+          ? "Client selection received. You can now review their photographs."
+          : "Checked just now. No submitted selection yet.",
+      );
+    } catch {
+      if (request === clientCheckRequest.current)
+        setClientCheckError(
+          "Could not check the client’s response. Your uploads and access details are still here. Try again.",
+        );
+    } finally {
+      if (request === clientCheckRequest.current) {
+        clientCheckLock.current = false;
+        setCheckingClient(false);
+      }
+    }
+  };
   const [isProcessingDelivery, setIsProcessingDelivery] = useState(false);
   const [photoUploads, setPhotoUploads] = useState<PhotoUploadItem[]>([]);
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
@@ -1023,6 +1083,32 @@ function PhotographerGalleryWorkspace() {
           delivery={delivery}
           checkingDelivery={isRefreshingDelivery || Boolean(deliveryError)}
         />
+
+        {gallery.publicationStatus === "published" &&
+        gallery.selectionStatus !== "submitted" ? (
+          <div className="client-response-check" aria-busy={checkingClient}>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={checkingClient}
+              onClick={() => void checkClientResponse()}
+            >
+              {checkingClient
+                ? "Checking client response…"
+                : "Check client response"}
+            </button>
+            <p className="muted">
+              Check for submitted choices and new notes without leaving this
+              workspace.
+            </p>
+          </div>
+        ) : null}
+        {clientCheckError ? (
+          <p className="error-box" role="alert">
+            {clientCheckError}
+          </p>
+        ) : null}
+        {clientCheckMessage ? <output>{clientCheckMessage}</output> : null}
 
         <section
           id="photo-upload"

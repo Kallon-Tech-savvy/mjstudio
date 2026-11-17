@@ -61,42 +61,50 @@ export function GalleryJourney({
               href: "#selection-review",
               action: "Review selected photographs",
             }
-      : published
+      : published && (!hasAccess || !accessAvailable)
         ? {
-            title: "Waiting for the client’s selection",
+            title: "Check client access",
             detail:
-              "Share the access link and PIN separately. Return to this gallery to check for the client’s submitted choices.",
+              "The gallery is published, but active access has not been confirmed. Your client needs a working link and PIN before they can respond.",
             href: accessAvailable ? "#client-access" : "#gallery-publication",
-            action: "View client access",
+            action: "Review access requirements",
           }
-        : !hasPhotos || waitingForPhotos
+        : published
           ? {
-              title: waitingForPhotos
-                ? "Finish checking your uploads"
-                : "Add your photographs",
+              title: "Waiting for the client’s selection",
               detail:
-                "Keep your originals until uploads are confirmed. Your draft stays private while you prepare it.",
-              href: "#photo-upload",
-              action: "Go to photographs",
+                "Share the access link and PIN separately. Use “Check client response” below to see their submitted choices.",
+              href: accessAvailable ? "#client-access" : "#gallery-publication",
+              action: "View client access",
             }
-          : !hasAccess || !accessAvailable
+          : !hasPhotos || waitingForPhotos
             ? {
-                title: "Prepare client access",
-                detail: accessAvailable
-                  ? "Choose viewing or download permission, then create the link and PIN."
-                  : "Client access has not been confirmed. Resolve the access status before publishing.",
-                href: accessAvailable
-                  ? "#client-access"
-                  : "#gallery-publication",
-                action: "Check access requirements",
-              }
-            : {
-                title: "Publish for client review",
+                title: waitingForPhotos
+                  ? "Finish checking your uploads"
+                  : "Add your photographs",
                 detail:
-                  "Your photographs and access are set up. Publishing lets your client start reviewing; it does not release final delivery.",
-                href: "#gallery-publication",
-                action: "Review and publish",
-              };
+                  "Keep your originals until uploads are confirmed. Your draft stays private while you prepare it.",
+                href: "#photo-upload",
+                action: "Go to photographs",
+              }
+            : !hasAccess || !accessAvailable
+              ? {
+                  title: "Prepare client access",
+                  detail: accessAvailable
+                    ? "Choose viewing or download permission, then create the link and PIN."
+                    : "Client access has not been confirmed. Resolve the access status before publishing.",
+                  href: accessAvailable
+                    ? "#client-access"
+                    : "#gallery-publication",
+                  action: "Check access requirements",
+                }
+              : {
+                  title: "Publish for client review",
+                  detail:
+                    "Your photographs and access are set up. Publishing lets your client start reviewing; it does not release final delivery.",
+                  href: "#gallery-publication",
+                  action: "Review and publish",
+                };
   return (
     <section className="gallery-journey" aria-labelledby="gallery-next-title">
       <ol className="gallery-journey-steps" aria-label="Gallery progress">
