@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Transaction } from './service-common.js';
-import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload } from './job-service.js';
-import { PermanentJobError } from './job-service.js';
+import type { JobHandler, ClaimedJob, ProcessPhotoAssetsPayload, CleanupPhotoAssetsPayload, ReconcilePhotoAssetPayload, JobService } from './job-service.js';
+import { PermanentJobError, TransientJobError } from './job-service.js';
 
 export type DerivativeObject = { mimeType: string; fileSize: number; width: number; height: number };
 export interface ImageProcessor {
@@ -31,45 +31,61 @@ export class ProcessPhotoAssetsHandler implements JobHandler<'PROCESS_PHOTO_ASSE
       { type: 'preview', key: `studios/assets/${photoId}/preview` },
       { type: 'thumbnail', key: `studios/assets/${photoId}/thumbnail` },
     ] as const;
-    for (const derivative of derivatives) {
-      const existing = await transaction.query<{ id: string; upload_status: string; processing_status: string; state: string }>(
-        `SELECT id, upload_status, processing_status, state FROM photo_assets
-          WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
-      let assetId: string | undefined = existing.rows[0]?.id;
-      if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
-      if (existing.rows[0]) {
+    const generatedKeys: string[] = [];
+    try {
+      for (const derivative of derivatives) {
+        const existing = await transaction.query<{ id: string; upload_status: string; processing_status: string; state: string }>(
+          `SELECT id, upload_status, processing_status, state FROM photo_assets
+            WHERE photo_id = $1 AND type = $2 AND state = 'current' FOR UPDATE`, [photoId, derivative.type]);
+        // A replacement must not reuse a superseded row's unique storage key.
+        // Reuse this candidate key across rolled-back attempts, avoiding orphan growth.
+        // Keep the version beside the legacy file, not beneath it: local adapters
+        // cannot use an existing object as a directory.
+        const destinationKey = `${derivative.key}-${existing.rows[0]?.id ?? sourceAssetId}`;
+        let assetId: string | undefined = existing.rows[0]?.id;
+        if (existing.rows[0]?.upload_status === 'uploaded' && existing.rows[0]?.processing_status === 'ready') continue;
+        if (existing.rows[0]) {
+          await transaction.query(
+            "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
+            [existing.rows[0].id],
+          );
+          assetId = undefined;
+        }
+        if (!assetId) {
+          assetId = randomUUID();
+          await transaction.query(
+            `INSERT INTO photo_assets (id, photo_id, type, state, storage_key, upload_status, processing_status)
+             VALUES ($1, $2, $3, 'current', $4, 'pending', 'pending')`,
+            [assetId, photoId, derivative.type, destinationKey]);
+        }
+        await transaction.query("UPDATE photo_assets SET processing_status = 'processing', updated_at = NOW() WHERE id = $1 AND processing_status IN ('pending', 'failed')", [assetId]);
+        generatedKeys.push(destinationKey);
+        const generated = derivative.type === 'preview'
+          ? await this.processor.createPreview(sourceRow.storage_key, destinationKey)
+          : await this.processor.createThumbnail(sourceRow.storage_key, destinationKey);
+        const verified = await this.storage.verifyObject(destinationKey);
+        if (!verified || verified.fileSize <= 0 || verified.width <= 0 || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
+          throw new PermanentJobError(`Generated ${derivative.type} did not pass object verification.`);
+        }
         await transaction.query(
-          "UPDATE photo_assets SET state = 'superseded', updated_at = NOW() WHERE id = $1 AND state = 'current'",
-          [existing.rows[0].id],
-        );
-        assetId = undefined;
+          `UPDATE photo_assets SET upload_status = 'uploaded', processing_status = 'ready',
+                  mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1`,
+          [assetId, verified.mimeType, verified.fileSize, verified.width, verified.height]);
       }
-      if (!assetId) {
-        assetId = randomUUID();
-        await transaction.query(
-          `INSERT INTO photo_assets (id, photo_id, type, state, storage_key, upload_status, processing_status)
-           VALUES ($1, $2, $3, 'current', $4, 'pending', 'pending')`,
-          [assetId, photoId, derivative.type, derivative.key]);
+      const readiness = await transaction.query(
+        `SELECT COUNT(*) FILTER (WHERE type = 'preview' AND upload_status = 'uploaded' AND processing_status = 'ready' AND state = 'current') = 1
+            AND COUNT(*) FILTER (WHERE type = 'thumbnail' AND upload_status = 'uploaded' AND processing_status = 'ready' AND state = 'current') = 1 AS ready
+           FROM photo_assets WHERE photo_id = $1`, [photoId]);
+      if (!readiness.rows[0]?.ready) throw new Error('Required derivatives are not ready.');
+      await transaction.query("UPDATE photos SET status = 'active', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL", [photoId]);
+    } catch (error) {
+      // Database rollback cannot remove files written by a failed processing attempt.
+      const cleanup = await Promise.allSettled(generatedKeys.map((key) => this.storage.deleteObject(key)));
+      if (cleanup.some((result) => result.status === 'rejected')) {
+        throw new TransientJobError('Partial image cleanup was interrupted and needs retry.');
       }
-      await transaction.query("UPDATE photo_assets SET processing_status = 'processing', updated_at = NOW() WHERE id = $1 AND processing_status IN ('pending', 'failed')", [assetId]);
-      const generated = derivative.type === 'preview'
-        ? await this.processor.createPreview(sourceRow.storage_key, derivative.key)
-        : await this.processor.createThumbnail(sourceRow.storage_key, derivative.key);
-      const verified = await this.storage.verifyObject(derivative.key);
-      if (!verified || verified.fileSize <= 0 || verified.width <= 0 || verified.height <= 0 || verified.mimeType !== generated.mimeType) {
-        throw new PermanentJobError(`Generated ${derivative.type} did not pass object verification.`);
-      }
-      await transaction.query(
-        `UPDATE photo_assets SET upload_status = 'uploaded', processing_status = 'ready',
-                mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1`,
-        [assetId, verified.mimeType, verified.fileSize, verified.width, verified.height]);
+      throw error;
     }
-    const readiness = await transaction.query(
-      `SELECT COUNT(*) FILTER (WHERE type = 'preview' AND upload_status = 'uploaded' AND processing_status = 'ready' AND state = 'current') = 1
-          AND COUNT(*) FILTER (WHERE type = 'thumbnail' AND upload_status = 'uploaded' AND processing_status = 'ready' AND state = 'current') = 1 AS ready
-         FROM photo_assets WHERE photo_id = $1`, [photoId]);
-    if (!readiness.rows[0]?.ready) throw new Error('Required derivatives are not ready.');
-    await transaction.query("UPDATE photos SET status = 'active', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL", [photoId]);
   }
 }
 
@@ -90,24 +106,34 @@ export class CleanupPhotoAssetsHandler implements JobHandler<'CLEANUP_PHOTO_ASSE
 
 export class ReconcilePhotoAssetHandler implements JobHandler<'RECONCILE_PHOTO_ASSET'> {
   type = 'RECONCILE_PHOTO_ASSET' as const;
-  constructor(private readonly storage: AssetStorage) {}
+  constructor(private readonly storage: AssetStorage, private readonly jobs: Pick<JobService, 'enqueueInTransaction'>) {}
 
   async execute(job: ClaimedJob<'RECONCILE_PHOTO_ASSET'>, transaction: Transaction) {
     const { assetId } = job.payload;
-    const result = await transaction.query<{ id: string; photo_id: string; storage_key: string; type: string; upload_status: string; processing_status: string; state: string }>(
-      `SELECT id, photo_id, storage_key, type, upload_status, processing_status, state
-         FROM photo_assets WHERE id = $1 FOR UPDATE`, [assetId]);
+    const result = await transaction.query<{ id: string; photo_id: string; storage_key: string; upload_status: string }>(
+      `SELECT pa.id, pa.photo_id, pa.storage_key, pa.upload_status
+         FROM photos p JOIN photo_assets pa ON pa.photo_id = p.id
+        WHERE pa.id = $1 AND pa.type = 'original' AND pa.state = 'current'
+          AND p.deleted_at IS NULL FOR UPDATE OF p, pa`, [assetId]);
     const asset = result.rows[0];
-    if (!asset) return;
+    // This job recovers uncertain uploads, not storage health or failed image
+    // processing. A newer confirmation or deletion makes it obsolete.
+    if (!asset || asset.upload_status === 'uploaded') return;
     const object = await this.storage.verifyObject(asset.storage_key);
-    if (!object && asset.upload_status === 'uploaded') {
-      await transaction.query("UPDATE photo_assets SET upload_status = 'failed', processing_status = CASE WHEN type = 'original' THEN 'not_required' ELSE 'failed' END, updated_at = NOW() WHERE id = $1", [assetId]);
-      await transaction.query("UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL", [asset.photo_id]);
-      return;
+    if (!object) throw new TransientJobError('Uploaded original is not yet available.');
+    if (!(object.fileSize > 0 && object.width > 0 && object.height > 0)) {
+      throw new PermanentJobError('Recovered original metadata is invalid.');
     }
-    if (object && asset.type !== 'original' && asset.processing_status === 'ready' && object.fileSize > 0) return;
-    if (object && asset.upload_status === 'pending') {
-      await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', updated_at = NOW() WHERE id = $1", [assetId]);
+    if (asset.upload_status === 'failed') {
+      await transaction.query("UPDATE photo_assets SET upload_status = 'pending', updated_at = NOW() WHERE id = $1", [assetId]);
     }
+    await transaction.query(
+      "UPDATE photo_assets SET upload_status = 'uploaded', mime_type = $2, file_size = $3, width = $4, height = $5, updated_at = NOW() WHERE id = $1",
+      [assetId, object.mimeType, object.fileSize, object.width, object.height],
+    );
+    await transaction.query("UPDATE photos SET status = 'processing', updated_at = NOW() WHERE id = $1", [asset.photo_id]);
+    await this.jobs.enqueueInTransaction(transaction, {
+      type: 'PROCESS_PHOTO_ASSETS', payload: { photoId: asset.photo_id, sourceAssetId: asset.id },
+    });
   }
 }

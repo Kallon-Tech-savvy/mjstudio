@@ -63,6 +63,27 @@ export class JobService implements JobQueue {
 
   async claim<T extends JobType>(type: T, leaseSeconds = 60): Promise<ClaimedJob<T> | null> {
     return inTransaction(this.database, async (transaction) => {
+      // A crash never reaches fail(). Retire exhausted expired leases before
+      // claiming work; skip rows still owned by an executing transaction.
+      const abandoned = await transaction.query<{ payload: unknown }>(
+        `WITH exhausted AS (
+           SELECT id FROM application_jobs
+            WHERE job_type = $1 AND status = 'processing'
+              AND locked_until < NOW() AND attempts >= max_attempts
+            ORDER BY locked_until, id
+            FOR UPDATE SKIP LOCKED LIMIT 50
+         )
+         UPDATE application_jobs j
+            SET status = 'failed', failed_at = NOW(), locked_until = NULL,
+                lock_token = NULL, last_error = 'Worker lease expired on the final attempt.',
+                updated_at = NOW()
+           FROM exhausted e WHERE j.id = e.id
+         RETURNING j.payload`, [type]);
+      if (type === 'PROCESS_PHOTO_ASSETS') {
+        for (const job of abandoned.rows) {
+          await this.markProcessingFailed(transaction, jobPayloadSchemas.PROCESS_PHOTO_ASSETS.parse(job.payload));
+        }
+      }
       const row = await transaction.query<{
         id: string; job_type: T; payload: unknown; attempts: number; lock_token: string;
       }>(
@@ -89,12 +110,19 @@ export class JobService implements JobQueue {
   async heartbeat(job: ClaimedJob, leaseSeconds = 60) {
     const result = await this.database.query(
       `UPDATE application_jobs SET locked_until = NOW() + make_interval(secs => $3), updated_at = NOW()
-        WHERE id = $1 AND lock_token = $2 AND status = 'processing'`, [job.id, job.lockToken, leaseSeconds]);
+        WHERE id = $1 AND lock_token = $2 AND status = 'processing' AND locked_until > NOW()`, [job.id, job.lockToken, leaseSeconds]);
     if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
   }
 
   async complete(job: ClaimedJob, transactionCallback?: (transaction: Transaction) => Promise<void>) {
     return inTransaction(this.database, async (transaction) => {
+      // Own and lock the lease before handlers can change external storage.
+      const lease = await transaction.query(
+        `SELECT id FROM application_jobs WHERE id = $1 AND lock_token = $2
+          AND status = 'processing' AND locked_until > NOW() FOR UPDATE`,
+        [job.id, job.lockToken],
+      );
+      if (!lease.rows[0]) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
       await transactionCallback?.(transaction);
       const result = await transaction.query(
         `UPDATE application_jobs SET status = 'completed', completed_at = NOW(), locked_until = NULL,
@@ -104,20 +132,37 @@ export class JobService implements JobQueue {
     });
   }
 
-  async fail(job: ClaimedJob, error: unknown, maxAttempts = 5) {
+  async fail(job: ClaimedJob, error: unknown) {
     const permanent = error instanceof PermanentJobError;
-    const terminal = permanent || job.attempts >= maxAttempts;
     const backoffSeconds = Math.min(3600, 2 ** Math.max(0, job.attempts - 1) * 15);
     const details = error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2000) : 'Unknown job failure';
-    const result = await this.database.query(
-      `UPDATE application_jobs
-          SET status = CASE WHEN $3 THEN 'failed' ELSE 'pending' END,
-              failed_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
-              available_at = CASE WHEN $3 THEN available_at ELSE NOW() + make_interval(secs => $4) END,
+    return inTransaction(this.database, async (transaction) => {
+      const result = await transaction.query(
+        `UPDATE application_jobs
+          SET status = CASE WHEN $3 OR attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
+              failed_at = CASE WHEN $3 OR attempts >= max_attempts THEN NOW() ELSE NULL END,
+              available_at = CASE WHEN $3 OR attempts >= max_attempts THEN available_at ELSE NOW() + make_interval(secs => $4) END,
               locked_until = NULL, lock_token = NULL, last_error = $5, updated_at = NOW()
-        WHERE id = $1 AND lock_token = $2 AND status = 'processing'`,
-      [job.id, job.lockToken, terminal, backoffSeconds, details]);
-    if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
+        WHERE id = $1 AND lock_token = $2 AND status = 'processing'
+        RETURNING status`,
+        [job.id, job.lockToken, permanent, backoffSeconds, details]);
+      if (result.rowCount !== 1) throw new NotFoundError('JOB_LEASE_LOST', 'Job lease is no longer owned.');
+      if (result.rows[0].status === 'failed' && job.type === 'PROCESS_PHOTO_ASSETS') {
+        const payload = jobPayloadSchemas.PROCESS_PHOTO_ASSETS.parse(job.payload);
+        await this.markProcessingFailed(transaction, payload);
+      }
+    });
+  }
+
+  private async markProcessingFailed(transaction: Transaction, payload: ProcessPhotoAssetsPayload) {
+    await transaction.query(
+      `UPDATE photos p SET status = 'failed', updated_at = NOW()
+         FROM photo_assets original
+        WHERE p.id = $1 AND original.id = $2 AND original.photo_id = p.id
+          AND original.type = 'original' AND original.state = 'current'
+          AND p.deleted_at IS NULL AND p.status = 'processing'`,
+      [payload.photoId, payload.sourceAssetId],
+    );
   }
 }
 

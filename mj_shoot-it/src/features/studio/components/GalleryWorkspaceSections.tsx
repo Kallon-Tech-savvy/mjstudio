@@ -1,4 +1,8 @@
-import type { StudioDeliveryDetails, StudioFeedback, StudioSelectedPhoto } from "@/lib/api";
+import type {
+  StudioDeliveryDetails,
+  StudioFeedback,
+  StudioSelectedPhoto,
+} from "@/lib/api";
 
 export function StudioSelectionReview({
   submittedAt,
@@ -16,7 +20,8 @@ export function StudioSelectionReview({
           <p className="eyebrow">Client decision</p>
           <h2>{selection.length} photographs selected</h2>
           <p className="muted">
-            Received{submittedAt ? ` · ${new Date(submittedAt).toLocaleString()}` : ""}.
+            Received
+            {submittedAt ? ` · ${new Date(submittedAt).toLocaleString()}` : ""}.
             Review these choices before preparing delivery.
           </p>
         </div>
@@ -24,23 +29,18 @@ export function StudioSelectionReview({
       </div>
 
       {selection.length === 0 ? (
-        <div className="empty-state">The client submitted an empty selection.</div>
+        <div className="empty-state">
+          The client submitted an empty selection.
+        </div>
       ) : (
         <div className="photo-grid studio-selection-grid">
           {selection.map((photo, index) => (
-            <article
+            <button
+              type="button"
               key={photo.photoId}
               className="photo-card studio-selection-card"
-              role="button"
-              tabIndex={0}
               onClick={() => onSelect(index)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(index);
-                }
-              }}
-              aria-label={"Inspect photograph " + (photo.position + 1)}
+              aria-label={`Inspect photograph ${photo.position + 1}`}
             >
               <div className="photo-thumb">
                 <img
@@ -55,13 +55,19 @@ export function StudioSelectionReview({
               <div className="photo-meta">
                 <div className="photo-meta-header">
                   <strong>Photograph {photo.position + 1}</strong>
-                  <span className={"status-tag status-" + (photo.reviewStatus || "pending")}>
-                    {photo.reviewStatus === "approved" ? "Approved" : photo.reviewStatus === "needs_revision" ? "Revision" : "Pending"}
+                  <span
+                    className={`status-tag status-${photo.reviewStatus || "pending"}`}
+                  >
+                    {photo.reviewStatus === "approved"
+                      ? "Approved"
+                      : photo.reviewStatus === "needs_revision"
+                        ? "Revision"
+                        : "Pending"}
                   </span>
                 </div>
                 <small>{photo.filename}</small>
               </div>
-            </article>
+            </button>
           ))}
         </div>
       )}
@@ -86,10 +92,17 @@ export function StudioDeliverySection({
         <div>
           <p className="eyebrow">Final delivery</p>
           <h2>Prepare the client’s photographs</h2>
-          <p className="muted">{delivery?.approvedCount ?? 0} of {delivery?.totalSelectedCount ?? 0} selected photographs approved.</p>
+          <p className="muted">
+            {delivery?.approvedCount ?? 0} of{" "}
+            {delivery?.totalSelectedCount ?? 0} selected photographs approved.
+          </p>
         </div>
-        <span className={"tag status-" + (delivery?.status || "pending")}>
-          {delivery?.releasedAt ? "Released" : delivery?.status === "ready" ? "Ready for release" : "Pending proofing"}
+        <span className={`tag status-${delivery?.status || "pending"}`}>
+          {delivery?.releasedAt
+            ? "Released"
+            : delivery?.status === "ready"
+              ? "Ready for release"
+              : "Pending proofing"}
         </span>
       </div>
 
@@ -97,21 +110,36 @@ export function StudioDeliverySection({
         {delivery?.releasedAt ? (
           <div className="success-box delivery-success">
             <strong>Delivered to client</strong>
-            <span>Released on {new Date(delivery.releasedAt).toLocaleString()}.</span>
+            <span>
+              Released on {new Date(delivery.releasedAt).toLocaleString()}.
+            </span>
           </div>
         ) : delivery?.canPrepare ? (
           <div className="studio-delivery-actions">
-            <button type="button" className="primary-button" disabled={isProcessing} onClick={onPrepare}>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={isProcessing}
+              onClick={onPrepare}
+            >
               {isProcessing ? "Preparing…" : "Prepare final photographs"}
             </button>
             {delivery.status === "ready" || delivery.items.length ? (
-              <button type="button" className="primary-button" disabled={isProcessing} onClick={onRelease}>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={isProcessing}
+                onClick={onRelease}
+              >
                 {isProcessing ? "Releasing…" : "Release to client"}
               </button>
             ) : null}
           </div>
         ) : (
-          <p className="muted">Approve each selected photograph in Proofing to prepare the final delivery.</p>
+          <p className="muted">
+            Approve each selected photograph in Proofing to prepare the final
+            delivery.
+          </p>
         )}
       </div>
 
@@ -119,7 +147,10 @@ export function StudioDeliverySection({
         <ul className="list-stack">
           {delivery.items.map((item) => (
             <li key={item.id} className="list-row">
-              <div><strong>Photograph {item.position + 1}</strong><small>{item.filename}</small></div>
+              <div>
+                <strong>Photograph {item.position + 1}</strong>
+                <small>{item.filename}</small>
+              </div>
               <span className="tag status-approved">Ready for download</span>
             </li>
           ))}
@@ -129,7 +160,11 @@ export function StudioDeliverySection({
   );
 }
 
-export function StudioFeedbackReview({ feedback }: { feedback: StudioFeedback[] }) {
+export function StudioFeedbackReview({
+  feedback,
+}: {
+  feedback: StudioFeedback[];
+}) {
   if (feedback.length === 0) return null;
 
   return (
@@ -138,7 +173,10 @@ export function StudioFeedbackReview({ feedback }: { feedback: StudioFeedback[] 
         <div>
           <p className="eyebrow">Client feedback</p>
           <h2>Notes from the client</h2>
-          <p className="muted">Review these notes alongside the selected photographs before delivery.</p>
+          <p className="muted">
+            Review these notes alongside the selected photographs before
+            delivery.
+          </p>
         </div>
         <span className="tag">{feedback.length}</span>
       </div>
@@ -146,8 +184,15 @@ export function StudioFeedbackReview({ feedback }: { feedback: StudioFeedback[] 
         {feedback.map((item) => (
           <li key={item.id} className="list-row">
             <div>
-              <strong>{item.feedbackType === "photo" ? "Photograph " + (Number(item.position ?? 0) + 1) : "Gallery note"}</strong>
-              <small>{item.filename ?? "Gallery-wide feedback"} · {new Date(item.createdAt).toLocaleString()}</small>
+              <strong>
+                {item.feedbackType === "photo"
+                  ? `Photograph ${Number(item.position ?? 0) + 1}`
+                  : "Gallery note"}
+              </strong>
+              <small>
+                {item.filename ?? "Gallery-wide feedback"} ·{" "}
+                {new Date(item.createdAt).toLocaleString()}
+              </small>
             </div>
             <p>{item.message}</p>
           </li>
@@ -157,16 +202,57 @@ export function StudioFeedbackReview({ feedback }: { feedback: StudioFeedback[] 
   );
 }
 
-export function StudioPhotoList({ photos }: { photos: import("@/lib/api").PhotoRecord[] }) {
+export function StudioPhotoList({
+  photos,
+  busy = false,
+  onCheck,
+  onRemove,
+}: {
+  photos: import("@/lib/api").PhotoRecord[];
+  busy?: boolean;
+  onCheck?: (photo: import("@/lib/api").PhotoRecord) => void;
+  onRemove?: (photo: import("@/lib/api").PhotoRecord) => void;
+}) {
   return (
     <ul className="list-stack spaced-list">
       {photos.length === 0 ? (
-        <li className="empty-state">No photos have been added to this gallery yet.</li>
+        <li className="empty-state">
+          No photos have been added to this gallery yet.
+        </li>
       ) : (
         photos.map((photo) => (
-          <li key={photo.photoId} className="list-row">
-            <div><strong>{photo.filename}</strong><small>{photo.mimeType ?? "image"}</small></div>
-            <span className="tag">{photo.status ?? "ready"}</span>
+          <li key={photo.photoId} className="list-row saved-photo-row">
+            <div>
+              <strong>{photo.filename}</strong>
+              <small>
+                {photo.status === "failed"
+                  ? "This upload needs attention. Remove it only if you want to choose the file again."
+                  : photo.status === "processing"
+                    ? "Preparing photograph"
+                    : photo.status && photo.status !== "active"
+                      ? "Upload needs checking"
+                      : "Ready"}
+              </small>
+            </div>
+            {photo.status === "failed" && onRemove ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={busy}
+                onClick={() => onRemove(photo)}
+              >
+                Remove incomplete upload
+              </button>
+            ) : photo.status && photo.status !== "active" && onCheck ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={busy}
+                onClick={() => onCheck(photo)}
+              >
+                Check upload
+              </button>
+            ) : null}
           </li>
         ))
       )}

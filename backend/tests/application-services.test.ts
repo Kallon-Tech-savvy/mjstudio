@@ -22,7 +22,7 @@ describe('application-service rules', () => {
 
     expect(() => assertGalleryCanPublish(
       { archivedAt: null, workflowStatus: 'draft', publicationStatus: 'unpublished' },
-      { hasUsablePhotos: true, hasClient: true, hasActiveAccess: true },
+      { hasUsablePhotos: true, hasClient: true, hasActiveAccess: false },
     )).toThrowError(expect.objectContaining({ code: 'GALLERY_NOT_PUBLISHABLE' }));
 
     expect(() => assertGalleryCanPublish(

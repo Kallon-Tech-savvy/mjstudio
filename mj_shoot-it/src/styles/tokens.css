@@ -20,7 +20,9 @@
   --danger: #292929;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
   --font-ui: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", sans-serif;
-  --font-display: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-display:
+    "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+    Georgia, serif;
   --font-mono: "SFMono-Regular", Consolas, monospace;
   --space-1: 4px;
   --space-2: 8px;
@@ -40,11 +42,25 @@ body {
   font-feature-settings: "ss01" on;
   letter-spacing: -0.01em;
 }
-h1, h2, h3, .editorial-title {
+h1,
+h2,
+h3,
+.editorial-title {
   font-family: var(--font-display);
   font-weight: 400;
   letter-spacing: -0.02em;
 }
-button, input, select, textarea { font-family: var(--font-ui); }
-:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-::selection { background: #d8d8d5; color: #111111; }
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-ui);
+}
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+::selection {
+  background: #d8d8d5;
+  color: #111111;
+}

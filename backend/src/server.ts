@@ -54,7 +54,7 @@ if (localPhotoStorage) {
   const workers = [
     new JobWorker(services.jobs, new ProcessPhotoAssetsHandler(localPhotoStorage, localPhotoStorage)),
     new JobWorker(services.jobs, new CleanupPhotoAssetsHandler(localPhotoStorage)),
-    new JobWorker(services.jobs, new ReconcilePhotoAssetHandler(localPhotoStorage)),
+    new JobWorker(services.jobs, new ReconcilePhotoAssetHandler(localPhotoStorage, services.jobs)),
   ];
   const pollLocalPhotoJobs = async () => {
     try {

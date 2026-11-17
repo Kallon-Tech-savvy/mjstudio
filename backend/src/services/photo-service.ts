@@ -139,18 +139,15 @@ export class PhotoService {
   async uploadComplete(actor: PhotographerContext, galleryId: string, photoId: string) {
     const membership = await resolveGalleryMembership(this.database, actor, galleryId);
     ensureGalleryPermission(actor, membership, membership.galleryRole, 'photo.upload');
-    const pending = await this.database.query<{ id: string; storage_key: string; upload_status: string; processing_status: string }>(
-      `SELECT pa.id, pa.storage_key, pa.upload_status, pa.processing_status
+    const pending = await this.database.query<{ id: string; storage_key: string; upload_status: string; processing_status: string; status: string }>(
+      `SELECT pa.id, pa.storage_key, pa.upload_status, pa.processing_status, p.status
          FROM photo_assets pa JOIN photos p ON p.id = pa.photo_id
         WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL
           AND pa.type = 'original' AND pa.state = 'current'`, [photoId, galleryId]);
     const asset = pending.rows[0];
     if (!asset) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo not found.');
     if (asset.upload_status === 'uploaded') {
-      const state = await this.database.query<{ status: string; processing_status: string }>(
-        `SELECT p.status, pa.processing_status FROM photos p JOIN photo_assets pa ON pa.photo_id = p.id
-          WHERE p.id = $1 AND pa.id = $2`, [photoId, asset.id]);
-      return { photoId, assetId: asset.id, status: state.rows[0]?.status ?? 'processing', asset: { uploadStatus: 'uploaded', processingStatus: state.rows[0]?.processing_status ?? 'not_required' } };
+      return { photoId, assetId: asset.id, status: asset.status, asset: { id: asset.id, uploadStatus: 'uploaded', processingStatus: asset.processing_status } };
     }
     let verified: VerifiedStoredObject | null;
     try {
@@ -159,24 +156,37 @@ export class PhotoService {
       await this.jobs.enqueue({ type: 'RECONCILE_PHOTO_ASSET', payload: { assetId: asset.id } });
       throw error;
     }
-    if (!verified || verified.storageKey !== asset.storage_key || verified.fileSize <= 0) {
-      await inTransaction(this.database, async (transaction) => {
-        await transaction.query("UPDATE photo_assets SET upload_status = 'failed', updated_at = NOW() WHERE id = $1 AND upload_status = 'pending'", [asset.id]);
-        await transaction.query("UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL", [photoId]);
-      });
-      throw new ConflictError('UPLOAD_NOT_VERIFIED', 'Uploaded object could not be verified.');
-    }
     const result = await inTransaction(this.database, async (transaction) => {
-      const row = await transaction.query<{ upload_status: string }>('SELECT upload_status FROM photo_assets WHERE id = $1 FOR UPDATE', [asset.id]);
-      if (!row.rows[0]) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo asset not found.');
-      if (row.rows[0].upload_status === 'uploaded') return { alreadyUploaded: true };
+      // Storage checks can overlap processing or deletion. Recheck both records
+      // under the same locks used by processing before applying any result.
+      const row = await transaction.query<{ upload_status: string; processing_status: string; status: string }>(
+        `SELECT pa.upload_status, pa.processing_status, p.status
+           FROM photos p JOIN photo_assets pa ON pa.photo_id = p.id
+          WHERE p.id = $1 AND p.gallery_id = $2 AND p.deleted_at IS NULL
+            AND pa.id = $3 AND pa.type = 'original' AND pa.state = 'current'
+          FOR UPDATE OF p, pa`, [photoId, galleryId, asset.id]);
+      const current = row.rows[0];
+      if (!current) throw new NotFoundError('PHOTO_NOT_FOUND', 'Photo asset not found.');
+      if (current.upload_status === 'uploaded') {
+        return { verified: true, status: current.status, processingStatus: current.processing_status };
+      }
+      if (!verified || verified.storageKey !== asset.storage_key || !(verified.fileSize > 0)) {
+        await transaction.query("UPDATE photo_assets SET upload_status = 'failed', updated_at = NOW() WHERE id = $1 AND upload_status = 'pending'", [asset.id]);
+        await transaction.query("UPDATE photos SET status = 'failed', updated_at = NOW() WHERE id = $1", [photoId]);
+        return { verified: false, status: 'failed', processingStatus: current.processing_status };
+      }
+      // Retry through the existing state machine; failed -> uploaded is illegal.
+      if (current.upload_status === 'failed') {
+        await transaction.query("UPDATE photo_assets SET upload_status = 'pending', updated_at = NOW() WHERE id = $1", [asset.id]);
+      }
       await transaction.query("UPDATE photo_assets SET upload_status = 'uploaded', mime_type = $2, file_size = $3, updated_at = NOW() WHERE id = $1", [asset.id, verified.mimeType, verified.fileSize]);
+      await transaction.query("UPDATE photos SET status = 'processing', updated_at = NOW() WHERE id = $1", [photoId]);
       const job = await this.jobs.enqueueInTransaction(transaction, {
-        type: 'PROCESS_PHOTO_ASSETS',
-        payload: { photoId, sourceAssetId: asset.id },
+        type: 'PROCESS_PHOTO_ASSETS', payload: { photoId, sourceAssetId: asset.id },
       });
-      return { alreadyUploaded: false, jobId: job.id };
+      return { verified: true, status: 'processing', processingStatus: 'not_required', jobId: job.id };
     });
-    return { photoId, status: 'processing', asset: { id: asset.id, uploadStatus: 'uploaded', processingStatus: 'not_required' }, jobId: result.jobId };
+    if (!result.verified) throw new ConflictError('UPLOAD_NOT_VERIFIED', 'Uploaded object could not be verified.');
+    return { photoId, assetId: asset.id, status: result.status, asset: { id: asset.id, uploadStatus: 'uploaded', processingStatus: result.processingStatus }, jobId: result.jobId };
   }
 }

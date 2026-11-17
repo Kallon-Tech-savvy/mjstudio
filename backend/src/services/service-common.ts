@@ -64,9 +64,12 @@ export function validateGalleryName(name: string): string {
 export function assertGalleryCanPublish(gallery: { archivedAt: Date | null; workflowStatus: string; publicationStatus: string }, dependencies: { hasUsablePhotos: boolean; hasClient: boolean; hasActiveAccess: boolean }): void {
   if (gallery.archivedAt) throw new ConflictError('GALLERY_NOT_PUBLISHABLE', 'Archived galleries cannot be published.');
   if (gallery.publicationStatus === 'published') throw new ConflictError('GALLERY_ALREADY_PUBLISHED', 'Gallery is already published.');
-  if (!['reviewing', 'completed'].includes(gallery.workflowStatus) || !dependencies.hasUsablePhotos || !dependencies.hasClient || !dependencies.hasActiveAccess) {
-    throw new ConflictError('GALLERY_NOT_PUBLISHABLE', 'Gallery does not meet the requirements for publication.');
+  if (!['draft', 'reviewing', 'completed'].includes(gallery.workflowStatus)) {
+    throw new ConflictError('GALLERY_NOT_PUBLISHABLE', 'This gallery is not in a publishable workflow state.');
   }
+  if (!dependencies.hasClient) throw new ConflictError('GALLERY_NOT_PUBLISHABLE', 'Choose a studio client before publishing.');
+  if (!dependencies.hasUsablePhotos) throw new ConflictError('GALLERY_NOT_PUBLISHABLE', 'Add photographs and wait for every upload to finish processing before publishing.');
+  if (!dependencies.hasActiveAccess) throw new ConflictError('GALLERY_NOT_PUBLISHABLE', 'Prepare an active client access link before publishing.');
 }
 
 export function assertGalleryCanArchive(gallery: { archivedAt: Date | null }): void {

@@ -10,7 +10,9 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
   if (err instanceof SyntaxError && 'body' in err) {
     const error = new BadRequestError('MALFORMED_JSON', 'Request body contains malformed JSON.');
-    logger.warn({ err: sanitizeForLogging(err), requestId, path: req.path }, 'request parse error');
+    // Parser errors retain the raw body and may embed it in the message/stack.
+    // Only log our own diagnostic fields, never the original error object.
+    logger.warn({ errorCode: error.code, requestId, method: req.method, path: req.path }, 'request parse error');
     res.status(error.statusCode).json(errorEnvelope(error.code, error.message, requestId));
     return;
   }

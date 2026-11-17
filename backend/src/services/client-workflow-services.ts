@@ -10,8 +10,8 @@ export class SelectionService {
   constructor(private readonly database: Database, private readonly createId: () => string = randomUUID) {}
 
   async getSelection(client: ClientContext) {
-    await this.assertCurrentGrant(this.database, client);
     return inTransaction(this.database, async (transaction) => {
+      await this.assertCurrentGrant(transaction, client);
       const selection = await this.ensureSelection(transaction, client);
       const items = await transaction.query(
         `SELECT gsi.photo_id AS "photoId", gsi.selected, gsi.updated_at AS "updatedAt"
@@ -108,10 +108,12 @@ export class SelectionService {
   }
 
   private async ensureSelection(queryable: { query: Database['query'] }, client: ClientContext) {
+    // All readers/writers hold this row until commit. An edit must re-read a
+    // concurrent submission's status before it can change either item table.
     const existing = await queryable.query(
       `SELECT id, status, submitted_at, created_at, updated_at
          FROM gallery_selections
-        WHERE gallery_access_id = $1`,
+        WHERE gallery_access_id = $1 FOR UPDATE`,
       [client.galleryAccessId],
     );
     if (existing.rows[0]) return existing.rows[0];
@@ -135,12 +137,16 @@ export class SelectionService {
   }
 
   private async assertCurrentGrant(queryable: { query: Database['query'] }, client: ClientContext) {
+    // Lock access before the shortlist, matching access reset/revocation order.
+    // Shared access locks allow independent reads but keep a reset from moving
+    // the shortlist while a request is using the old grant.
     const result = await queryable.query(
       `SELECT 1 FROM client_sessions cs JOIN gallery_access ga ON ga.id = cs.gallery_access_id
          JOIN galleries g ON g.id = ga.gallery_id
         WHERE cs.id = $1 AND ga.id = $2 AND ga.gallery_id = $3 AND cs.revoked_at IS NULL AND ga.revoked_at IS NULL
           AND g.archived_at IS NULL AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
-          AND g.publication_status = 'published' AND (ga.expires_at IS NULL OR ga.expires_at > NOW())`,
+          AND g.publication_status = 'published' AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
+        FOR SHARE OF ga`,
       [client.clientSessionId, client.galleryAccessId, client.galleryId],
     );
     if (!result.rows[0]) throw new ForbiddenError('INVALID_GALLERY_ACCESS');

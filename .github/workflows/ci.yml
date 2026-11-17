@@ -14,6 +14,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  repository:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check tracked files
+        run: npm run check:repository
+      - name: Verify root lockfile
+        run: npm ci --ignore-scripts
+      - name: Audit root package
+        run: npm audit --audit-level=high
+
   backend:
     name: Backend tests and build
     runs-on: ubuntu-latest
@@ -33,6 +50,8 @@ jobs:
         run: npm ci
       - name: Run backend tests
         run: npm test
+      - name: Audit backend dependencies
+        run: npm audit --audit-level=high
       - name: Build backend
         run: npm run build
 
@@ -53,8 +72,18 @@ jobs:
           cache-dependency-path: mj_shoot-it/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Lint frontend
+        run: npm run lint
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+      - name: Typecheck frontend
+        run: npm run typecheck
       - name: Build frontend
         run: npm run build
+      - name: Install browser for gallery workflow tests
+        run: npx playwright install --with-deps chromium
+      - name: Test photographer and client workflows
+        run: npm run test:workflow
 
   migrations:
     name: PostgreSQL migration smoke test
@@ -91,3 +120,9 @@ jobs:
           NODE_ENV: test
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/mjstudio_test
         run: npm run migrate
+      - name: Test PostgreSQL gallery journey
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/mjstudio_test
+        run: npm run test:database

@@ -1,4 +1,11 @@
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ClientRecord } from "@/lib/api";
 
 /** What the photographer chose: an existing client, or a new one to be created with the gallery. */
@@ -23,6 +30,7 @@ type Props = {
 export function ClientPicker({ clients, value, onChange }: Props) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const newNameRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -31,15 +39,27 @@ export function ClientPicker({ clients, value, onChange }: Props) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  useEffect(() => {
+    if (creating) newNameRef.current?.focus();
+  }, [creating]);
+
   const trimmed = query.trim();
   const matches = useMemo(() => {
     const q = trimmed.toLowerCase();
     if (!q) return clients.slice(0, 6);
     return clients
-      .filter((c) => c.name.toLowerCase().includes(q) || String(c.email ?? "").toLowerCase().includes(q))
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          String(c.email ?? "")
+            .toLowerCase()
+            .includes(q),
+      )
       .slice(0, 6);
   }, [clients, trimmed]);
-  const exact = clients.some((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
+  const exact = clients.some(
+    (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+  );
   const canCreate = trimmed.length > 0 && !exact;
   const rowCount = matches.length + (canCreate ? 1 : 0);
 
@@ -55,7 +75,8 @@ export function ClientPicker({ clients, value, onChange }: Props) {
     setCreating(true);
     setOpen(false);
   };
-  const choose = (index: number) => (index < matches.length ? pick(matches[index]) : startCreate());
+  const choose = (index: number) =>
+    index < matches.length ? pick(matches[index]) : startCreate();
   const clear = () => {
     onChange(null);
     setQuery("");
@@ -81,7 +102,10 @@ export function ClientPicker({ clients, value, onChange }: Props) {
 
   if (value) {
     const label = value.kind === "existing" ? value.client.name : value.name;
-    const detail = value.kind === "existing" ? value.client.email || value.client.phone : value.email || value.phone;
+    const detail =
+      value.kind === "existing"
+        ? value.client.email || value.client.phone
+        : value.email || value.phone;
     return (
       <div>
         <span className="mb-1.5 block text-sm opacity-70">Client</span>
@@ -93,7 +117,11 @@ export function ClientPicker({ clients, value, onChange }: Props) {
               {detail ? ` · ${detail}` : ""}
             </span>
           </div>
-          <button type="button" className="shrink-0 text-sm underline opacity-80 hover:opacity-100" onClick={clear}>
+          <button
+            type="button"
+            className="shrink-0 text-sm underline opacity-80 hover:opacity-100"
+            onClick={clear}
+          >
             Change
           </button>
         </div>
@@ -106,15 +134,42 @@ export function ClientPicker({ clients, value, onChange }: Props) {
     const ready = newName.trim().length > 0 && !emailBad;
     return (
       <div className="rounded-xl border border-white/15 bg-white/5 p-4">
-        <p className="mb-3 text-sm opacity-70">New client. Only the name is required.</p>
+        <p className="mb-3 text-sm opacity-70">
+          New client. Only the name is required.
+        </p>
         <div className="space-y-3">
-          <input className={field} aria-label="Client name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Client name" autoFocus />
+          <input
+            className={field}
+            aria-label="Client name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Client name"
+            ref={newNameRef}
+          />
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <input className={field} type="email" aria-label="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" />
-              {emailBad ? <p className="mt-1 text-xs text-red-300">That does not look like an email address.</p> : null}
+              <input
+                className={field}
+                type="email"
+                aria-label="Email (optional)"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email (optional)"
+              />
+              {emailBad ? (
+                <p className="mt-1 text-xs text-red-300">
+                  That does not look like an email address.
+                </p>
+              ) : null}
             </div>
-            <input className={field} type="tel" aria-label="WhatsApp or phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="WhatsApp / phone (optional)" />
+            <input
+              className={field}
+              type="tel"
+              aria-label="WhatsApp or phone (optional)"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="WhatsApp / phone (optional)"
+            />
           </div>
         </div>
         <div className="mt-4 flex gap-2">
@@ -123,13 +178,22 @@ export function ClientPicker({ clients, value, onChange }: Props) {
             className="primary-button"
             disabled={!ready}
             onClick={() => {
-              onChange({ kind: "new", name: newName.trim(), email: email.trim() || undefined, phone: phone.trim() || undefined });
+              onChange({
+                kind: "new",
+                name: newName.trim(),
+                email: email.trim() || undefined,
+                phone: phone.trim() || undefined,
+              });
               setCreating(false);
             }}
           >
             Use this client
           </button>
-          <button type="button" className="secondary-button" onClick={() => setCreating(false)}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setCreating(false)}
+          >
             Cancel
           </button>
         </div>
@@ -139,7 +203,10 @@ export function ClientPicker({ clients, value, onChange }: Props) {
 
   return (
     <div className="relative">
-      <label className="mb-1.5 block text-sm opacity-70" htmlFor={`${listId}-input`}>
+      <label
+        className="mb-1.5 block text-sm opacity-70"
+        htmlFor={`${listId}-input`}
+      >
         Who is this shoot for?
       </label>
       <input
@@ -150,7 +217,9 @@ export function ClientPicker({ clients, value, onChange }: Props) {
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={open && rowCount > 0 ? `${listId}-${active}` : undefined}
+        aria-activedescendant={
+          open && rowCount > 0 ? `${listId}-${active}` : undefined
+        }
         autoComplete="off"
         placeholder="Type a client name…"
         value={query}
@@ -164,35 +233,62 @@ export function ClientPicker({ clients, value, onChange }: Props) {
         onKeyDown={onKeyDown}
       />
       {open && rowCount > 0 ? (
-        <ul id={listId} role="listbox" className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-slate-900 shadow-xl">
+        <div
+          id={listId}
+          role="listbox"
+          aria-label="Matching clients"
+          tabIndex={-1}
+          className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-slate-900 shadow-xl"
+        >
           {matches.map((client, index) => (
-            <li key={client.clientId} id={`${listId}-${index}`} role="option" aria-selected={index === active}>
-              <button
-                type="button"
-                className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left ${index === active ? "bg-white/10" : "hover:bg-white/5"}`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(client)}
-              >
-                <span className="truncate">{client.name}</span>
-                <span className="truncate text-sm opacity-50">{client.email || client.phone || ""}</span>
-              </button>
-            </li>
+            <div
+              key={client.clientId}
+              id={`${listId}-${index}`}
+              role="option"
+              tabIndex={-1}
+              aria-selected={index === active}
+              className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left ${index === active ? "bg-white/10" : "hover:bg-white/5"}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(client)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  pick(client);
+                }
+              }}
+            >
+              <span className="truncate">{client.name}</span>
+              <span className="truncate text-sm opacity-50">
+                {client.email || client.phone || ""}
+              </span>
+            </div>
           ))}
           {canCreate ? (
-            <li id={`${listId}-${matches.length}`} role="option" aria-selected={active === matches.length}>
-              <button
-                type="button"
-                className={`w-full px-4 py-3 text-left font-medium text-emerald-300 ${active === matches.length ? "bg-white/10" : "hover:bg-white/5"}`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={startCreate}
-              >
-                + Create “{trimmed}” as a new client
-              </button>
-            </li>
+            <div
+              id={`${listId}-${matches.length}`}
+              role="option"
+              tabIndex={-1}
+              aria-selected={active === matches.length}
+              className={`w-full px-4 py-3 text-left font-medium text-emerald-300 ${active === matches.length ? "bg-white/10" : "hover:bg-white/5"}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={startCreate}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  startCreate();
+                }
+              }}
+            >
+              + Create “{trimmed}” as a new client
+            </div>
           ) : null}
-        </ul>
+        </div>
       ) : null}
-      {clients.length === 0 && !trimmed ? <p className="mt-2 text-sm opacity-60">No clients yet. Type a name to add your first one.</p> : null}
+      {clients.length === 0 && !trimmed ? (
+        <p className="mt-2 text-sm opacity-60">
+          No clients yet. Type a name to add your first one.
+        </p>
+      ) : null}
     </div>
   );
 }
