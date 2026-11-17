@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ClientPhotoImage } from "@/components/ClientPhotoImage";
+import { GalleryJourney } from "@/components/GalleryJourney";
 import { ModalDialog } from "@/components/ModalDialog";
 import {
   ApiError,
@@ -112,8 +113,8 @@ function ClientAccessPage() {
           <p className="eyebrow">Private gallery</p>
           <h1>Your gallery is just a step away.</h1>
           <p className="muted">
-            Enter the six-digit PIN your photographer shared. Your private link
-            and PIN will open the gallery securely.
+            Use the private gallery link and six-digit PIN your photographer
+            shared. You don’t need to create an account.
           </p>
         </div>
 
@@ -129,9 +130,16 @@ function ClientAccessPage() {
               <input
                 value={secret}
                 onChange={(event) => setSecret(event.target.value)}
-                placeholder="Paste the key from your link"
+                placeholder="Paste your private access key"
+                aria-describedby="access-key-help"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
               />
+              <small id="access-key-help">
+                If you received a gallery link, open that link instead. It fills
+                in your access key for you.
+              </small>
             </label>
           )}
 
@@ -143,6 +151,7 @@ function ClientAccessPage() {
                 setPin(event.target.value.replace(/\D/g, "").slice(0, 6))
               }
               placeholder="Enter 6 digits"
+              aria-describedby="gallery-pin-help"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
@@ -151,6 +160,10 @@ function ClientAccessPage() {
             />
           </label>
 
+          <p id="gallery-pin-help" className="field-help">
+            Use the PIN paired with this gallery link. If it’s missing or no
+            longer works, ask your photographer for the latest link and PIN.
+          </p>
           {error ? (
             <div className="error-box" role="alert">
               {error}
@@ -672,13 +685,15 @@ function ClientSelectionReviewPage() {
   return (
     <main className="page-shell client-gallery-shell">
       <div className="client-gallery selection-review-page">
+        <GalleryJourney stage="review" />
         <header className="gallery-header">
           <div>
             <p className="eyebrow">Your shortlist</p>
             <h1>{galleryName}</h1>
             <p className="gallery-intro">
-              A final look before you send these choices to your photographer.
-              You can still remove a photograph before submitting.
+              {selectionStatus === "submitted"
+                ? "Your choices have been sent. Contact your photographer if you need to change them."
+                : "A final look before you send these choices. You can remove a photograph or go back to add more."}
             </p>
           </div>
           {removingPhotoId || isSubmitting ? (
@@ -769,8 +784,9 @@ function ClientSelectionReviewPage() {
           ) : (
             <>
               <p className="muted">
-                Happy with your choices? Send them to your photographer to
-                review.
+                Sending finishes your selection and locks further changes. Check
+                your favourites before you send. Your photographer can help if
+                you need a change afterwards.
               </p>
               <button
                 type="button"
@@ -1065,6 +1081,7 @@ function ClientDeliveryPage() {
   return (
     <main className="page-shell client-delivery-shell">
       <div className="panel">
+        <GalleryJourney stage="delivery" />
         <div className="panel-header compact-header">
           <div>
             <p className="eyebrow">{galleryName}</p>
@@ -1346,12 +1363,18 @@ function ClientGalleryWorkspace() {
     setFeedbackError("");
     setFeedbackStatus("");
     setIsFeedbackOpen(true);
+    requestAnimationFrame(() =>
+      document.getElementById("gallery-feedback")?.focus(),
+    );
   };
 
   const handleCloseGalleryFeedback = () => {
     if (isFeedbackSubmitting) return;
     setFeedbackError("");
     setIsFeedbackOpen(false);
+    requestAnimationFrame(() =>
+      document.getElementById("gallery-note-trigger")?.focus(),
+    );
   };
 
   if (!galleryId) {
@@ -1397,13 +1420,15 @@ function ClientGalleryWorkspace() {
   return (
     <main className="page-shell client-gallery-shell">
       <div className="client-gallery">
+        <GalleryJourney stage="choose" />
         <header className="gallery-header">
           <div>
             <p className="eyebrow">Your photographs</p>
             <h1>{galleryName}</h1>
             <p className="gallery-intro">
-              Take your time. Open a photograph to see it in detail, then choose
-              the images you’d like to keep in focus.
+              Open a photograph for a closer look or to leave a note. Use Select
+              to choose favourites, then Review selection to check and send
+              them.
             </p>
           </div>
           {deliveryIsReleased ? (
@@ -1416,6 +1441,18 @@ function ClientGalleryWorkspace() {
           ) : null}
         </header>
 
+        <section className="journey-guidance" aria-label="Selection guidance">
+          <strong>
+            {selectionStatus === "submitted"
+              ? "Your selection is with your photographer"
+              : "Your favourites, at your pace"}
+          </strong>
+          <p>
+            {selectionStatus === "submitted"
+              ? "Selections are locked after sending. You can still browse and leave a note for your photographer."
+              : "Choices save as you go. Select again to remove a favourite. Your photographer receives your final selection when you send it from the review page."}
+          </p>
+        </section>
         {deliveryLoading ? (
           <output aria-live="polite" className="muted">
             Checking final photo availability…
@@ -1494,6 +1531,10 @@ function ClientGalleryWorkspace() {
                   </button>
 
                   <div className="photo-meta">
+                    <span className="photo-position">
+                      Photograph {photo.position + 1} · Open to view or add a
+                      note
+                    </span>
                     {photo.recommended ? (
                       <span className="tag">Recommended</span>
                     ) : null}
@@ -1507,6 +1548,7 @@ function ClientGalleryWorkspace() {
                       Boolean(savingPhotoId) || selectionStatus === "submitted"
                     }
                     aria-pressed={selected}
+                    aria-label={`${selected ? "Selected" : "Select"} photograph ${photo.position + 1}`}
                   >
                     {savingPhotoId === photo.photoId
                       ? "Saving…"
@@ -1541,8 +1583,14 @@ function ClientGalleryWorkspace() {
               void handleGalleryFeedback();
             }}
           >
+            <label htmlFor="gallery-feedback">Note for your photographer</label>
+            <p id="note-help" className="field-help">
+              For a particular photograph, open it and add a note there. This
+              note is about the gallery. Up to 5,000 characters.
+            </p>
             <textarea
               id="gallery-feedback"
+              aria-describedby="note-help"
               className="textarea"
               value={feedback}
               onChange={(event) => setFeedback(event.target.value)}
@@ -1575,7 +1623,10 @@ function ClientGalleryWorkspace() {
         ) : (
           <button
             type="button"
+            id="gallery-note-trigger"
             className="button-ghost feedback-trigger"
+            aria-expanded={false}
+            aria-controls="gallery-feedback"
             onClick={handleOpenGalleryFeedback}
           >
             Leave a note for your photographer

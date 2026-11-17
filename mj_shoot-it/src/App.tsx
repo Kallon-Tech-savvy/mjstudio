@@ -15,62 +15,138 @@ import {
 
 function HomePage() {
   return (
-    <main className="page-shell landing-shell">
-      <section className="panel hero-panel">
-        <p className="eyebrow">MJ Studio</p>
-        <h1>Thoughtful galleries, beautifully delivered.</h1>
-        <p className="lead">
-          Prepare private client galleries, review selections, and share
-          polished imagery without the usual back-and-forth.
-        </p>
+    <main className="atelier-home">
+      <nav className="atelier-nav" aria-label="Main navigation">
+        <Link to="/" className="atelier-logo" aria-label="MJ Studio home">
+          mj<span>STUDIO</span>
+          <i aria-hidden="true">✳</i>
+        </Link>
+        <a href="#experience" className="atelier-nav-story">
+          A little more personal.
+        </a>
+        <Link to="/client/access" className="atelier-nav-link">
+          Your gallery <span aria-hidden="true">↗</span>
+        </Link>
+        <Link to="/photographer/login" className="atelier-studio-link">
+          Studio sign in
+        </Link>
+      </nav>
 
-        <div className="cta-row">
-          <Link to="/photographer/login" className="primary-button">
-            Enter studio
-          </Link>
-          <Link to="/client/access" className="secondary-button">
-            Open client gallery
-          </Link>
+      <section className="atelier-hero" aria-labelledby="home-title">
+        <div className="atelier-copy">
+          <p className="eyebrow">
+            <span className="atelier-dot" /> PHOTOGRAPHS. PEOPLE. CONNECTION.
+          </p>
+          <h1 id="home-title">
+            The moment
+            <br />
+            was yours.
+            <br />
+            <em>Keep the feeling.</em>
+          </h1>
+          <p className="atelier-intro">
+            More than a collection of photographs. A little space to relive it
+            all, find your favourites, and make the final details feel like you.
+          </p>
+          <div className="atelier-actions">
+            <Link to="/client/access" className="primary-button">
+              Find your gallery <span aria-hidden="true">↗</span>
+            </Link>
+            <a href="#experience" className="atelier-text-link">
+              How it feels <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+          <p className="atelier-reassurance">
+            Your private gallery. Your pace. Your photographer, a note away.
+          </p>
+        </div>
+        <div className="print-scene">
+          <div className="scene-orbit" aria-hidden="true" />
+          <figure className="photo-print print-main">
+            <img
+              src="/images/wedding.jpg"
+              alt="A couple sharing a moment at their outdoor wedding"
+              fetchPriority="high"
+              width="1400"
+              height="933"
+            />
+            <figcaption>
+              <span>The moments between.</span>
+              <span>01 /</span>
+            </figcaption>
+          </figure>
+          <figure className="photo-print print-small">
+            <img
+              src="/images/family.jpg"
+              alt="A family walking together in warm evening light"
+              width="900"
+              height="600"
+            />
+            <figcaption>Close to the heart.</figcaption>
+          </figure>
+          <div className="scene-note">
+            <span aria-hidden="true">♡</span>
+            <div>
+              Some things deserve
+              <br />
+              to be felt again.
+            </div>
+          </div>
+          <p className="scene-caption">LIFE, BEAUTIFULLY UNPOSED.</p>
         </div>
       </section>
 
-      <section className="feature-grid">
-        <article className="panel card">
-          <p className="eyebrow">For photographers</p>
-          <h2>Prepare with clarity</h2>
-          <p>
-            Create galleries, issue access, and keep each delivery moving with a
-            calm, purposeful workspace.
-          </p>
-          <Link to="/photographer/dashboard" className="tiny-link">
-            Open dashboard
-          </Link>
-        </article>
-
-        <article className="panel card">
-          <p className="eyebrow">For clients</p>
-          <h2>Review with ease</h2>
-          <p>
-            Open the gallery securely, browse imagery, leave notes, and choose
-            favourites without friction.
-          </p>
-          <Link to="/client/access" className="tiny-link">
-            Open client access
-          </Link>
-        </article>
-
-        <article className="panel card">
-          <p className="eyebrow">Built for trust</p>
-          <h2>Secure by default</h2>
-          <p>
-            Permissions remain server-side so every gallery action is enforced,
-            and the browser only presents the experience.
-          </p>
-          <Link to="/photographer/login" className="tiny-link">
-            Sign in
-          </Link>
-        </article>
+      <section
+        id="experience"
+        className="atelier-experience"
+        aria-labelledby="experience-title"
+      >
+        <div className="experience-heading">
+          <p className="eyebrow">FROM OUR STUDIO TO YOU</p>
+          <h2 id="experience-title">A thoughtful little journey.</h2>
+          <p>The photographs are only the beginning.</p>
+        </div>
+        <div className="experience-steps">
+          <article>
+            <span className="journey-number">01 / DISCOVER</span>
+            <h3>Settle into your story.</h3>
+            <p>
+              Open your private gallery and give every moment a little room. On
+              your phone, or the big screen.
+            </p>
+            <Link to="/client/access">
+              Open your gallery <span aria-hidden="true">↗</span>
+            </Link>
+          </article>
+          <article>
+            <span className="journey-number">02 / CONNECT</span>
+            <h3>Tell us what you love.</h3>
+            <p>
+              Choose your favourites. Leave a note on the little details. Your
+              photographer takes it from there.
+            </p>
+            <span className="journey-detail">Your eye. Our care.</span>
+          </article>
+          <article>
+            <span className="journey-number">03 / KEEP</span>
+            <h3>Yours to come back to.</h3>
+            <p>
+              When your final photographs are ready, return to your gallery to
+              view and download the available images.
+            </p>
+            <span className="journey-detail">Made to be remembered.</span>
+          </article>
+        </div>
       </section>
+      <footer className="atelier-footer">
+        <Link to="/" className="atelier-footer-brand">
+          mj studio
+        </Link>
+        <p>Behind every photograph, a person.</p>
+        <Link to="/photographer/login">
+          Made for your studio <span aria-hidden="true">↗</span>
+        </Link>
+      </footer>
     </main>
   );
 }
@@ -244,7 +320,7 @@ function PhotographerDashboardPage() {
         <article className="panel metric-card">
           <span>Studio</span>
           <strong>{String(studio?.name ?? "MJ Studio")}</strong>
-          <small>Authorized studio context</small>
+          <small>Your photography workspace</small>
         </article>
         <article className="panel metric-card">
           <span>Clients</span>
@@ -259,7 +335,7 @@ function PhotographerDashboardPage() {
         <article className="panel metric-card">
           <span>Role</span>
           <strong>{user?.role ?? "owner"}</strong>
-          <small>Server-authorized access</small>
+          <small>Your studio permissions</small>
         </article>
       </section>
 

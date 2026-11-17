@@ -88,7 +88,7 @@ test("retries an incomplete load and restores the submitted selection", async ({
     page.getByRole("heading", { name: "Portrait session" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Selected", exact: true }),
+    page.getByRole("button", { name: "Selected photograph 1", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Try again", exact: true }),
@@ -125,9 +125,11 @@ test("retries delivery independently without resetting a saved choice", async ({
   await expect(
     page.getByRole("button", { name: "Check delivery again" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Select photograph 1", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Selected", exact: true }),
+    page.getByRole("button", { name: "Selected photograph 1", exact: true }),
   ).toBeEnabled();
   await expect(page.getByText("Your choices are saved.")).toBeVisible();
   const before = photoLoads;
@@ -137,7 +139,7 @@ test("retries delivery independently without resetting a saved choice", async ({
     page.getByRole("link", { name: "Download final photos" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Selected", exact: true }),
+    page.getByRole("button", { name: "Selected photograph 1", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   expect(photoLoads).toBe(before);
 });

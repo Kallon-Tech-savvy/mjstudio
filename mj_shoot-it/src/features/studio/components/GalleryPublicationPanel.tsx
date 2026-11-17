@@ -37,6 +37,19 @@ export function GalleryPublicationPanel({
         <li>{hasAccess ? "✓" : "2."} Prepare an access link and PIN</li>
         <li>{published ? "✓" : "3."} Publish for client review</li>
       </ol>
+      {!published && (!hasPhotos || !hasAccess || waitingForPhotos) ? (
+        <p id="publication-requirements" className="field-help">
+          Before publishing:{" "}
+          {[
+            !hasPhotos && "add at least one photograph",
+            !hasAccess && "prepare an access link and PIN",
+            waitingForPhotos && "resolve uploads still being checked",
+          ]
+            .filter(Boolean)
+            .join("; ")}
+          .
+        </p>
+      ) : null}
       {waitingForPhotos ? (
         <output>
           Uploads are still being checked. Resolve them before publishing.
@@ -51,6 +64,11 @@ export function GalleryPublicationPanel({
         <button
           className="primary-button"
           type="button"
+          aria-describedby={
+            !hasPhotos || !hasAccess || waitingForPhotos
+              ? "publication-requirements"
+              : undefined
+          }
           disabled={busy || !hasPhotos || !hasAccess || waitingForPhotos}
           onClick={onPublish}
         >

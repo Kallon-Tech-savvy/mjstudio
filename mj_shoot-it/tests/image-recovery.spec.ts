@@ -113,7 +113,7 @@ for (const status of [403, 503]) {
     await fixture(page);
     await page.goto("/client/gallery/test");
     await page
-      .getByRole("button", { name: "Select", exact: true })
+      .getByRole("button", { name: "Select photograph 1", exact: true })
       .first()
       .click();
     await page
