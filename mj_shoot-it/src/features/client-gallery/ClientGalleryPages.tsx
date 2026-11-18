@@ -678,7 +678,8 @@ function ClientSelectionReviewPage() {
             <h1>{galleryName}</h1>
             <p className="gallery-intro">
               A final look before you send these choices to your photographer.
-              You can still remove a photograph before submitting.
+              You can still remove photographs; sending locks this shortlist
+              for your photographer to review.
             </p>
           </div>
           {removingPhotoId || isSubmitting ? (
@@ -901,29 +902,43 @@ function ClientDeliveryPage() {
   );
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
-  useEffect(() => {
-    const load = async () => {
-      if (!galleryId) return;
-      setCanDownload(false);
-      try {
-        const [galleryRes, deliveryRes, photoRes] = await Promise.all([
-          getClientGallery(galleryId),
-          getClientDelivery(galleryId),
-          listClientPhotos(galleryId, 1, 100),
-        ]);
-        setGalleryName(String(galleryRes.name ?? "Gallery"));
-        setCanDownload(galleryRes.permission === "view_download");
-        setDelivery(deliveryRes);
-        setPhotos(photoRes.items ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load delivery.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    void load();
-  }, [galleryId]);
+  const retryLoad = useRetryableLoad(
+    useCallback(
+      async (isCurrent: () => boolean) => {
+        if (!galleryId) return;
+        setLoading(true);
+        setLoadError("");
+        setCanDownload(false);
+        try {
+          const [galleryRes, deliveryRes] = await Promise.all([
+            getClientGallery(galleryId),
+            getClientDelivery(galleryId),
+          ]);
+          const loadedPhotos = deliveryRes.isReleased
+            ? await loadClientPhotosForIds(
+                galleryId,
+                new Set(deliveryRes.items.map((item) => item.photoId)),
+              )
+            : [];
+          if (!isCurrent()) return;
+          setGalleryName(String(galleryRes.name ?? "Gallery"));
+          setCanDownload(galleryRes.permission === "view_download");
+          setDelivery(deliveryRes);
+          setPhotos(loadedPhotos);
+        } catch (err) {
+          if (isCurrent())
+            setLoadError(
+              err instanceof Error ? err.message : "Unable to load delivery.",
+            );
+        } finally {
+          if (isCurrent()) setLoading(false);
+        }
+      },
+      [galleryId],
+    ),
+  );
 
   const handleDownloadSingle = async (photoId: string) => {
     if (!galleryId || downloadingPhotoId || isDownloadingAll) return;
@@ -995,6 +1010,27 @@ function ClientDeliveryPage() {
     );
   }
 
+  if (loadError)
+    return (
+      <main className="page-shell">
+        <section className="panel workflow-state">
+          <h1>Your delivery couldn’t be loaded.</h1>
+          <p className="error-box" role="alert">
+            {loadError}
+          </p>
+          <button className="primary-button" type="button" onClick={retryLoad}>
+            Try again
+          </button>
+          <Link
+            className="secondary-button"
+            to={`/client/gallery/${galleryId}`}
+          >
+            Return to gallery
+          </Link>
+        </section>
+      </main>
+    );
+
   if (!delivery || !delivery.isReleased) {
     return (
       <main className="page-shell">
@@ -1065,8 +1101,18 @@ function ClientDeliveryPage() {
         </div>
 
         {error ? <div className="error-box">{error}</div> : null}
-        {!canDownload ? <output className="muted" aria-live="polite">This gallery link allows viewing only. Contact the studio if you need download access.</output> : null}
-        {canDownload && deliveredItems.length > 1 ? <p className="muted">Download all starts one file per photograph. Your browser may ask to allow multiple downloads.</p> : null}
+        {!canDownload ? (
+          <output className="muted" aria-live="polite">
+            This gallery link allows viewing only. Contact the studio if you
+            need download access.
+          </output>
+        ) : null}
+        {canDownload && deliveredItems.length > 1 ? (
+          <p className="muted">
+            Download all starts one file per photograph. Your browser may ask to
+            allow multiple downloads.
+          </p>
+        ) : null}
 
         <div className="photo-grid client-delivery-grid">
           {deliveredItems.map((item) => (
@@ -1359,8 +1405,9 @@ function ClientGalleryWorkspace() {
             <p className="eyebrow">Your photographs</p>
             <h1>{galleryName}</h1>
             <p className="gallery-intro">
-              Take your time. Open a photograph to see it in detail, then choose
-              the images you’d like to keep in focus.
+              {selectionStatus === "submitted"
+                ? "Your shortlist is with your photographer. You can still browse your photographs and leave a note."
+                : "Explore the photographs at your own pace. Your choices save as you go; review and send your shortlist when you’re ready."}
             </p>
           </div>
           {deliveryIsReleased ? (

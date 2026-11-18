@@ -307,6 +307,21 @@ export async function getGallery(galleryId: string): Promise<GalleryRecord> {
   );
 }
 
+export async function updateGallery(
+  galleryId: string,
+  input: { name?: string; expiresAt?: string | null },
+): Promise<GalleryRecord> {
+  return normalizeGallery(
+    await apiRequest<Record<string, unknown>>(
+      `/galleries/${encodeURIComponent(galleryId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    ),
+  );
+}
+
 /** Publishing explicitly makes a prepared gallery available for client review. */
 export async function publishGallery(
   galleryId: string,

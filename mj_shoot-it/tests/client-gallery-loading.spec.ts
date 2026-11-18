@@ -91,6 +91,11 @@ test("retries an incomplete load and restores the submitted selection", async ({
     page.getByRole("button", { name: "Selected", exact: true }),
   ).toBeDisabled();
   await expect(
+    page.getByText(
+      "Your shortlist is with your photographer. You can still browse your photographs and leave a note.",
+    ),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "Try again", exact: true }),
   ).toHaveCount(0);
 });
@@ -129,6 +134,11 @@ test("retries delivery independently without resetting a saved choice", async ({
   await expect(
     page.getByRole("button", { name: "Selected", exact: true }),
   ).toBeEnabled();
+  await expect(
+    page.getByText(
+      "Explore the photographs at your own pace. Your choices save as you go; review and send your shortlist when you’re ready.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Your choices are saved.")).toBeVisible();
   const before = photoLoads;
   failed = false;

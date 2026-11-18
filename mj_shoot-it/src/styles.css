@@ -1,28 +1,5 @@
 @import "./styles/tokens.css";
 
-:root {
-  color-scheme: light;
-  --page-bg: #f4f4f2;
-  --panel-bg: #ffffff;
-  --panel-alt: #f0f0ee;
-  --ink: #171717;
-  --muted: #686868;
-  --line: #dededb;
-  --control-border: #8a8a86;
-  --placeholder: #686868;
-  --focus: #171717;
-  --brand: #171717;
-  --brand-dark: #333333;
-  --accent: #555555;
-  --tomato: #777777;
-  --maroon: #333333;
-  --obsidian-dark: #111111;
-  --obsidian-card: #f7f7f5;
-  --success: #245a3c;
-  --danger: #8b2922;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
-}
-
 * {
   box-sizing: border-box;
 }
@@ -57,9 +34,9 @@ textarea {
 }
 
 .page-shell {
-  width: min(1200px, calc(100vw - 32px));
+  width: min(var(--content-width), calc(100vw - 48px));
   margin: 0 auto;
-  padding: 48px 0 64px;
+  padding: clamp(32px, 4vw, 56px) 0 clamp(56px, 6vw, 80px);
 }
 
 .auth-shell {
@@ -71,12 +48,16 @@ textarea {
 .panel {
   background: var(--panel-bg);
   border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-panel);
+  box-shadow: none;
+}
+.studio-gallery-workspace .gallery-settings-summary,
+.studio-gallery-workspace .panel-header {
+  margin-bottom: 16px;
 }
 
 .hero-panel {
-  padding: clamp(28px, 4vw, 56px);
+  padding: clamp(24px, 3.5vw, 44px);
   display: grid;
   gap: 20px;
 }
@@ -88,14 +69,21 @@ textarea {
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-  margin-top: 28px;
+  gap: clamp(20px, 3vw, 36px);
+  margin-top: 24px;
 }
 
 .card {
-  padding: 24px 22px;
+  padding: 20px 0;
   display: grid;
   gap: 14px;
+}
+
+.feature-grid .card {
+  border: 0;
+  border-top: 2px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
 }
 
 .card p {
@@ -104,7 +92,7 @@ textarea {
 
 .landing-shell {
   display: grid;
-  gap: 28px;
+  gap: 24px;
 }
 
 .eyebrow {
@@ -162,13 +150,11 @@ h2 {
 .button-ghost,
 .primary-button:disabled {
   appearance: none;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   border: 1px solid transparent;
   font-weight: 600;
   cursor: pointer;
   transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
     border-color 0.15s ease,
     background-color 0.15s ease;
 }
@@ -179,15 +165,13 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 46px;
-  padding: 0 20px;
-  letter-spacing: -0.01em;
+  min-height: 44px;
+  padding: 0 18px;
 }
 
 .primary-button {
   background: var(--brand);
   color: white;
-  box-shadow: 0 10px 24px rgba(17, 17, 17, 0.12);
 }
 
 .secondary-button {
@@ -205,7 +189,11 @@ h2 {
 .primary-button:hover,
 .secondary-button:hover,
 .button-ghost:hover {
-  transform: translateY(-1px);
+  border-color: var(--brand-dark);
+}
+
+.primary-button:hover {
+  background: var(--brand-dark);
 }
 
 .primary-button:disabled,
@@ -273,11 +261,11 @@ textarea:focus-visible {
 .field textarea,
 .textarea {
   width: 100%;
-  min-height: 48px;
+  min-height: 46px;
   border: 1px solid var(--control-border);
-  border-radius: 12px;
-  background: var(--panel-alt);
-  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--panel-bg);
+  padding: 11px 14px;
   color: var(--ink);
   transition:
     border-color 0.15s ease,
@@ -341,17 +329,17 @@ textarea:focus-visible {
 }
 
 .error-box {
-  border: 1px solid #b65b53;
-  background: #fff3f1;
+  border: 1px solid #d6a49b;
+  background: #fbefec;
   color: var(--danger);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  padding: 14px 16px;
 }
 
 .dashboard-shell {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
 }
 
 .dashboard-header {
@@ -359,7 +347,7 @@ textarea:focus-visible {
   justify-content: space-between;
   align-items: center;
   gap: 20px;
-  padding: 28px 30px;
+  padding: 26px 28px;
 }
 
 .dashboard-header h1 {
@@ -373,14 +361,14 @@ textarea:focus-visible {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
+  gap: 16px;
 }
 
 .metric-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 22px 22px 20px;
+  padding: 20px;
 }
 
 .metric-card span,
@@ -459,10 +447,11 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel-alt);
+  padding: 14px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .list-row div {
@@ -493,8 +482,8 @@ textarea:focus-visible {
 
 .empty-state {
   border: 1px dashed var(--line);
-  border-radius: 12px;
-  padding: 18px;
+  border-radius: var(--radius-control);
+  padding: 20px;
   color: var(--muted);
   background: var(--panel-alt);
 }
@@ -514,8 +503,13 @@ textarea:focus-visible {
 }
 
 .gallery-settings-panel {
-  margin: 20px 0;
-  padding: 18px;
+  margin: 0;
+  padding: 22px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .gallery-settings-summary {
@@ -548,12 +542,12 @@ textarea:focus-visible {
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 18px;
-  margin-top: 22px;
+  gap: 16px;
+  margin-top: 20px;
 }
 
 .photo-card {
-  padding: 16px;
+  padding: 12px;
 }
 
 .photo-thumb {
@@ -576,8 +570,13 @@ textarea:focus-visible {
 }
 
 .photo-upload {
-  margin-top: 20px;
-  padding: 20px;
+  margin-top: 0;
+  padding: 22px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .photo-upload-picker {
@@ -619,13 +618,13 @@ textarea:focus-visible {
 .photo-upload-details progress {
   width: min(100%, 360px);
   height: 12px;
-  accent-color: var(--brand-dark);
+  accent-color: var(--brand);
 }
 
 .photo-upload-status.status-complete,
 .photo-upload-status.status-processing {
   background: #e6f4ea;
-  color: #137333;
+  color: var(--success);
 }
 
 .photo-upload-status.status-failed {
@@ -634,8 +633,8 @@ textarea:focus-visible {
 }
 
 .photo-upload-status.status-uploading {
-  background: #dce8f8;
-  color: #174ea6;
+  background: #f8eadf;
+  color: var(--brand-dark);
 }
 
 .photo-meta {
@@ -770,7 +769,7 @@ textarea:focus-visible {
 
 /* Client gallery decision surface */
 .client-gallery-shell {
-  width: min(1280px, calc(100vw - 32px));
+  width: min(1280px, calc(100vw - 48px));
 }
 
 .client-gallery {
@@ -781,8 +780,8 @@ textarea:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 24px;
-  margin-bottom: 28px;
+  gap: 28px;
+  margin-bottom: 32px;
 }
 
 .gallery-header h1 {
@@ -878,7 +877,7 @@ textarea:focus-visible {
 
 .client-photo-grid {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
+  gap: clamp(16px, 2vw, 24px);
 }
 
 .client-photo-grid .photo-card {
@@ -983,7 +982,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 18px;
   width: min(680px, calc(100vw - 32px));
-  padding: 13px 16px;
+  padding: 14px 18px;
   background: var(--obsidian-dark);
   color: #fff;
   box-shadow: 0 12px 32px rgba(24, 18, 15, 0.18);
@@ -1146,15 +1145,21 @@ textarea:focus-visible {
 }
 
 .studio-selection-review {
-  margin: 28px 0;
-  padding: 24px;
-  border: 1px solid var(--line);
-  background: var(--panel-bg);
+  margin: 36px 0 0;
+  padding: 24px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
 }
 
 .studio-delivery-section {
-  margin-top: 24px;
-  padding: 24px;
+  margin-top: 0;
+  padding: 24px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .studio-delivery-section .panel-header > div {
@@ -1179,11 +1184,11 @@ textarea:focus-visible {
 .delivery-success {
   display: grid;
   gap: 6px;
-  padding: 16px;
-  border: 1px solid #a9c5b2;
+  padding: 16px 18px;
+  border: 1px solid #bfd0c3;
   border-radius: var(--radius-panel, 6px);
-  background: #edf5ef;
-  color: #245a3c;
+  background: #eef4ef;
+  color: var(--success);
 }
 
 .studio-delivery-section .list-row > span {
@@ -1537,10 +1542,10 @@ textarea:focus-visible {
 
 /* Gallery preparation: paper, ink and the rhythm of a contact sheet. */
 .studio-library {
-  --studio-paper: #f6f3ed;
-  --studio-ink: #242a27;
-  --studio-green: #345846;
-  padding-top: 24px;
+  --studio-paper: #f7f6f3;
+  --studio-ink: var(--ink);
+  --studio-green: var(--brand-dark);
+  padding-top: 20px;
 }
 .studio-masthead {
   display: flex;
@@ -1569,7 +1574,7 @@ textarea:focus-visible {
   justify-content: space-between;
   align-items: center;
   gap: 32px;
-  padding: 48px 0 32px;
+  padding: 42px 0 28px;
 }
 .library-heading h1 {
   font-size: clamp(2.5rem, 5vw, 4.2rem);
@@ -1584,9 +1589,9 @@ textarea:focus-visible {
   flex-shrink: 0;
 }
 .studio-library .primary-button {
-  background: var(--studio-green);
+  background: var(--brand);
   box-shadow: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 .studio-library .secondary-button,
 .studio-library .button-ghost {
@@ -1603,13 +1608,12 @@ textarea:focus-visible {
 .gallery-creation {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 310px;
-  border: 1px solid var(--line);
-  background: var(--panel-bg);
-  border-radius: 10px;
-  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: transparent;
 }
 .creation-form {
-  padding: 32px;
+  padding: 28px 28px 28px 0;
   min-width: 0;
 }
 .creation-steps {
@@ -1708,9 +1712,9 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 .creation-summary {
-  background: var(--studio-paper);
+  background: transparent;
   border-left: 1px solid var(--line);
-  padding: 28px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
 }
@@ -1729,19 +1733,19 @@ textarea:focus-visible {
   margin: 38px 0 30px;
   max-width: 158px;
   transform: rotate(-3deg);
-  border: 6px solid #e1ded5;
-  background: #e1ded5;
+  border: 6px solid var(--line);
+  background: var(--line);
 }
 .contact-sheet-mark i {
   display: block;
   aspect-ratio: 4 / 5;
-  background: #b7bcad;
+  background: #c8c8c4;
 }
 .contact-sheet-mark i:nth-child(2n) {
-  background: #8f9b8c;
+  background: var(--brand);
 }
 .contact-sheet-mark i:nth-child(3n) {
-  background: #c6b49a;
+  background: var(--accent);
 }
 .creation-summary h3 {
   font: 32px / 1.15 var(--font-display);
@@ -1850,28 +1854,27 @@ textarea:focus-visible {
 }
 .gallery-card-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   padding: 0;
   margin: 0;
   list-style: none;
-  gap: 18px;
+  gap: 0;
 }
 .gallery-library-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 230px;
-  padding: 24px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  transition:
-    border-color 0.2s,
-    transform 0.2s;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(150px, 0.8fr) auto;
+  align-items: center;
+  gap: 6px 24px;
+  min-height: 0;
+  padding: 18px 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  transition: background-color 0.15s ease;
 }
 .gallery-library-card:hover {
-  border-color: var(--studio-green);
-  transform: translateY(-3px);
+  background: var(--panel-alt);
 }
 .gallery-card-top,
 .gallery-card-bottom {
@@ -1880,27 +1883,39 @@ textarea:focus-visible {
   align-items: center;
   gap: 10px;
 }
+.gallery-card-top {
+  grid-column: 1;
+  grid-row: 1;
+  justify-content: flex-start;
+}
 .gallery-index {
   font: 12px var(--font-mono);
   color: var(--muted);
 }
 .gallery-library-card h3 {
-  font-size: 27px;
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 22px;
   line-height: 1.2;
-  margin: 28px 0 8px;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 .gallery-library-card p {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  margin: 0;
   font-size: 13px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 .gallery-card-bottom {
-  margin-top: auto;
-  padding-top: 20px;
-  border-top: 1px solid var(--line);
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
   font-size: 12px;
-  color: var(--studio-green);
+  color: var(--brand-dark);
 }
 .creation-stage [role="listbox"] {
   background: #fff;

@@ -1,24 +1,27 @@
-/* MJ Studio design tokens — Swiss editorial, monochrome foundation. */
+/* MJ Studio design tokens — warm orange, brass gold, and soft graphite. */
 :root {
   color-scheme: light;
-  --page-bg: #f4f4f2;
+  --page-bg: #f2f2f0;
   --panel-bg: #ffffff;
-  --panel-alt: #f0f0ee;
+  --panel-alt: #f7f6f3;
   --surface: #ffffff;
-  --ink: #171717;
-  --muted: #686868;
-  --line: #dededb;
-  --border: #dededb;
-  --brand: #171717;
-  --brand-dark: #333333;
-  --accent: #555555;
-  --tomato: #777777;
-  --maroon: #333333;
-  --obsidian-dark: #111111;
-  --obsidian-card: #f7f7f5;
-  --success: #333333;
-  --danger: #292929;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
+  --ink: #292724;
+  --muted: #6c6963;
+  --line: #dedbd5;
+  --border: #dedbd5;
+  --control-border: #9c978f;
+  --placeholder: #77736c;
+  --focus: #b94f25;
+  --brand: #c65b2d;
+  --brand-dark: #98411f;
+  --accent: #d7a947;
+  --tomato: #cf6840;
+  --maroon: #743d29;
+  --obsidian-dark: #302e2b;
+  --obsidian-card: #f7f6f3;
+  --success: #35654b;
+  --danger: #963f35;
+  --shadow: 0 8px 22px rgba(41, 39, 36, 0.045);
   --font-ui: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", sans-serif;
   --font-display:
     "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
@@ -28,19 +31,21 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
   --space-12: 48px;
   --content-width: 1200px;
-  --radius-control: 4px;
-  --radius-panel: 6px;
+  --radius-control: 6px;
+  --radius-panel: 8px;
 }
 body {
   background: var(--page-bg);
   color: var(--ink);
   font-family: var(--font-ui);
   font-feature-settings: "ss01" on;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 h1,
 h2,
@@ -57,10 +62,10 @@ textarea {
   font-family: var(--font-ui);
 }
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 ::selection {
-  background: #d8d8d5;
-  color: #111111;
+  background: #f0d99f;
+  color: #292724;
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import {
   Link,
   Navigate,
@@ -34,20 +35,19 @@ import {
   releaseStudioDelivery,
   resetGalleryAccess,
   setStudioPhotoReview,
-  type GalleryAccessCredentials,
-  type PhotoRecord,
   type StudioDeliveryDetails,
   type StudioFeedback,
   type StudioSelectedPhoto,
-  setStudioPhotoReview,
+  updateGallery,
   uploadPhotoFile,
 } from "@/lib/api";
 import { useRetryableLoad } from "@/lib/use-retryable-load";
 import { GalleryPublicationPanel } from "../components/GalleryPublicationPanel";
+import { GalleryWorkflowOverview } from "../components/GalleryWorkflowOverview";
 
 type GalleryDetail = Record<string, unknown> & {
   name?: string;
-  selectionStatus?: string;
+  selectionStatus?: string | null;
   selectionSubmittedAt?: string | null;
 };
 
@@ -72,10 +72,6 @@ function toLocalDateTimeInput(value?: string | null): string {
   if (Number.isNaN(date.getTime())) return "";
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
-}
-
-function localDateTimeToIso(value: string): string | null {
-  return value ? new Date(value).toISOString() : null;
 }
 
 async function waitForPhotoProcessing(
@@ -262,17 +258,25 @@ function StudioPhotoViewerModal({
   );
 }
 
-export default function PhotographerGalleryDetailPage() {
+function PhotographerGalleryDetailPage() {
   // Async completions belong to this gallery instance, including active uploads.
   const { galleryId } = useParams();
   return <PhotographerGalleryWorkspace key={galleryId} />;
 }
+
+export default PhotographerGalleryDetailPage;
 
 function PhotographerGalleryWorkspace() {
   const { galleryId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [gallery, setGallery] = useState<GalleryDetail | null>(null);
+  const [settingsName, setSettingsName] = useState("");
+  const [galleryExpiry, setGalleryExpiry] = useState("");
+  const [linkExpiry, setLinkExpiry] = useState("");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsStatus, setSettingsStatus] = useState("");
 
   useEffect(() => {
     if (!gallery || searchParams.get("created") !== "1") return;
@@ -793,17 +797,32 @@ function PhotographerGalleryWorkspace() {
             (error: unknown) => ({ error }),
           ),
         ]);
-        if (!active) return;
+        if (!isCurrent()) return;
         setGallery(galleryResponse as GalleryDetail);
+        setSettingsName(String(galleryResponse.name ?? ""));
+        setGalleryExpiry(toLocalDateTimeInput(
+          typeof galleryResponse.expiresAt === "string"
+            ? galleryResponse.expiresAt
+            : null,
+        ));
         setPhotos(photoResponse.items ?? []);
         setSelection(selectionResponse);
         setFeedback(feedbackResponse);
         setDelivery(deliveryResponse);
         if ("items" in accessResult) {
           const now = Date.now();
-          setHasActiveAccess(accessResult.items.some((access) =>
-            !access.revokedAt && (!access.expiresAt || Date.parse(access.expiresAt) > now),
-          ));
+          const activeAccess = accessResult.items.find(
+            (access) =>
+              !access.revokedAt &&
+              (!access.expiresAt || Date.parse(access.expiresAt) > now),
+          );
+          setHasActiveAccess(Boolean(activeAccess));
+          if (activeAccess) {
+            setPermission(activeAccess.permission);
+            setLinkExpiry(toLocalDateTimeInput(activeAccess.expiresAt));
+          } else {
+            setLinkExpiry("");
+          }
           setAccessStatus("available");
         } else if (accessResult.error instanceof ApiError && accessResult.error.status === 403) {
           setAccessStatus("forbidden");
@@ -814,14 +833,13 @@ function PhotographerGalleryWorkspace() {
             : "Unable to check current client access.");
         }
       } catch (caughtError) {
-        if (!active) return;
+        if (!isCurrent()) return;
         setError(caughtError instanceof Error ? caughtError.message : "Unable to load gallery.");
       }
-    };
-
-    void load();
-    return () => { active = false; };
-  }, [galleryId, navigate]);
+      },
+      [galleryId, navigate],
+    ),
+  );
 
   const handleAccessGrant = async () => {
     if (
@@ -833,11 +851,23 @@ function PhotographerGalleryWorkspace() {
     )
       return;
 
+    const expiryDate = linkExpiry ? new Date(linkExpiry) : null;
+    if (
+      expiryDate &&
+      (Number.isNaN(expiryDate.getTime()) || expiryDate <= new Date())
+    ) {
+      setError("Choose a valid share-link expiry time in the future.");
+      return;
+    }
+
     setIsIssuingAccess(true);
     setError("");
     setAccessCopyStatus("");
     try {
-      const input = { permission, expiresAt: localDateTimeToIso(linkExpiry) };
+      const input = {
+        permission,
+        expiresAt: expiryDate?.toISOString() ?? null,
+      };
       const credentials = hasActiveAccess
         ? await resetGalleryAccess(galleryId, input)
         : await createGalleryAccess(galleryId, input);
@@ -932,25 +962,53 @@ function PhotographerGalleryWorkspace() {
     ? `${window.location.origin}/client/access?galleryId=${encodeURIComponent(galleryId)}#secret=${encodeURIComponent(accessCredentials.secretToken)}`
     : "";
 
+  async function handleSaveSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = settingsName.trim();
+    if (!name) {
+      setSettingsError("Enter a gallery name.");
+      setSettingsStatus("");
+      return;
+    }
+    if (!galleryId || !gallery || gallery.archivedAt || isSavingSettings) return;
+
+    let expiresAt: string | null = null;
+    if (galleryExpiry) {
+      const expiryDate = new Date(galleryExpiry);
+      if (
+        Number.isNaN(expiryDate.getTime()) ||
+        expiryDate <= new Date()
+      ) {
+        setSettingsError("Choose a valid gallery expiry time in the future.");
+        setSettingsStatus("");
+        return;
+      }
+      expiresAt = expiryDate.toISOString();
+    }
+
+    setIsSavingSettings(true);
+    setSettingsError("");
+    setSettingsStatus("");
+    try {
+      const updated = await updateGallery(galleryId, { name, expiresAt });
+      setGallery((current) => ({ ...current, ...updated }));
+      setSettingsName(name);
+      setSettingsStatus("Gallery settings saved.");
+    } catch (caughtError) {
+      setSettingsError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to save gallery settings.",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
   return (
-    <main className="page-shell">
-      {searchParams.get("created") === "1" && !hasActiveAccess ? (
-        <section className="gallery-setup-banner" aria-label="Gallery created">
-          <p className="eyebrow">
-            01 Created / 02 Photographs / 03 Access / 04 Publish
-          </p>
-          <h2>Your gallery is created.</h2>
-          <p>
-            Next, add your photographs. No client access has been issued by
-            creating this draft.
-          </p>
-          <a className="primary-button" href="#photo-upload">
-            Add photographs ↓
-          </a>
-        </section>
-      ) : null}
-      <div className="panel">
-        <div className="panel-header compact-header gallery-workspace-header">
+    <main className="page-shell studio-gallery-workspace">
+      <div className="panel gallery-workspace-shell">
+        <div id="gallery-top" className="panel-header compact-header gallery-workspace-header">
           <div>
             <p className="eyebrow">Gallery workspace</p>
             <h1>{String(gallery?.name ?? "Loading gallery…")}</h1>
@@ -966,6 +1024,12 @@ function PhotographerGalleryWorkspace() {
             Back to galleries
           </button>
         </div>
+
+        <GalleryWorkflowOverview
+          photoCount={photoTotal}
+          hasAccess={hasActiveAccess && accessStatus === "available"}
+          published={gallery.publicationStatus === "published"}
+        />
 
         <details className="panel gallery-settings-panel">
           <summary className="gallery-settings-summary">
@@ -1190,118 +1254,154 @@ function PhotographerGalleryWorkspace() {
           </nav>
         </section>
 
-        {accessStatus === "loading" ? (
-          <p className="muted">Checking client access…</p>
-        ) : null}
-        {accessStatus === "forbidden" ? (
-          <p className="muted">
-            You do not have permission to manage client access for this gallery.
-          </p>
-        ) : null}
-        {accessStatus === "error" ? (
-          <div className="error-box">{accessError}</div>
-        ) : null}
-        {accessStatus === "available" ? (
-          <div className="toolbar-stack">
-            <label className="field compact-field">
-              <span>What the client can do</span>
-              <select value={permission} onChange={(event) => setPermission(event.target.value as "view" | "view_download")}>
-                <option value="view">View</option>
-                <option value="view_download">View + download</option>
-              </select>
-            </label>
-            <button type="button" className="primary-button" disabled={isIssuingAccess} onClick={handleAccessGrant}>
-              {isIssuingAccess ? (hasActiveAccess ? "Creating new link…" : "Issuing…") : (hasActiveAccess ? "Create new share link" : "Issue access link")}
-            </button>
-          </div>
-        ) : null}
-        {hasActiveAccess ? (
-          <p className="muted">
-            Creating a new link replaces the current link and PIN and ends
-            existing client sessions. Saved client feedback and selections will
-            remain. New credentials are shown only once.
-          </p>
-        ) : null}
-
-        {accessCredentials ? (
-          <section
-            className="panel access-credentials-panel"
-            aria-live="polite"
-          >
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Share with client</p>
-                <h2>Access issued</h2>
-                <p className="muted">
-                  Send the link and PIN separately. This PIN is shown only in
-                  this response.
-                </p>
-              </div>
+        <section id="client-access" aria-label="Client access">
+          <div className="panel-header compact-header">
+            <div>
+              <p className="eyebrow">Client access</p>
+              <h2>Share this gallery</h2>
             </div>
-            <label className="field access-credential-field">
-              <span>Client access link</span>
-              <span className="access-credential-control">
-                <input
-                  readOnly
-                  value={clientAccessUrl}
-                  onFocus={(event) => event.currentTarget.select()}
-                  aria-label="Client access link"
-                />
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => void copyAccessValue(clientAccessUrl, "Link")}
-                >
-                  Copy link
-                </button>
-              </span>
-            </label>
-            <label className="field access-credential-field">
-              <span>Six-digit PIN — send separately</span>
-              <span className="access-credential-control">
-                <input
-                  readOnly
-                  value={accessCredentials.pin}
-                  onFocus={(event) => event.currentTarget.select()}
-                  aria-label="Six-digit gallery PIN"
-                />
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() =>
-                    void copyAccessValue(accessCredentials.pin, "PIN")
+          </div>
+          {accessStatus === "loading" ? (
+            <p className="muted">Checking client access…</p>
+          ) : null}
+          {accessStatus === "forbidden" ? (
+            <p className="muted">
+              You do not have permission to manage client access for this gallery.
+            </p>
+          ) : null}
+          {accessStatus === "error" ? (
+            <div className="error-box" role="alert">{accessError}</div>
+          ) : null}
+          {accessStatus === "available" ? (
+            <div className="toolbar-stack">
+              <label className="field compact-field">
+                <span>What the client can do</span>
+                <select
+                  value={permission}
+                  disabled={isIssuingAccess}
+                  onChange={(event) =>
+                    setPermission(event.target.value as "view" | "view_download")
                   }
                 >
-                  Copy PIN
-                </button>
-              </span>
-            </label>
-            {accessCopyStatus ? (
-              <output className="muted" aria-live="polite">
-                {accessCopyStatus}
-              </output>
-            ) : null}
-            {gallery?.publicationStatus !== "published" ? (
-              <p className="muted">
-                Clients can open this link only after the gallery is published.
-              </p>
-            ) : null}
+                  <option value="view">View</option>
+                  <option value="view_download">View + download</option>
+                </select>
+              </label>
+              <label className="field compact-field">
+                <span>Share link expires (optional)</span>
+                <input
+                  type="datetime-local"
+                  value={linkExpiry}
+                  disabled={isIssuingAccess}
+                  onChange={(event) => setLinkExpiry(event.target.value)}
+                />
+                <small className="muted">
+                  Leave blank for a link with no separate expiry. Gallery-wide
+                  expiry still applies.
+                </small>
+              </label>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={isIssuingAccess || isPublishing || isUploadingPhotos}
+                onClick={handleAccessGrant}
+              >
+                {isIssuingAccess
+                  ? hasActiveAccess
+                    ? "Creating new link…"
+                    : "Issuing…"
+                  : hasActiveAccess
+                    ? "Create new share link"
+                    : "Issue access link"}
+              </button>
+            </div>
+          ) : null}
+          {hasActiveAccess ? (
             <p className="muted">
-              For privacy, send this link and PIN in separate messages. Keep
-              this screen open until you’ve shared both.
+              Creating a new link replaces the current link and PIN and ends
+              existing client sessions. Saved client feedback and selections
+              remain. New credentials are shown only once.
             </p>
-          </section>
-        ) : null}
+          ) : null}
+          {accessCredentials ? (
+            <div className="panel access-credentials-panel" aria-live="polite">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Share with client</p>
+                  <h2>Access issued</h2>
+                  <p className="muted">
+                    Send the link and PIN separately. This PIN is shown only in
+                    this response.
+                  </p>
+                </div>
+              </div>
+              <label className="field access-credential-field">
+                <span>Client access link</span>
+                <span className="access-credential-control">
+                  <input
+                    readOnly
+                    value={clientAccessUrl}
+                    onFocus={(event) => event.currentTarget.select()}
+                    aria-label="Client access link"
+                  />
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void copyAccessValue(clientAccessUrl, "Link")}
+                  >
+                    Copy link
+                  </button>
+                </span>
+              </label>
+              <label className="field access-credential-field">
+                <span>Six-digit PIN — send separately</span>
+                <span className="access-credential-control">
+                  <input
+                    readOnly
+                    value={accessCredentials.pin}
+                    onFocus={(event) => event.currentTarget.select()}
+                    aria-label="Six-digit gallery PIN"
+                  />
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      void copyAccessValue(accessCredentials.pin, "PIN")
+                    }
+                  >
+                    Copy PIN
+                  </button>
+                </span>
+              </label>
+              {accessCopyStatus ? (
+                <output className="muted" aria-live="polite">
+                  {accessCopyStatus}
+                </output>
+              ) : null}
+              {gallery?.publicationStatus !== "published" ? (
+                <p className="muted">
+                  Clients can open this link only after the gallery is published.
+                </p>
+              ) : null}
+              <p className="muted">
+                For privacy, send this link and PIN in separate messages. Keep
+                this screen open until you’ve shared both.
+              </p>
+            </div>
+          ) : null}
+        </section>
 
-        <GalleryPublicationPanel
-          published={gallery.publicationStatus === "published"}
-          hasPhotos={photoTotal > 0}
-          hasAccess={hasActiveAccess && accessStatus === "available"}
-          busy={isPublishing || isIssuingAccess}
-          waitingForPhotos={waitingForPhotos}
-          error={publishError}
-          onPublish={() => void handlePublish()}
-        />
+        <div id="gallery-publication">
+          <GalleryPublicationPanel
+            published={gallery.publicationStatus === "published"}
+            hasPhotos={photoTotal > 0}
+            hasAccess={hasActiveAccess && accessStatus === "available"}
+            busy={isPublishing || isIssuingAccess}
+            waitingForPhotos={waitingForPhotos}
+            error={publishError}
+            onPublish={() => void handlePublish()}
+          />
+        </div>
 
         {error ? <div className="error-box">{error}</div> : null}
 

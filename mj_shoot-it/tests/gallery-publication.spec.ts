@@ -2,7 +2,11 @@ import { expect, type Page, test } from "@playwright/test";
 
 async function publicationWorkspace(
   page: Page,
-  options: { broken?: () => boolean } = {},
+  options: {
+    broken?: () => boolean;
+    onGalleryPatch?: (body: unknown) => void;
+    published?: boolean;
+  } = {},
 ) {
   let access = false;
   let attempts = 0;
@@ -12,6 +16,19 @@ async function publicationWorkspace(
     const ok = (data: unknown) => route.fulfill({ json: { data } });
     if (path === "/api/auth/me")
       return ok({ user: { userId: "owner", studioId: "studio" } });
+    if (
+      path === "/api/galleries/publication-gallery" &&
+      method === "PATCH"
+    ) {
+      const body = route.request().postDataJSON();
+      options.onGalleryPatch?.(body);
+      return ok({
+        id: "publication-gallery",
+        clientId: "fixture-client",
+        ...body,
+        publicationStatus: "unpublished",
+      });
+    }
     if (path.endsWith("/delivery"))
       return route.fulfill({
         status: 404,
@@ -65,8 +82,8 @@ async function publicationWorkspace(
       return ok({
         id: "publication-gallery",
         name: "Augusta · Portraits",
-        publicationStatus: "unpublished",
-        workflowStatus: "draft",
+        publicationStatus: options.published ? "published" : "unpublished",
+        workflowStatus: options.published ? "reviewing" : "draft",
       });
     }
     return ok([]);
@@ -79,6 +96,18 @@ test("prepare access, recover from publication failure, then open for client rev
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await publicationWorkspace(page);
+  const workflow = page.getByRole("navigation", { name: "Gallery setup" });
+  await expect(workflow.getByRole("heading", { name: "Prepare for your client" })).toBeVisible();
+  await expect(workflow).toContainText(
+    "Your draft stays private until you publish.",
+  );
+  await expect(workflow.getByRole("link", { name: /Next: Client access/ })).toHaveAttribute(
+    "href",
+    "#client-access",
+  );
+  await expect(
+    workflow.getByRole("link", { name: "Client access Next" }),
+  ).toHaveAttribute("aria-current", "step");
   const publish = page.getByRole("button", {
     name: "Publish for client review",
   });
@@ -88,6 +117,9 @@ test("prepare access, recover from publication failure, then open for client rev
   await expect(
     page.getByLabel("Client access link", { exact: true }),
   ).toBeVisible();
+  await expect(
+    workflow.getByRole("link", { name: /Next: Publish/ }),
+  ).toHaveAttribute("href", "#gallery-publication");
   await expect(publish).toBeEnabled();
   await publish.click();
   await expect(page.getByRole("alert")).toContainText(
@@ -103,6 +135,9 @@ test("prepare access, recover from publication failure, then open for client rev
   await expect(
     page.getByRole("heading", { name: "Augusta · Portraits" }),
   ).toBeVisible();
+  await expect(
+    workflow.getByRole("heading", { name: "Gallery is live" }),
+  ).toBeVisible();
   await expect(publish).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -112,6 +147,42 @@ test("prepare access, recover from publication failure, then open for client rev
   await page
     .locator(".gallery-publication-panel")
     .screenshot({ path: "test-results/publication-mobile.png" });
+});
+
+test("gallery settings save through the metadata update endpoint", async ({
+  page,
+}) => {
+  let savedBody: unknown;
+  await publicationWorkspace(page, {
+    onGalleryPatch: (body) => {
+      savedBody = body;
+    },
+  });
+
+  await page.getByText("Gallery settings").click();
+  await page.getByLabel("Gallery name").fill("Updated portraits");
+  await page.getByRole("button", { name: "Save settings" }).click();
+
+  await expect(page.getByText("Gallery settings saved.")).toBeVisible();
+  expect(savedBody).toEqual({ name: "Updated portraits", expiresAt: null });
+});
+
+test("published galleries without an active link direct the photographer to restore access", async ({
+  page,
+}) => {
+  await publicationWorkspace(page, { published: true });
+
+  const workflow = page.getByRole("navigation", { name: "Gallery setup" });
+  await expect(
+    workflow.getByRole("heading", { name: "Gallery needs an active link" }),
+  ).toBeVisible();
+  await expect(workflow).toContainText(
+    "This gallery is published, but it has no active client link.",
+  );
+  await expect(workflow.getByRole("link", { name: /Next: Client access/ })).toHaveAttribute(
+    "href",
+    "#client-access",
+  );
 });
 
 test("workspace load failure offers recovery before allowing uploads or publication", async ({
