@@ -1025,6 +1025,12 @@ function PhotographerGalleryWorkspace() {
           </button>
         </div>
 
+        <nav className="gallery-section-nav" aria-label="Gallery sections">
+          <a href="#photo-upload">Photos</a>
+          <a href="#client-access">Client access</a>
+          <a href="#gallery-publication">Publish</a>
+        </nav>
+
         <GalleryWorkflowOverview
           photoCount={photoTotal}
           hasAccess={hasActiveAccess && accessStatus === "available"}
